@@ -23,7 +23,6 @@ bot = telebot.TeleBot(BOT_TOKEN)
 USERS_FILE = "users.json"
 
 def load_users():
-    """Загружает список пользователей из файла"""
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r") as f:
@@ -33,7 +32,6 @@ def load_users():
     return []
 
 def save_user(user_id):
-    """Сохраняет пользователя в файл, если его там нет"""
     users = load_users()
     if user_id not in users:
         users.append(user_id)
@@ -43,7 +41,6 @@ def save_user(user_id):
     return False
 
 def get_users_count():
-    """Возвращает количество пользователей"""
     return len(load_users())
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
@@ -152,7 +149,8 @@ def get_weather():
             "is_night": is_night,
             "source": "OpenWeatherMap",
             "timestamp": get_minsk_time(),
-            "description": weather_desc
+            "description": weather_desc,
+            "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
         }
         
     except requests.exceptions.Timeout:
@@ -304,10 +302,7 @@ def get_back_keyboard():
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
-    # Сохраняем пользователя
-    user_id = message.chat.id
-    save_user(user_id)
-    
+    save_user(message.chat.id)
     bot.send_message(
         message.chat.id,
         "🏍️ *MotoWeather Минск*\n\n"
@@ -319,17 +314,13 @@ def start(message):
 
 @bot.message_handler(commands=['weather'])
 def weather_command(message):
-    # Тоже сохраняем пользователя (на всякий случай)
     save_user(message.chat.id)
     bot.send_message(message.chat.id, "⏳ Загружаю данные из OpenWeatherMap...")
     send_weather(message.chat.id)
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
-    """Показывает количество пользователей (только для админа)"""
-    # Замените на ваш Telegram ID
-    ADMIN_ID = 8930836312  # ВСТАВЬТЕ ВАШ ID
-    
+    ADMIN_ID = 123456789  # ЗАМЕНИТЕ НА ВАШ ID
     if message.chat.id != ADMIN_ID:
         bot.reply_to(message, "❌ У вас нет прав на эту команду.")
         return
@@ -346,7 +337,6 @@ def stats_command(message):
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
-        # Сохраняем пользователя при нажатии кнопки
         save_user(call.message.chat.id)
         
         if call.data == "weather":
@@ -405,6 +395,7 @@ def callback_handler(call):
 • 📊 Анализ рисков для мотоциклиста
 • 💡 Персональные рекомендации
 • 🌙 Учёт времени суток
+• 🕐 Показывает время последнего обновления
 
 *Источник данных:* OpenWeatherMap (реальный API)
 *Платформа:* Render.com (24/7)
@@ -446,6 +437,7 @@ def send_weather(chat_id):
     
     now = get_minsk_time()
     feels_like = weather.get('feels_like', weather.get('temp', 0))
+    update_time = weather.get('update_time', 'Неизвестно')
     
     weather_desc = weather.get('condition', '').replace('🌦️', '').replace('🌧️', '').replace('☀️', '').replace('⛅', '').replace('☁️', '').replace('🌫️', '').replace('❄️', '').replace('⛈️', '').replace('🌤️', '').strip()
     
@@ -490,6 +482,9 @@ def send_weather(chat_id):
         for rec in analysis["recommendations"]:
             msg += f"• {rec}\n"
     
+    # ===== ДОБАВЛЯЕМ ВРЕМЯ ОБНОВЛЕНИЯ =====
+    msg += f"\n🔄 *Обновлено:* {update_time}"
+    
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
 
 # ============ ЗАПУСК ============
@@ -497,8 +492,8 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
     print("✅ Учтены: осадки в мм, видимость")
-    print("✅ Добавлен подсчёт пользователей")
-    print("✅ Файл users.json будет создан автоматически")
+    print("✅ Добавлено время обновления")
+    print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
 EOF
