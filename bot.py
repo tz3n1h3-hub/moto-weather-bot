@@ -328,7 +328,7 @@ def weather_command(message):
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
-    ADMIN_ID = 123456789  # ЗАМЕНИТЕ НА ВАШ ID
+    ADMIN_ID = 8930836312  # ЗАМЕНИТЕ НА ВАШ ID
     if message.chat.id != ADMIN_ID:
         bot.reply_to(message, "❌ У вас нет прав на эту команду.")
         return
