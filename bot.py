@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import time
+import threading
 from datetime import datetime, timedelta, timezone
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -53,9 +54,8 @@ def get_minsk_time():
 def get_minsk_hour():
     return datetime.now(MINSK_TZ).hour
 
-# ============ ПОЛУЧЕНИЕ ПОГОДЫ ИЗ OPENWEATHERMAP ============
+# ============ ПОЛУЧЕНИЕ ПОГОДЫ ============
 def get_weather():
-    """Получает погоду для Минска из OpenWeatherMap"""
     try:
         cache_buster = int(time.time())
         url = f"https://api.openweathermap.org/data/2.5/weather?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&_={cache_buster}"
@@ -161,12 +161,6 @@ def get_weather():
             "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
         }
         
-    except requests.exceptions.Timeout:
-        print("Ошибка: Таймаут при запросе к OpenWeatherMap")
-        return None
-    except requests.exceptions.ConnectionError:
-        print("Ошибка: Нет соединения с OpenWeatherMap")
-        return None
     except Exception as e:
         print(f"Ошибка получения погоды: {e}")
         return None
@@ -307,7 +301,7 @@ def get_back_keyboard():
     )
     return markup
 
-# ============ КОМАНДЫ ============
+# ============ КОМАНДЫ БОТА ============
 @bot.message_handler(commands=['start'])
 def start(message):
     save_user(message.chat.id)
@@ -328,7 +322,7 @@ def weather_command(message):
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
-    ADMIN_ID = 8930836312  # ЗАМЕНИТЕ НА ВАШ ID
+    ADMIN_ID = 8930836312
     if message.chat.id != ADMIN_ID:
         bot.reply_to(message, "❌ У вас нет прав на эту команду.")
         return
@@ -495,12 +489,41 @@ def send_weather(chat_id):
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
 
-# ============ ЗАПУСК ============
+# ============ ВЕБ-СЕРВЕР ДЛЯ ПИНГА ============
+from flask import Flask, request, jsonify
+import threading
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🏍️ MotoWeather Bot is running! Use /weather in Telegram.", 200
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "ok",
+        "bot": "MotoWeather Minsk",
+        "users": get_users_count(),
+        "time": datetime.now(MINSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    }), 200
+
+def run_flask():
+    """Запускает Flask-сервер на порту 10000 (порт Render)"""
+    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
+
+# ============ ЗАПУСК В ДВУХ ПОТОКАХ ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
-    print("✅ Добавлена проверка данных")
+    print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
+    
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Запускаем Telegram-бота
     bot.infinity_polling()
 EOF
