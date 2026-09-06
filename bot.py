@@ -105,9 +105,7 @@ def get_weather():
             "is_thunder": parsed["is_thunder"],
             "is_night": is_night,
             "source": "wttr.in",
-            "timestamp": get_minsk_time(),
-            "description": weather_desc,
-            "raw_condition": weather_desc
+            "timestamp": get_minsk_time()
         }
     except Exception as e:
         print(f"Ошибка получения погоды: {e}")
@@ -158,7 +156,7 @@ def analyze_risks(weather):
         score += 2
     
     # Дополнительный риск: туман
-    if "туман" in weather.get("description", "").lower() or "fog" in weather.get("description", "").lower():
+    if hasattr(weather, 'get') and "туман" in str(weather.get("description", "")) or "fog" in str(weather.get("description", "")):
         risks.append("🌫️ Туман - плохая видимость")
         score += 2
     
@@ -181,9 +179,6 @@ def get_keyboard():
         InlineKeyboardButton("🔄 Обновить", callback_data="update"),
         InlineKeyboardButton("🏍️ Советы", callback_data="tips")
     )
-    markup.row(
-        InlineKeyboardButton("👨‍💻 О разработчике", callback_data="about")
-    )
     return markup
 
 # ============ КОМАНДЫ БОТА ============
@@ -193,8 +188,7 @@ def start(message):
         message.chat.id,
         "🏍️ *MotoWeather Минск*\n\n"
         "Я анализирую погоду для мотоциклистов!\n"
-        "Отправьте /weather чтобы узнать прогноз.\n\n"
-        "👨‍💻 *Разработчик:* K8V",
+        "Отправьте /weather чтобы узнать прогноз.",
         parse_mode="Markdown",
         reply_markup=get_keyboard()
     )
@@ -204,25 +198,6 @@ def weather_command(message):
     bot.send_message(message.chat.id, "⏳ Загружаю данные...")
     send_weather(message.chat.id)
 
-@bot.message_handler(commands=['about'])
-def about_command(message):
-    about_text = """
-👨‍💻 *О разработчике*
-
-*Имя:* K8V
-*Проект:* MotoWeather Минск
-
-Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
-
-*Источник данных:* wttr.in (бесплатный API)
-*Платформа:* Render.com (24/7)
-*Часовой пояс:* Минск (UTC+3)
-
-🏍️ *Берегите себя на дороге!*
-"""
-    bot.send_message(message.chat.id, about_text, parse_mode="Markdown")
-
-# ============ ОБРАБОТКА КНОПОК ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
@@ -255,22 +230,6 @@ def callback_handler(call):
 *Берегите себя!* 🏍️
 """
             bot.send_message(call.message.chat.id, tips, parse_mode="Markdown")
-        elif call.data == "about":
-            about_text = """
-👨‍💻 *О разработчике*
-
-*Имя:* K8V
-*Проект:* MotoWeather Минск
-
-Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
-
-*Источник данных:* wttr.in (бесплатный API)
-*Платформа:* Render.com (24/7)
-*Часовой пояс:* Минск (UTC+3)
-
-🏍️ *Берегите себя на дороге!*
-"""
-            bot.send_message(call.message.chat.id, about_text, parse_mode="Markdown")
     except Exception as e:
         print(f"Ошибка в callback: {e}")
 
@@ -307,10 +266,6 @@ def send_weather(chat_id):
     
     msg += f"\n📊 *Уровень риска:* {analysis['score']}/10"
     msg += f"\n📡 *Источник:* {weather.get('source', 'Неизвестно')}"
-    if weather.get("description"):
-        msg += f"\n📝 *Описание:* {weather.get('description')}"
-    
-    msg += f"\n\n👨‍💻 *Разработчик:* K8V"
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_keyboard())
 
@@ -319,8 +274,6 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Используется wttr.in (без API-ключа)")
     print("✅ Часовой пояс: Минск (UTC+3)")
-    print("✅ Добавлен расширенный анализ погоды")
-    print("👨‍💻 Разработчик: K8V")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
 EOF
