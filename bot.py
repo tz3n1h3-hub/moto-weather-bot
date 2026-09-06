@@ -30,6 +30,24 @@ def get_minsk_time():
 def get_minsk_hour():
     return datetime.now(MINSK_TZ).hour
 
+def get_minsk_month():
+    return datetime.now(MINSK_TZ).month
+
+def is_night_time():
+    """Определяет ночное время с учётом сезона"""
+    current_hour = get_minsk_hour()
+    month = get_minsk_month()
+    
+    # Лето (май-август) — день длиннее
+    if 5 <= month <= 8:
+        return current_hour < 5 or current_hour > 21
+    # Зима (ноябрь-февраль) — день короче
+    elif 11 <= month <= 2:
+        return current_hour < 8 or current_hour > 18
+    # Весна (март-апрель) и осень (сентябрь-октябрь)
+    else:
+        return current_hour < 7 or current_hour > 19
+
 # ============ РАБОТА С ФАЙЛОМ ПОЛЬЗОВАТЕЛЕЙ ============
 USERS_FILE = "users.json"
 
@@ -136,9 +154,7 @@ def get_weather():
             is_thunder = False
             is_rain = False
         
-        current_hour = get_minsk_hour()
-        is_night = current_hour < 6 or current_hour > 20
-        
+        is_night = is_night_time()
         feels_like = int(data["main"]["feels_like"])
         
         return {
@@ -167,7 +183,6 @@ def get_weather():
 
 # ============ ПОЛУЧЕНИЕ ПРОГНОЗА НА ЗАВТРА ============
 def get_forecast_tomorrow():
-    """Получает прогноз на завтра (средние значения за день)"""
     try:
         url = f"https://api.openweathermap.org/data/2.5/forecast?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=8"
         
@@ -178,11 +193,9 @@ def get_forecast_tomorrow():
             print(f"Ошибка прогноза: {data.get('message')}")
             return None
         
-        # Завтрашний день
         tomorrow = datetime.now(MINSK_TZ) + timedelta(days=1)
         tomorrow_str = tomorrow.strftime("%Y-%m-%d")
         
-        # Собираем данные по завтрашним прогнозам (каждые 3 часа)
         temps = []
         wind_speeds = []
         rain_total = 0
@@ -200,7 +213,6 @@ def get_forecast_tomorrow():
         if not temps:
             return None
         
-        # Средние значения
         avg_temp = int(sum(temps) / len(temps))
         max_temp = int(max(temps))
         min_temp = int(min(temps))
@@ -208,7 +220,6 @@ def get_forecast_tomorrow():
         max_wind = int(max(wind_speeds))
         wind_gust = int(max_wind * 1.3)
         
-        # Определяем погоду
         most_common = max(set(conditions), key=conditions.count) if conditions else 800
         
         if most_common >= 200 and most_common < 300:
@@ -256,6 +267,112 @@ def get_forecast_tomorrow():
         
     except Exception as e:
         print(f"Ошибка получения прогноза: {e}")
+        return None
+
+# ============ ПОЛУЧЕНИЕ ПРОГНОЗА НА НЕДЕЛЮ ============
+def get_weekly_forecast():
+    """Получает прогноз на 7 дней из OpenWeatherMap"""
+    try:
+        url = f"https://api.openweathermap.org/data/2.5/forecast?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=40"
+        
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if data.get("cod") != "200":
+            print(f"Ошибка прогноза: {data.get('message')}")
+            return None
+        
+        days = {}
+        today = datetime.now(MINSK_TZ).date()
+        
+        for item in data["list"]:
+            dt = datetime.fromtimestamp(item["dt"], tz=MINSK_TZ)
+            date_key = dt.strftime("%Y-%m-%d")
+            day_date = dt.date()
+            
+            if day_date == today:
+                continue
+            
+            if date_key not in days:
+                days[date_key] = {
+                    "temps": [],
+                    "winds": [],
+                    "rain": 0,
+                    "conditions": [],
+                    "date": dt
+                }
+            
+            days[date_key]["temps"].append(item["main"]["temp"])
+            days[date_key]["winds"].append(item["wind"]["speed"])
+            if "rain" in item:
+                days[date_key]["rain"] += item["rain"].get("3h", 0)
+            days[date_key]["conditions"].append(item["weather"][0]["id"])
+        
+        result = []
+        for date_key, data_day in sorted(days.items())[:7]:
+            temps = data_day["temps"]
+            winds = data_day["winds"]
+            conditions = data_day["conditions"]
+            
+            if not temps:
+                continue
+            
+            avg_temp = int(sum(temps) / len(temps))
+            max_temp = int(max(temps))
+            min_temp = int(min(temps))
+            avg_wind = int(sum(winds) / len(winds))
+            max_wind = int(max(winds))
+            wind_gust = int(max_wind * 1.3)
+            rain_total = round(data_day["rain"], 1)
+            
+            most_common = max(set(conditions), key=conditions.count) if conditions else 800
+            
+            if most_common >= 200 and most_common < 300:
+                condition = "⛈️"
+                is_rain = True
+                is_thunder = True
+            elif most_common >= 500 and most_common < 600:
+                condition = "🌧️" if most_common < 502 else "🌧️"
+                is_rain = True
+                is_thunder = False
+            elif most_common >= 600 and most_common < 700:
+                condition = "❄️"
+                is_rain = False
+                is_thunder = False
+            elif most_common == 800:
+                condition = "☀️"
+                is_rain = False
+                is_thunder = False
+            elif most_common > 800:
+                condition = "☁️"
+                is_rain = False
+                is_thunder = False
+            else:
+                condition = "🌤️"
+                is_rain = False
+                is_thunder = False
+            
+            weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+            weekday = weekday_names[data_day["date"].weekday()]
+            
+            result.append({
+                "weekday": weekday,
+                "date": data_day["date"].strftime("%d.%m"),
+                "condition": condition,
+                "temp_max": max_temp,
+                "temp_min": min_temp,
+                "temp_avg": avg_temp,
+                "wind_speed": avg_wind,
+                "wind_gust": wind_gust,
+                "rain_total": rain_total,
+                "is_rain": is_rain,
+                "is_thunder": is_thunder
+            })
+        
+        return result
+        
+    except Exception as e:
+        print(f"Ошибка получения недельного прогноза: {e}")
         return None
 
 # ============ АНАЛИЗ РИСКОВ ============
@@ -348,11 +465,14 @@ def analyze_risks(weather, is_forecast=False):
 def get_main_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("📊 Прогноз", callback_data="weather"),
+        InlineKeyboardButton("📊 Сейчас", callback_data="weather"),
         InlineKeyboardButton("📅 Завтра", callback_data="forecast")
     )
     markup.row(
-        InlineKeyboardButton("🏍️ Советы", callback_data="tips"),
+        InlineKeyboardButton("📆 Неделя", callback_data="weekly"),
+        InlineKeyboardButton("🏍️ Советы", callback_data="tips")
+    )
+    markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
@@ -364,7 +484,10 @@ def get_after_weather_keyboard():
         InlineKeyboardButton("📅 Завтра", callback_data="forecast")
     )
     markup.row(
-        InlineKeyboardButton("🏍️ Советы", callback_data="tips"),
+        InlineKeyboardButton("📆 Неделя", callback_data="weekly"),
+        InlineKeyboardButton("🏍️ Советы", callback_data="tips")
+    )
+    markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
@@ -401,6 +524,12 @@ def forecast_command(message):
     bot.send_message(message.chat.id, "⏳ Загружаю прогноз на завтра...")
     send_forecast(message.chat.id)
 
+@bot.message_handler(commands=['weekly'])
+def weekly_command(message):
+    save_user(message.chat.id)
+    bot.send_message(message.chat.id, "⏳ Загружаю прогноз на неделю...")
+    send_weekly(message.chat.id)
+
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
     ADMIN_ID = 8930836312
@@ -428,6 +557,9 @@ def callback_handler(call):
         elif call.data == "forecast":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на завтра...")
             send_forecast(call.message.chat.id)
+        elif call.data == "weekly":
+            bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на неделю...")
+            send_weekly(call.message.chat.id)
         elif call.data == "update":
             bot.answer_callback_query(call.id, "⏳ Обновляю...")
             send_weather(call.message.chat.id)
@@ -476,11 +608,12 @@ def callback_handler(call):
 *Возможности:*
 • 🌡️ Текущая погода
 • 📅 Прогноз на завтра
+• 📆 Прогноз на неделю
 • 💨 Реальные порывы ветра
 • 🌧️ Учёт осадков
 • 📊 Анализ рисков
 • 💡 Персональные рекомендации
-• 🌙 Учёт времени суток
+• 🌙 Учёт времени суток с сезонной корректировкой
 
 *Источник данных:* OpenWeatherMap
 *Платформа:* Render.com (24/7)
@@ -610,6 +743,37 @@ def send_forecast(chat_id):
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
 
+def send_weekly(chat_id):
+    weekly = get_weekly_forecast()
+    if not weekly:
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на неделю.")
+        return
+    
+    msg = f"""
+📆 *ПРОГНОЗ НА НЕДЕЛЮ (Минск)*
+
+"""
+    
+    for day in weekly:
+        temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
+        wind_str = f"{day['wind_speed']} м/с"
+        rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
+        msg += f"🗓️ *{day['weekday']}* {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
+    
+    msg += f"\n📊 *Обновлено:* {datetime.now(MINSK_TZ).strftime('%H:%M')}"
+    
+    windy_days = [d for d in weekly if d['wind_speed'] > 10]
+    if windy_days:
+        windy_names = ", ".join([d['weekday'] for d in windy_days])
+        msg += f"\n\n💡 *Внимание:* Сильный ветер ({windy_names}) — будьте осторожны!"
+    
+    rainy_days = [d for d in weekly if d['is_rain']]
+    if rainy_days:
+        rainy_names = ", ".join([d['weekday'] for d in rainy_days])
+        msg += f"\n☔ *Дождь:* {rainy_names} — возьмите дождевик!"
+    
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+
 # ============ ВЕБ-СЕРВЕР ДЛЯ ПИНГА ============
 from flask import Flask, jsonify
 import threading
@@ -636,7 +800,8 @@ def run_flask():
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
-    print("✅ Добавлен прогноз на завтра")
+    print("✅ Добавлен прогноз на неделю")
+    print("✅ Добавлена сезонная корректировка дня/ночи")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
