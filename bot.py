@@ -809,4 +809,4 @@ def run_flask():
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
-    print("✅ Добавлен прог
+    print("✅ Добавлен прогноз на неделю")
