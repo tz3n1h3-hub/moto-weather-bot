@@ -2,7 +2,7 @@ import telebot
 import requests
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ============ ТОКЕН БОТА ============
@@ -14,13 +14,13 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
-MINSK_TZ = timedelta(hours=3)
+MINSK_TZ = timezone(timedelta(hours=3))
 
 def get_minsk_time():
-    return (datetime.utcnow() + MINSK_TZ).strftime("%H:%M")
+    return datetime.now(MINSK_TZ).strftime("%H:%M")
 
 def get_minsk_hour():
-    return (datetime.utcnow() + MINSK_TZ).hour
+    return datetime.now(MINSK_TZ).hour
 
 # ============ РАСШИФРОВЩИК ПОГОДЫ ============
 def parse_weather_condition(condition_text):
@@ -79,7 +79,6 @@ def get_weather():
         current_hour = get_minsk_hour()
         is_night = current_hour < 6 or current_hour > 20
         
-        # Ощущаемая температура (упрощённая формула)
         feels_like = int(temp - (wind_speed * 0.2))
         if feels_like < -10:
             feels_like = -10
@@ -95,14 +94,13 @@ def get_weather():
             "is_rain": parsed["is_rain"],
             "is_thunder": parsed["is_thunder"],
             "is_night": is_night,
-            "source": "wttr.in",
             "timestamp": get_minsk_time()
         }
     except Exception as e:
         print(f"Ошибка: {e}")
         return None
 
-# ============ РАСШИРЕННЫЙ АНАЛИЗ РИСКОВ ============
+# ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather):
     risks = []
     score = 0
@@ -113,7 +111,6 @@ def analyze_risks(weather):
     temp = weather.get("temp", 0)
     feels_like = weather.get("feels_like", temp)
     
-    # ===== ВЕТЕР =====
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -126,7 +123,6 @@ def analyze_risks(weather):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
-    # ===== ОСАДКИ =====
     if weather.get("is_thunder", False):
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -136,7 +132,6 @@ def analyze_risks(weather):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # ===== ТЕМПЕРАТУРА =====
     if feels_like < 5:
         risks.append(f"🥶 Очень холодно (ощущается как {feels_like}°C)")
         score += 3
@@ -150,19 +145,16 @@ def analyze_risks(weather):
         score += 2
         recommendations.append("💧 Пейте воду, делайте частые остановки")
     
-    # ===== НОЧЬ =====
     if weather.get("is_night", False):
         risks.append("🌙 Ночное время - плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет, снизьте скорость")
     
-    # ===== ДОПОЛНИТЕЛЬНО =====
     if "туман" in weather.get("condition", "").lower():
         recommendations.append("🌫️ Включите противотуманки, держите дистанцию")
     
-    # ===== ВЕРДИКТ С ЦВЕТОМ =====
     if score >= 8:
-        verdict = "⛔ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ"
+        verdict = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!"
         color = "🔴"
     elif score >= 5:
         verdict = "⚠️ РИСКОВАННО - с осторожностью"
@@ -183,11 +175,32 @@ def analyze_risks(weather):
     }
 
 # ============ КЛАВИАТУРА ============
-def get_keyboard():
+def get_main_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("📊 Прогноз", callback_data="weather"),
+        InlineKeyboardButton("🏍️ Советы", callback_data="tips")
+    )
+    markup.row(
+        InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
+    )
+    return markup
+
+def get_after_weather_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 Обновить", callback_data="update"),
         InlineKeyboardButton("🏍️ Советы", callback_data="tips")
+    )
+    markup.row(
+        InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
+    )
+    return markup
+
+def get_back_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("🔙 Назад", callback_data="back")
     )
     return markup
 
@@ -198,9 +211,9 @@ def start(message):
         message.chat.id,
         "🏍️ *MotoWeather Минск*\n\n"
         "Я анализирую погоду для мотоциклистов!\n"
-        "Отправьте /weather для прогноза.",
+        "Нажмите кнопку ниже, чтобы узнать прогноз.",
         parse_mode="Markdown",
-        reply_markup=get_keyboard()
+        reply_markup=get_main_keyboard()
     )
 
 @bot.message_handler(commands=['weather'])
@@ -211,7 +224,11 @@ def weather_command(message):
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
-        if call.data == "update":
+        if call.data == "weather":
+            bot.answer_callback_query(call.id, "⏳ Загружаю прогноз...")
+            send_weather(call.message.chat.id)
+        elif call.data == "update":
+            bot.answer_callback_query(call.id, "⏳ Обновляю...")
             send_weather(call.message.chat.id)
         elif call.data == "tips":
             tips = """
@@ -241,7 +258,49 @@ def callback_handler(call):
 
 *Берегите себя!* 🏍️
 """
-            bot.send_message(call.message.chat.id, tips, parse_mode="Markdown")
+            bot.send_message(
+                call.message.chat.id, 
+                tips, 
+                parse_mode="Markdown",
+                reply_markup=get_back_keyboard()
+            )
+        elif call.data == "about":
+            about_text = """
+ℹ️ *О проекте*
+
+🏍️ *MotoWeather Минск*
+
+Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
+
+*Возможности:*
+• 🌡️ Реальная погода (температура, ветер, влажность)
+• 📊 Анализ рисков для мотоциклиста
+• 💡 Персональные рекомендации
+• 🌙 Учёт времени суток
+
+*Источник данных:* wttr.in (бесплатный API)
+*Платформа:* Render.com (24/7)
+*Часовой пояс:* Минск (UTC+3)
+
+👨‍💻 *Разработчик:* K8V
+
+🏍️ *Берегите себя на дороге!*
+"""
+            bot.send_message(
+                call.message.chat.id, 
+                about_text, 
+                parse_mode="Markdown",
+                reply_markup=get_back_keyboard()
+            )
+        elif call.data == "back":
+            bot.answer_callback_query(call.id, "🔙 Возвращаюсь...")
+            bot.send_message(
+                call.message.chat.id,
+                "🏍️ *MotoWeather Минск*\n\n"
+                "Выберите действие:",
+                parse_mode="Markdown",
+                reply_markup=get_main_keyboard()
+            )
     except Exception as e:
         print(f"Ошибка: {e}")
 
@@ -256,21 +315,24 @@ def send_weather(chat_id):
     now = get_minsk_time()
     feels_like = weather.get('feels_like', weather.get('temp', 0))
     
-    # Цветовой индикатор уровня риска
+    weather_desc = weather.get('condition', '').replace('🌦️', '').replace('🌧️', '').replace('☀️', '').replace('⛅', '').replace('☁️', '').replace('🌫️', '').replace('❄️', '').replace('⛈️', '').strip()
+    
     risk_emoji = analysis['color']
     
+    day_emoji = '🌙' if weather.get('is_night', False) else '☀️'
+    day_text = 'Ночь' if weather.get('is_night', False) else 'День'
+    
     msg = f"""
-🏍️ *MotoWeather Минск* {risk_emoji}
-🕐 {now} | {weather.get('condition', '')}
+{risk_emoji} *MotoWeather Минск*
 
 ═══════════════════════
+{day_emoji} *Время суток:* {day_text} ({now})
 🌡️ *Температура:* {weather.get('temp', 0)}°C (ощущается как {feels_like}°C)
 💨 *Ветер:* {weather.get('wind_speed', 0):.0f} м/с (порывы до {weather.get('wind_gust', 0):.0f})
-💧 *Влажность:* {weather.get('humidity', 0)}%
-📊 *Давление:* {weather.get('pressure', 0)} мм рт.ст.
-🌙 *Время:* {'🌙 Ночь' if weather.get('is_night', False) else '☀️ День'}
-
+💧 *Влажность:* {weather.get('humidity', 0)}% {f'({weather_desc})' if weather_desc else ''}
+📊 *Давление:* {weather.get('pressure', 0):.1f} мм рт.ст.
 ═══════════════════════
+
 *ВЕРДИКТ:* {analysis['verdict']}
 
 📊 *Уровень риска:* {analysis['score']}/10
@@ -288,9 +350,7 @@ def send_weather(chat_id):
         for rec in analysis["recommendations"]:
             msg += f"• {rec}\n"
     
-    msg += f"\n📡 *Источник:* {weather.get('source', 'Неизвестно')}"
-    
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_keyboard())
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
 
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
