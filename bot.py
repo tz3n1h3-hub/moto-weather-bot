@@ -403,6 +403,7 @@ def analyze_risks(weather, is_forecast=False):
     is_rain = weather.get("is_rain", False)
     is_thunder = weather.get("is_thunder", False)
     
+    # Ветер
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -415,6 +416,7 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
+    # Осадки
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -432,10 +434,8 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    if isinstance(weather.get("temp"), (int, float)):
-        feels_like = weather.get("feels_like", temp)
-    else:
-        feels_like = temp
+    # Температура
+    feels_like = weather.get("feels_like", temp) if isinstance(weather.get("temp"), (int, float)) else temp
     
     if feels_like < 5:
         risks.append(f"🥶 Очень холодно (ощущается как {feels_like}°C)")
@@ -450,11 +450,13 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду, делайте частые остановки")
     
+    # Темнота
     if not is_forecast and weather.get("is_night", False):
         risks.append("🌙 Темно - плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет, снизьте скорость")
     
+    # Вердикт
     if score >= 8:
         verdict = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!"
         color = "🔴"
@@ -561,6 +563,7 @@ def stats_command(message):
         parse_mode="Markdown"
     )
 
+# ============ ОБРАБОТКА КНОПОК ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
@@ -661,6 +664,7 @@ def callback_handler(call):
     except Exception as e:
         print(f"Ошибка: {e}")
 
+# ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
     weather = get_weather()
     if not weather:
@@ -810,3 +814,13 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
     print("✅ Добавлен прогноз на неделю")
+    print("✅ Добавлена сезонная корректировка дня/ночи")
+    print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
+    print("✅ Часовой пояс: Минск (UTC+3)")
+    print("📡 Бот готов к работе")
+    
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    bot.infinity_polling()
+EOF
