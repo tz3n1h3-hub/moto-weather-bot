@@ -14,38 +14,27 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
-MINSK_TZ = timedelta(hours=3)  # UTC+3
+MINSK_TZ = timedelta(hours=3)
 
 def get_minsk_time():
-    """Возвращает текущее время в Минске (UTC+3)"""
     return (datetime.utcnow() + MINSK_TZ).strftime("%H:%M")
 
 def get_minsk_hour():
-    """Возвращает текущий час в Минске (UTC+3) для определения дня/ночи"""
     return (datetime.utcnow() + MINSK_TZ).hour
 
 # ============ РАСШИФРОВЩИК ПОГОДЫ ============
 def parse_weather_condition(condition_text):
-    """
-    Анализирует текстовое описание погоды и возвращает:
-    - condition: красивое описание с эмодзи
-    - is_rain: идет ли дождь
-    - is_thunder: есть ли гроза
-    """
     condition_lower = condition_text.lower()
     
-    # Состояния с грозой (критично!)
     thunder_keywords = ["гроз", "thunder", "storm", "молния", "lightning"]
     is_thunder = any(word in condition_lower for word in thunder_keywords)
     
-    # Состояния с дождём
     rain_keywords = [
         "дожд", "rain", "ливень", "shower", "морос", "drizzle",
         "patchy rain", "мокрый", "wet", "влажн", "осадк"
     ]
     is_rain = any(word in condition_lower for word in rain_keywords)
     
-    # Определяем эмодзи и красивое описание
     if is_thunder:
         return {"condition": "⛈️ Гроза", "is_rain": True, "is_thunder": True}
     elif "снег" in condition_lower or "snow" in condition_lower:
@@ -69,9 +58,8 @@ def parse_weather_condition(condition_text):
     else:
         return {"condition": f"🌤️ {condition_text}", "is_rain": False, "is_thunder": False}
 
-# ============ ПОЛУЧЕНИЕ ПОГОДЫ (wttr.in) ============
+# ============ ПОЛУЧЕНИЕ ПОГОДЫ ============
 def get_weather():
-    """Получает погоду для Минска из wttr.in (без API-ключа)"""
     try:
         url = "https://wttr.in/Minsk?format=j1&lang=ru"
         response = requests.get(url, timeout=10)
@@ -85,17 +73,20 @@ def get_weather():
         pressure = int(current["pressure"]) // 1.333
         weather_desc = current["weatherDesc"][0]["value"]
         
-        # Используем расшифровщик
         parsed = parse_weather_condition(weather_desc)
-        
         wind_gust = int(wind_speed * 1.4)
         
-        # Используем Минское время для определения дня/ночи
         current_hour = get_minsk_hour()
         is_night = current_hour < 6 or current_hour > 20
         
+        # Ощущаемая температура (упрощённая формула)
+        feels_like = int(temp - (wind_speed * 0.2))
+        if feels_like < -10:
+            feels_like = -10
+        
         return {
             "temp": temp,
+            "feels_like": feels_like,
             "condition": parsed["condition"],
             "wind_speed": wind_speed,
             "wind_gust": wind_gust,
@@ -108,69 +99,88 @@ def get_weather():
             "timestamp": get_minsk_time()
         }
     except Exception as e:
-        print(f"Ошибка получения погоды: {e}")
+        print(f"Ошибка: {e}")
         return None
 
-# ============ АНАЛИЗ РИСКОВ ============
+# ============ РАСШИРЕННЫЙ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather):
     risks = []
     score = 0
+    recommendations = []
     
     wind_gust = weather.get("wind_gust", 0)
     wind_speed = weather.get("wind_speed", 0)
+    temp = weather.get("temp", 0)
+    feels_like = weather.get("feels_like", temp)
     
-    # Ветер
+    # ===== ВЕТЕР =====
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
+        recommendations.append("🚫 Откажитесь от поездки")
     elif wind_gust > 15:
         risks.append(f"💨 Сильный ветер (порывы до {wind_gust:.0f} м/с)")
         score += 3
+        recommendations.append("🛑 Держите руль крепче, снизьте скорость")
     elif wind_speed > 10:
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
-    # Осадки
+    # ===== ОСАДКИ =====
     if weather.get("is_thunder", False):
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
+        recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие")
     elif weather.get("is_rain", False):
         risks.append("🌧️ Дождь (дорога скользкая)")
         score += 2
+        recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # Температура
-    temp = weather.get("temp", 0)
-    if temp < 5:
-        risks.append(f"🥶 Очень холодно ({temp}°C)")
+    # ===== ТЕМПЕРАТУРА =====
+    if feels_like < 5:
+        risks.append(f"🥶 Очень холодно (ощущается как {feels_like}°C)")
         score += 3
-    elif temp < 10:
-        risks.append(f"❄️ Холодно ({temp}°C)")
+        recommendations.append("🧥 Тёплая экипировка, подогрев ручек")
+    elif feels_like < 10:
+        risks.append(f"❄️ Холодно (ощущается как {feels_like}°C)")
         score += 1
-    elif temp > 35:
-        risks.append(f"🔥 Очень жарко ({temp}°C)")
+        recommendations.append("🧥 Ветрозащита обязательна")
+    elif feels_like > 35:
+        risks.append(f"🔥 Очень жарко (ощущается как {feels_like}°C)")
         score += 2
+        recommendations.append("💧 Пейте воду, делайте частые остановки")
     
-    # Ночь
+    # ===== НОЧЬ =====
     if weather.get("is_night", False):
         risks.append("🌙 Ночное время - плохая видимость")
         score += 2
+        recommendations.append("💡 Включите свет, снизьте скорость")
     
-    # Дополнительный риск: туман
-    if hasattr(weather, 'get') and "туман" in str(weather.get("description", "")) or "fog" in str(weather.get("description", "")):
-        risks.append("🌫️ Туман - плохая видимость")
-        score += 2
+    # ===== ДОПОЛНИТЕЛЬНО =====
+    if "туман" in weather.get("condition", "").lower():
+        recommendations.append("🌫️ Включите противотуманки, держите дистанцию")
     
-    # Вердикт
+    # ===== ВЕРДИКТ С ЦВЕТОМ =====
     if score >= 8:
-        verdict = "⛔ ОПАСНОСТЬ! Категорически НЕ РЕКОМЕНДУЕТСЯ"
+        verdict = "⛔ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ"
+        color = "🔴"
     elif score >= 5:
-        verdict = "⚠️ РИСКОВАННО - только с большой осторожностью"
+        verdict = "⚠️ РИСКОВАННО - с осторожностью"
+        color = "🟡"
     elif score >= 2:
-        verdict = "🟡 УМЕРЕННЫЙ РИСК - можно, но будьте внимательны"
+        verdict = "🟡 УМЕРЕННЫЙ РИСК - будьте внимательны"
+        color = "🟠"
     else:
-        verdict = "✅ БЕЗОПАСНО - отличная погода для поездки!"
+        verdict = "✅ БЕЗОПАСНО - отличная погода!"
+        color = "🟢"
     
-    return {"score": min(score, 10), "verdict": verdict, "risks": risks}
+    return {
+        "score": min(score, 10),
+        "verdict": verdict,
+        "color": color,
+        "risks": risks,
+        "recommendations": recommendations
+    }
 
 # ============ КЛАВИАТУРА ============
 def get_keyboard():
@@ -181,14 +191,14 @@ def get_keyboard():
     )
     return markup
 
-# ============ КОМАНДЫ БОТА ============
+# ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(
         message.chat.id,
         "🏍️ *MotoWeather Минск*\n\n"
         "Я анализирую погоду для мотоциклистов!\n"
-        "Отправьте /weather чтобы узнать прогноз.",
+        "Отправьте /weather для прогноза.",
         parse_mode="Markdown",
         reply_markup=get_keyboard()
     )
@@ -213,15 +223,17 @@ def callback_handler(call):
 
 🟡 *Ветер:*
 • Держите руль крепче
-• Снизьте скорость
+• Снизьте скорость на открытых участках
 
 🔴 *Дождь:*
 • Увеличьте дистанцию
 • Избегайте резких манёвров
+• Будьте осторожны на разметке
 
 ⚡ *Гроза:*
 • НЕМЕДЛЕННО остановитесь
 • Найдите укрытие
+• Не стойте под деревьями
 
 🌫️ *Туман:*
 • Включите противотуманки
@@ -231,32 +243,39 @@ def callback_handler(call):
 """
             bot.send_message(call.message.chat.id, tips, parse_mode="Markdown")
     except Exception as e:
-        print(f"Ошибка в callback: {e}")
+        print(f"Ошибка: {e}")
 
 def send_weather(chat_id):
     weather = get_weather()
     if not weather:
-        bot.send_message(chat_id, "❌ Не удалось получить данные о погоде. Попробуйте позже.")
+        bot.send_message(chat_id, "❌ Не удалось получить данные о погоде.")
         return
     
     analysis = analyze_risks(weather)
     
     now = get_minsk_time()
+    feels_like = weather.get('feels_like', weather.get('temp', 0))
+    
+    # Цветовой индикатор уровня риска
+    risk_emoji = analysis['color']
     
     msg = f"""
-🏍️ *MotoWeather Минск*
+🏍️ *MotoWeather Минск* {risk_emoji}
 🕐 {now} | {weather.get('condition', '')}
 
 ═══════════════════════
-🌡️ *Температура:* {weather.get('temp', 0)}°C
+🌡️ *Температура:* {weather.get('temp', 0)}°C (ощущается как {feels_like}°C)
 💨 *Ветер:* {weather.get('wind_speed', 0):.0f} м/с (порывы до {weather.get('wind_gust', 0):.0f})
 💧 *Влажность:* {weather.get('humidity', 0)}%
 📊 *Давление:* {weather.get('pressure', 0)} мм рт.ст.
-🌙 *Время суток:* {'🌙 Ночь' if weather.get('is_night', False) else '☀️ День'}
+🌙 *Время:* {'🌙 Ночь' if weather.get('is_night', False) else '☀️ День'}
 
 ═══════════════════════
 *ВЕРДИКТ:* {analysis['verdict']}
+
+📊 *Уровень риска:* {analysis['score']}/10
 """
+    
     if analysis["risks"]:
         msg += "\n*⚠️ Факторы риска:*\n"
         for risk in analysis["risks"]:
@@ -264,7 +283,11 @@ def send_weather(chat_id):
     else:
         msg += "\n✅ *Нет факторов риска*\n"
     
-    msg += f"\n📊 *Уровень риска:* {analysis['score']}/10"
+    if analysis["recommendations"]:
+        msg += "\n*💡 Рекомендации:*\n"
+        for rec in analysis["recommendations"]:
+            msg += f"• {rec}\n"
+    
     msg += f"\n📡 *Источник:* {weather.get('source', 'Неизвестно')}"
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_keyboard())
@@ -272,7 +295,7 @@ def send_weather(chat_id):
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
-    print("✅ Используется wttr.in (без API-ключа)")
+    print("✅ Источник: wttr.in")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
