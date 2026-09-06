@@ -328,7 +328,7 @@ def weather_command(message):
 def stats_command(message):
     """Показывает количество пользователей (только для админа)"""
     # Замените на ваш Telegram ID
-    ADMIN_ID = 123456789  # ВСТАВЬТЕ ВАШ ID
+    ADMIN_ID = 8930836312  # ВСТАВЬТЕ ВАШ ID
     
     if message.chat.id != ADMIN_ID:
         bot.reply_to(message, "❌ У вас нет прав на эту команду.")
