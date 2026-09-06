@@ -49,20 +49,17 @@ def get_weather():
         pressure = int(data["main"]["pressure"] * 0.75006)
         
         # ===== ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ =====
-        # Осадки (за последний час, если есть)
         rain = data.get("rain")
         rain_1h = 0
         if rain:
             rain_1h = rain.get("1h", 0)
         
-        # Снег (за последний час, если есть)
         snow = data.get("snow")
         snow_1h = 0
         if snow:
             snow_1h = snow.get("1h", 0)
         
-        # Видимость (в метрах)
-        visibility = data.get("visibility", 10000)  # 10 км по умолчанию
+        visibility = data.get("visibility", 10000)
         
         weather_id = data["weather"][0]["id"]
         weather_desc = data["weather"][0]["description"]
@@ -114,7 +111,6 @@ def get_weather():
         current_hour = get_minsk_hour()
         is_night = current_hour < 6 or current_hour > 20
         
-        # ===== ОЩУЩАЕМАЯ ТЕМПЕРАТУРА =====
         feels_like = int(data["main"]["feels_like"])
         
         return {
@@ -176,7 +172,7 @@ def analyze_risks(weather):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
-    # ===== 2. ОСАДКИ (С УЧЁТОМ КОЛИЧЕСТВА) =====
+    # ===== 2. ОСАДКИ =====
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -413,7 +409,7 @@ def send_weather(chat_id):
     day_emoji = '🌙' if weather.get('is_night', False) else '☀️'
     day_text = 'Ночь' if weather.get('is_night', False) else 'День'
     
-    # Дополнительная информация для вывода
+    # Дополнительная информация
     rain_info = ""
     if weather.get('rain_1h', 0) > 0:
         rain_info = f" 🌧️{weather.get('rain_1h', 0):.1f} мм/ч"
@@ -425,19 +421,17 @@ def send_weather(chat_id):
     if visibility < 2000:
         visibility_info = f" 🌫️{visibility} м"
     
+    # ===== НОВОЕ СООБЩЕНИЕ БЕЗ ЛИНИЙ =====
     msg = f"""
 {risk_emoji} *MotoWeather Минск*
 
-═══════════════════════
 {day_emoji} *Время суток:* {day_text} ({now})
 🌡️ *Температура:* {weather.get('temp', 0)}°C (ощущается как {feels_like}°C)
 💨 *Ветер:* {weather.get('wind_speed', 0):.0f} м/с (порывы до {weather.get('wind_gust', 0):.0f})
 💧 *Влажность:* {weather.get('humidity', 0)}% {f'({weather_desc})' if weather_desc else ''}{rain_info}{visibility_info}
 📊 *Давление:* {weather.get('pressure', 0):.1f} мм рт.ст.
-═══════════════════════
 
 *ВЕРДИКТ:* {analysis['verdict']}
-
 📊 *Уровень риска:* {analysis['score']}/10
 """
     
@@ -460,6 +454,7 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
     print("✅ Учтены: осадки в мм, видимость")
+    print("✅ Без линий (чистое форматирование)")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
