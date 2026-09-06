@@ -2,7 +2,7 @@ import telebot
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ============ ТОКЕН БОТА ============
@@ -12,6 +12,62 @@ if not BOT_TOKEN:
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# ============ ЧАСОВОЙ ПОЯС МИНСКА ============
+MINSK_TZ = timedelta(hours=3)  # UTC+3
+
+def get_minsk_time():
+    """Возвращает текущее время в Минске (UTC+3)"""
+    return (datetime.utcnow() + MINSK_TZ).strftime("%H:%M")
+
+def get_minsk_hour():
+    """Возвращает текущий час в Минске (UTC+3) для определения дня/ночи"""
+    return (datetime.utcnow() + MINSK_TZ).hour
+
+# ============ РАСШИФРОВЩИК ПОГОДЫ ============
+def parse_weather_condition(condition_text):
+    """
+    Анализирует текстовое описание погоды и возвращает:
+    - condition: красивое описание с эмодзи
+    - is_rain: идет ли дождь
+    - is_thunder: есть ли гроза
+    """
+    condition_lower = condition_text.lower()
+    
+    # Состояния с грозой (критично!)
+    thunder_keywords = ["гроз", "thunder", "storm", "молния", "lightning"]
+    is_thunder = any(word in condition_lower for word in thunder_keywords)
+    
+    # Состояния с дождём
+    rain_keywords = [
+        "дожд", "rain", "ливень", "shower", "морос", "drizzle",
+        "patchy rain", "мокрый", "wet", "влажн", "осадк"
+    ]
+    is_rain = any(word in condition_lower for word in rain_keywords)
+    
+    # Определяем эмодзи и красивое описание
+    if is_thunder:
+        return {"condition": "⛈️ Гроза", "is_rain": True, "is_thunder": True}
+    elif "снег" in condition_lower or "snow" in condition_lower:
+        return {"condition": "❄️ Снег", "is_rain": False, "is_thunder": False}
+    elif "туман" in condition_lower or "fog" in condition_lower or "mist" in condition_lower:
+        return {"condition": "🌫️ Туман", "is_rain": False, "is_thunder": False}
+    elif is_rain:
+        if "сильн" in condition_lower or "heavy" in condition_lower:
+            return {"condition": "🌧️ Сильный дождь", "is_rain": True, "is_thunder": False}
+        elif "небольш" in condition_lower or "light" in condition_lower or "patchy" in condition_lower:
+            return {"condition": "🌦️ Небольшой дождь", "is_rain": True, "is_thunder": False}
+        else:
+            return {"condition": "🌧️ Дождь", "is_rain": True, "is_thunder": False}
+    elif "ясно" in condition_lower or "clear" in condition_lower or "солнеч" in condition_lower:
+        return {"condition": "☀️ Ясно", "is_rain": False, "is_thunder": False}
+    elif "облач" in condition_lower or "cloud" in condition_lower:
+        if "пасмур" in condition_lower or "overcast" in condition_lower:
+            return {"condition": "☁️ Пасмурно", "is_rain": False, "is_thunder": False}
+        else:
+            return {"condition": "⛅ Облачно", "is_rain": False, "is_thunder": False}
+    else:
+        return {"condition": f"🌤️ {condition_text}", "is_rain": False, "is_thunder": False}
 
 # ============ ПОЛУЧЕНИЕ ПОГОДЫ (wttr.in) ============
 def get_weather():
@@ -29,27 +85,29 @@ def get_weather():
         pressure = int(current["pressure"]) // 1.333
         weather_desc = current["weatherDesc"][0]["value"]
         
-        condition = weather_desc
-        is_rain = "дождь" in condition.lower() or "ливень" in condition.lower()
-        is_thunder = "гроза" in condition.lower()
+        # Используем расшифровщик
+        parsed = parse_weather_condition(weather_desc)
+        
         wind_gust = int(wind_speed * 1.4)
         
-        current_hour = datetime.now().hour
+        # Используем Минское время для определения дня/ночи
+        current_hour = get_minsk_hour()
         is_night = current_hour < 6 or current_hour > 20
         
         return {
             "temp": temp,
-            "condition": condition,
+            "condition": parsed["condition"],
             "wind_speed": wind_speed,
             "wind_gust": wind_gust,
             "humidity": humidity,
             "pressure": pressure,
-            "is_rain": is_rain,
-            "is_thunder": is_thunder,
+            "is_rain": parsed["is_rain"],
+            "is_thunder": parsed["is_thunder"],
             "is_night": is_night,
             "source": "wttr.in",
-            "timestamp": datetime.now().strftime("%H:%M"),
-            "description": weather_desc
+            "timestamp": get_minsk_time(),
+            "description": weather_desc,
+            "raw_condition": weather_desc
         }
     except Exception as e:
         print(f"Ошибка получения погоды: {e}")
@@ -63,6 +121,7 @@ def analyze_risks(weather):
     wind_gust = weather.get("wind_gust", 0)
     wind_speed = weather.get("wind_speed", 0)
     
+    # Ветер
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -73,6 +132,7 @@ def analyze_risks(weather):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
+    # Осадки
     if weather.get("is_thunder", False):
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -80,6 +140,7 @@ def analyze_risks(weather):
         risks.append("🌧️ Дождь (дорога скользкая)")
         score += 2
     
+    # Температура
     temp = weather.get("temp", 0)
     if temp < 5:
         risks.append(f"🥶 Очень холодно ({temp}°C)")
@@ -91,10 +152,17 @@ def analyze_risks(weather):
         risks.append(f"🔥 Очень жарко ({temp}°C)")
         score += 2
     
+    # Ночь
     if weather.get("is_night", False):
         risks.append("🌙 Ночное время - плохая видимость")
         score += 2
     
+    # Дополнительный риск: туман
+    if "туман" in weather.get("description", "").lower() or "fog" in weather.get("description", "").lower():
+        risks.append("🌫️ Туман - плохая видимость")
+        score += 2
+    
+    # Вердикт
     if score >= 8:
         verdict = "⛔ ОПАСНОСТЬ! Категорически НЕ РЕКОМЕНДУЕТСЯ"
     elif score >= 5:
@@ -148,17 +216,17 @@ def about_command(message):
 
 *Источник данных:* wttr.in (бесплатный API)
 *Платформа:* Render.com (24/7)
+*Часовой пояс:* Минск (UTC+3)
 
 🏍️ *Берегите себя на дороге!*
 """
     bot.send_message(message.chat.id, about_text, parse_mode="Markdown")
 
-# ============ ОБРАБОТКА КНОПОК (БЕЗ ОШИБОК) ============
+# ============ ОБРАБОТКА КНОПОК ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
         if call.data == "update":
-            # Убираем bot.answer_callback_query() — это вызывает ошибку
             send_weather(call.message.chat.id)
         elif call.data == "tips":
             tips = """
@@ -180,6 +248,10 @@ def callback_handler(call):
 • НЕМЕДЛЕННО остановитесь
 • Найдите укрытие
 
+🌫️ *Туман:*
+• Включите противотуманки
+• Снизьте скорость до минимума
+
 *Берегите себя!* 🏍️
 """
             bot.send_message(call.message.chat.id, tips, parse_mode="Markdown")
@@ -194,6 +266,7 @@ def callback_handler(call):
 
 *Источник данных:* wttr.in (бесплатный API)
 *Платформа:* Render.com (24/7)
+*Часовой пояс:* Минск (UTC+3)
 
 🏍️ *Берегите себя на дороге!*
 """
@@ -209,7 +282,7 @@ def send_weather(chat_id):
     
     analysis = analyze_risks(weather)
     
-    now = datetime.now().strftime("%H:%M")
+    now = get_minsk_time()
     
     msg = f"""
 🏍️ *MotoWeather Минск*
@@ -245,6 +318,8 @@ def send_weather(chat_id):
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Используется wttr.in (без API-ключа)")
+    print("✅ Часовой пояс: Минск (UTC+3)")
+    print("✅ Добавлен расширенный анализ погоды")
     print("👨‍💻 Разработчик: K8V")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
