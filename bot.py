@@ -19,6 +19,33 @@ if not OPENWEATHER_API_KEY:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# ============ РАБОТА С ФАЙЛОМ ПОЛЬЗОВАТЕЛЕЙ ============
+USERS_FILE = "users.json"
+
+def load_users():
+    """Загружает список пользователей из файла"""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_user(user_id):
+    """Сохраняет пользователя в файл, если его там нет"""
+    users = load_users()
+    if user_id not in users:
+        users.append(user_id)
+        with open(USERS_FILE, "w") as f:
+            json.dump(users, f)
+        return True
+    return False
+
+def get_users_count():
+    """Возвращает количество пользователей"""
+    return len(load_users())
+
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
 MINSK_TZ = timezone(timedelta(hours=3))
 
@@ -41,14 +68,12 @@ def get_weather():
             print(f"Ошибка OpenWeatherMap: {data.get('message', 'Неизвестная ошибка')}")
             return None
         
-        # ===== ОСНОВНЫЕ ДАННЫЕ =====
         temp = int(data["main"]["temp"])
         wind_speed = int(data["wind"]["speed"])
         wind_gust = int(data["wind"].get("gust", wind_speed * 1.2))
         humidity = int(data["main"]["humidity"])
         pressure = int(data["main"]["pressure"] * 0.75006)
         
-        # ===== ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ =====
         rain = data.get("rain")
         rain_1h = 0
         if rain:
@@ -64,7 +89,6 @@ def get_weather():
         weather_id = data["weather"][0]["id"]
         weather_desc = data["weather"][0]["description"]
         
-        # ===== РАСШИФРОВКА ПОГОДЫ =====
         if weather_id >= 200 and weather_id < 300:
             condition = "⛈️ Гроза"
             is_thunder = True
@@ -107,7 +131,6 @@ def get_weather():
             is_thunder = False
             is_rain = False
         
-        # ===== ВРЕМЯ СУТОК =====
         current_hour = get_minsk_hour()
         is_night = current_hour < 6 or current_hour > 20
         
@@ -142,7 +165,7 @@ def get_weather():
         print(f"Ошибка получения погоды: {e}")
         return None
 
-# ============ РАСШИРЕННЫЙ АНАЛИЗ РИСКОВ ============
+# ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather):
     risks = []
     score = 0
@@ -159,7 +182,6 @@ def analyze_risks(weather):
     is_thunder = weather.get("is_thunder", False)
     is_night = weather.get("is_night", False)
     
-    # ===== 1. ВЕТЕР =====
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -172,7 +194,6 @@ def analyze_risks(weather):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
-    # ===== 2. ОСАДКИ =====
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -194,7 +215,6 @@ def analyze_risks(weather):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # ===== 3. ВИДИМОСТЬ =====
     if visibility < 200:
         risks.append(f"🌫️ КРИТИЧЕСКИЙ ТУМАН (видимость {visibility} м)!")
         score += 5
@@ -212,7 +232,6 @@ def analyze_risks(weather):
         score += 1
         recommendations.append("💡 Включите ближний свет, будьте внимательны")
     
-    # ===== 4. ТЕМПЕРАТУРА =====
     if feels_like < 5:
         risks.append(f"🥶 Очень холодно (ощущается как {feels_like}°C)")
         score += 3
@@ -226,13 +245,11 @@ def analyze_risks(weather):
         score += 2
         recommendations.append("💧 Пейте воду, делайте частые остановки")
     
-    # ===== 5. НОЧЬ =====
     if is_night:
         risks.append("🌙 Ночное время - плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет, снизьте скорость")
     
-    # ===== ВЕРДИКТ =====
     if score >= 8:
         verdict = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!"
         color = "🔴"
@@ -287,6 +304,10 @@ def get_back_keyboard():
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
+    # Сохраняем пользователя
+    user_id = message.chat.id
+    save_user(user_id)
+    
     bot.send_message(
         message.chat.id,
         "🏍️ *MotoWeather Минск*\n\n"
@@ -298,12 +319,36 @@ def start(message):
 
 @bot.message_handler(commands=['weather'])
 def weather_command(message):
+    # Тоже сохраняем пользователя (на всякий случай)
+    save_user(message.chat.id)
     bot.send_message(message.chat.id, "⏳ Загружаю данные из OpenWeatherMap...")
     send_weather(message.chat.id)
+
+@bot.message_handler(commands=['stats'])
+def stats_command(message):
+    """Показывает количество пользователей (только для админа)"""
+    # Замените на ваш Telegram ID
+    ADMIN_ID = 123456789  # ВСТАВЬТЕ ВАШ ID
+    
+    if message.chat.id != ADMIN_ID:
+        bot.reply_to(message, "❌ У вас нет прав на эту команду.")
+        return
+    
+    count = get_users_count()
+    bot.reply_to(
+        message, 
+        f"📊 *Статистика бота*\n\n"
+        f"👥 Всего пользователей: *{count}*\n"
+        f"📅 Последнее обновление: {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
+        parse_mode="Markdown"
+    )
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     try:
+        # Сохраняем пользователя при нажатии кнопки
+        save_user(call.message.chat.id)
+        
         if call.data == "weather":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз...")
             send_weather(call.message.chat.id)
@@ -409,7 +454,6 @@ def send_weather(chat_id):
     day_emoji = '🌙' if weather.get('is_night', False) else '☀️'
     day_text = 'Ночь' if weather.get('is_night', False) else 'День'
     
-    # Дополнительная информация
     rain_info = ""
     if weather.get('rain_1h', 0) > 0:
         rain_info = f" 🌧️{weather.get('rain_1h', 0):.1f} мм/ч"
@@ -421,7 +465,6 @@ def send_weather(chat_id):
     if visibility < 2000:
         visibility_info = f" 🌫️{visibility} м"
     
-    # ===== НОВОЕ СООБЩЕНИЕ БЕЗ ЛИНИЙ =====
     msg = f"""
 {risk_emoji} *MotoWeather Минск*
 
@@ -454,8 +497,8 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
     print("✅ Учтены: осадки в мм, видимость")
-    print("✅ Без линий (чистое форматирование)")
-    print("✅ Часовой пояс: Минск (UTC+3)")
+    print("✅ Добавлен подсчёт пользователей")
+    print("✅ Файл users.json будет создан автоматически")
     print("📡 Бот готов к работе")
     bot.infinity_polling()
 EOF
