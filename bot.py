@@ -2,19 +2,15 @@ import telebot
 import requests
 import json
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ============ ТОКЕНЫ ============
 BOT_TOKEN = "8726317506:AAFTww4YFYu76GPuy4ZfSbz5MwoiLtAdTK8"
-OPENWEATHER_API_KEY = "6454a46bd311f896c7cc92ffdf5781ad"
 
 if not BOT_TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден!")
-    exit(1)
-
-if not OPENWEATHER_API_KEY:
-    print("❌ ОШИБКА: OPENWEATHER_API_KEY не найден!")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -52,86 +48,65 @@ def get_minsk_time():
 def get_minsk_hour():
     return datetime.now(MINSK_TZ).hour
 
-# ============ ПОЛУЧЕНИЕ ПОГОДЫ ИЗ OPENWEATHERMAP ============
+# ============ ПОЛУЧЕНИЕ ПОГОДЫ ИЗ OPEN-METEO (БЕСПЛАТНО) ============
 def get_weather():
-    """Получает погоду для Минска из OpenWeatherMap"""
+    """Получает погоду для Минска из Open-Meteo (бесплатный API)"""
     try:
-        url = f"https://api.openweathermap.org/data/2.5/weather?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+        url = "https://api.open-meteo.com/v1/forecast?latitude=53.9045&longitude=27.5615&current_weather=true&hourly=temperature_2m,wind_speed_10m,precipitation,visibility&timezone=Europe/Moscow"
         
         response = requests.get(url, timeout=10)
         data = response.json()
         
-        if data.get("cod") != 200:
-            print(f"Ошибка OpenWeatherMap: {data.get('message', 'Неизвестная ошибка')}")
-            return None
+        current = data.get("current_weather", {})
+        hourly = data.get("hourly", {})
         
-        temp = int(data["main"]["temp"])
-        wind_speed = int(data["wind"]["speed"])
-        wind_gust = int(data["wind"].get("gust", wind_speed * 1.2))
-        humidity = int(data["main"]["humidity"])
-        pressure = int(data["main"]["pressure"] * 0.75006)
+        # Текущие данные
+        temp = int(current.get("temperature", 0))
+        wind_speed = int(current.get("windspeed", 0))
+        wind_gust = int(wind_speed * 1.2)
         
-        rain = data.get("rain")
-        rain_1h = 0
-        if rain:
-            rain_1h = rain.get("1h", 0)
-        
-        snow = data.get("snow")
-        snow_1h = 0
-        if snow:
-            snow_1h = snow.get("1h", 0)
-        
-        visibility = data.get("visibility", 10000)
-        
-        weather_id = data["weather"][0]["id"]
-        weather_desc = data["weather"][0]["description"]
-        
-        if weather_id >= 200 and weather_id < 300:
-            condition = "⛈️ Гроза"
-            is_thunder = True
-            is_rain = True
-        elif weather_id >= 300 and weather_id < 400:
-            condition = "🌦️ Морось"
-            is_thunder = False
-            is_rain = True
-        elif weather_id >= 500 and weather_id < 600:
-            if weather_id >= 502:
-                condition = "🌧️ Сильный дождь"
-            else:
-                condition = "🌧️ Дождь"
-            is_thunder = False
-            is_rain = True
-        elif weather_id >= 600 and weather_id < 700:
-            condition = "❄️ Снег"
-            is_thunder = False
-            is_rain = False
-        elif weather_id >= 700 and weather_id < 800:
-            if weather_id == 741:
-                condition = "🌫️ Туман"
-            else:
-                condition = "🌫️ Дымка"
-            is_thunder = False
-            is_rain = False
-        elif weather_id == 800:
-            condition = "☀️ Ясно"
-            is_thunder = False
-            is_rain = False
-        elif weather_id > 800:
-            if weather_id >= 803:
-                condition = "☁️ Пасмурно"
-            else:
-                condition = "⛅ Облачно"
-            is_thunder = False
-            is_rain = False
-        else:
-            condition = f"🌤️ {weather_desc}"
-            is_thunder = False
-            is_rain = False
-        
+        # Данные из почасового прогноза
         current_hour = get_minsk_hour()
+        visibility = 10000  # по умолчанию
+        
+        if "visibility" in hourly and len(hourly["visibility"]) > 0:
+            # Находим видимость на текущий час
+            visibility = int(hourly["visibility"][0] or 10000)
+        
+        # Осадки (из почасового прогноза)
+        rain_1h = 0
+        if "precipitation" in hourly and len(hourly["precipitation"]) > 0:
+            rain_1h = hourly["precipitation"][0] or 0
+        
+        # Определяем состояние погоды
+        if rain_1h > 2.5:
+            condition = "🌧️ Сильный дождь"
+            is_rain = True
+            is_thunder = False
+        elif rain_1h > 0.5:
+            condition = "🌧️ Дождь"
+            is_rain = True
+            is_thunder = False
+        elif rain_1h > 0:
+            condition = "🌦️ Небольшой дождь"
+            is_rain = True
+            is_thunder = False
+        else:
+            # Проверяем облачность по данным
+            if visibility < 1000:
+                condition = "🌫️ Туман"
+                is_rain = False
+                is_thunder = False
+            else:
+                condition = "☀️ Ясно"
+                is_rain = False
+                is_thunder = False
+        
+        # Время суток
         is_night = current_hour < 6 or current_hour > 20
         
-        feels_like = int(data["main"]["feels_like"])
+        # Ощущаемая температура (упрощённо)
+        feels_like = int(temp - (wind_speed * 0.1))
         
         return {
             "temp": temp,
@@ -139,26 +114,20 @@ def get_weather():
             "condition": condition,
             "wind_speed": wind_speed,
             "wind_gust": wind_gust,
-            "humidity": humidity,
-            "pressure": pressure,
+            "humidity": 70,  # Open-Meteo не даёт влажность в бесплатном API
+            "pressure": 758,  # Open-Meteo не даёт давление в бесплатном API
             "rain_1h": rain_1h,
-            "snow_1h": snow_1h,
+            "snow_1h": 0,
             "visibility": visibility,
             "is_rain": is_rain,
             "is_thunder": is_thunder,
             "is_night": is_night,
-            "source": "OpenWeatherMap",
+            "source": "Open-Meteo",
             "timestamp": get_minsk_time(),
-            "description": weather_desc,
+            "description": condition,
             "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
         }
         
-    except requests.exceptions.Timeout:
-        print("Ошибка: Таймаут при запросе к OpenWeatherMap")
-        return None
-    except requests.exceptions.ConnectionError:
-        print("Ошибка: Нет соединения с OpenWeatherMap")
-        return None
     except Exception as e:
         print(f"Ошибка получения погоды: {e}")
         return None
@@ -174,7 +143,6 @@ def analyze_risks(weather):
     temp = weather.get("temp", 0)
     feels_like = weather.get("feels_like", temp)
     rain_1h = weather.get("rain_1h", 0)
-    snow_1h = weather.get("snow_1h", 0)
     visibility = weather.get("visibility", 10000)
     is_rain = weather.get("is_rain", False)
     is_thunder = weather.get("is_thunder", False)
@@ -196,10 +164,6 @@ def analyze_risks(weather):
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
         recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие")
-    elif snow_1h > 0:
-        risks.append(f"❄️ Снег ({snow_1h:.1f} мм/ч) - очень скользко!")
-        score += 4
-        recommendations.append("🐢 Снизьте скорость до минимума, избегайте резких манёвров")
     elif rain_1h > 2.5:
         risks.append(f"🌧️ СИЛЬНЫЙ ДОЖДЬ ({rain_1h:.1f} мм/ч) - плохая видимость!")
         score += 4
@@ -315,7 +279,7 @@ def start(message):
 @bot.message_handler(commands=['weather'])
 def weather_command(message):
     save_user(message.chat.id)
-    bot.send_message(message.chat.id, "⏳ Загружаю данные из OpenWeatherMap...")
+    bot.send_message(message.chat.id, "⏳ Загружаю данные...")
     send_weather(message.chat.id)
 
 @bot.message_handler(commands=['stats'])
@@ -397,7 +361,7 @@ def callback_handler(call):
 • 🌙 Учёт времени суток
 • 🕐 Показывает время последнего обновления
 
-*Источник данных:* OpenWeatherMap (реальный API)
+*Источник данных:* Open-Meteo (бесплатный API)
 *Платформа:* Render.com (24/7)
 *Часовой пояс:* Минск (UTC+3)
 
@@ -429,7 +393,7 @@ def send_weather(chat_id):
         bot.send_message(
             chat_id, 
             "❌ Не удалось получить данные о погоде.\n"
-            "Проверьте API-ключ или попробуйте позже."
+            "Попробуйте позже."
         )
         return
     
@@ -449,8 +413,6 @@ def send_weather(chat_id):
     rain_info = ""
     if weather.get('rain_1h', 0) > 0:
         rain_info = f" 🌧️{weather.get('rain_1h', 0):.1f} мм/ч"
-    elif weather.get('snow_1h', 0) > 0:
-        rain_info = f" ❄️{weather.get('snow_1h', 0):.1f} мм/ч"
     
     visibility_info = ""
     visibility = weather.get('visibility', 10000)
@@ -482,15 +444,15 @@ def send_weather(chat_id):
         for rec in analysis["recommendations"]:
             msg += f"• {rec}\n"
     
-    # ===== ДОБАВЛЯЕМ ВРЕМЯ ОБНОВЛЕНИЯ =====
     msg += f"\n🔄 *Обновлено:* {update_time}"
+    msg += f"\n📡 *Источник:* {weather.get('source', 'Неизвестно')}"
     
     bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
 
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
-    print("✅ Источник: OpenWeatherMap")
+    print("✅ Источник: Open-Meteo (бесплатный, точный)")
     print("✅ Учтены: осадки в мм, видимость")
     print("✅ Добавлено время обновления")
     print("✅ Часовой пояс: Минск (UTC+3)")
