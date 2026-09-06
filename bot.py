@@ -33,49 +33,36 @@ def get_minsk_hour():
 def get_minsk_month():
     return datetime.now(MINSK_TZ).month
 
-# ============ ВРЕМЯ СУТОК С ГРАДАЦИЕЙ ============
-def get_time_of_day():
-    """Возвращает время суток с учётом сезона"""
+# ============ ОПРЕДЕЛЕНИЕ ОСВЕЩЁННОСТИ ============
+def get_light_level():
+    """Определяет уровень освещённости с учётом сезона"""
     current_hour = get_minsk_hour()
     month = get_minsk_month()
     
-    # Лето (май-август) — день длиннее
+    # Лето (май-август) — светло до 22:00
     if 5 <= month <= 8:
-        if 5 <= current_hour < 9:
-            return "🌅 Утро"
-        elif 9 <= current_hour < 18:
-            return "☀️ День"
-        elif 18 <= current_hour < 22:
-            return "🌇 Вечер"
+        if 5 <= current_hour < 22:
+            return "☀️ Светло"
         else:
-            return "🌙 Ночь"
+            return "🌙 Темно"
     
-    # Зима (ноябрь-февраль) — день короче
+    # Зима (ноябрь-февраль) — темно с 17:00
     elif 11 <= month <= 2:
-        if 7 <= current_hour < 10:
-            return "🌅 Утро"
-        elif 10 <= current_hour < 17:
-            return "☀️ День"
-        elif 17 <= current_hour < 20:
-            return "🌇 Вечер"
+        if 8 <= current_hour < 17:
+            return "☀️ Светло"
         else:
-            return "🌙 Ночь"
+            return "🌙 Темно"
     
-    # Весна (март-апрель) и осень (сентябрь-октябрь)
+    # Весна/осень (март-апрель, сентябрь-октябрь)
     else:
-        if 6 <= current_hour < 9:
-            return "🌅 Утро"
-        elif 9 <= current_hour < 18:
-            return "☀️ День"
-        elif 18 <= current_hour < 21:
-            return "🌇 Вечер"
+        if 7 <= current_hour < 19:
+            return "☀️ Светло"
         else:
-            return "🌙 Ночь"
+            return "🌙 Темно"
 
 def is_night_time():
     """Определяет ночное время для расчёта рисков"""
-    time_of_day = get_time_of_day()
-    return time_of_day == "🌙 Ночь"
+    return get_light_level() == "🌙 Темно"
 
 # ============ РАБОТА С ФАЙЛОМ ПОЛЬЗОВАТЕЛЕЙ ============
 USERS_FILE = "users.json"
@@ -464,7 +451,7 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💧 Пейте воду, делайте частые остановки")
     
     if not is_forecast and weather.get("is_night", False):
-        risks.append("🌙 Ночное время - плохая видимость")
+        risks.append("🌙 Темно - плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет, снизьте скорость")
     
@@ -595,7 +582,7 @@ def callback_handler(call):
             tips = """
 🏍️ *Советы для мотоциклистов:*
 
-🟢 *Хорошая погода:*
+🟢 *Светло:*
 • Проверьте шины и свет
 • Надевайте защитную экипировку
 
@@ -616,6 +603,11 @@ def callback_handler(call):
 🌫️ *Туман:*
 • Включите противотуманки
 • Снизьте скорость до минимума
+
+🌙 *Темно:*
+• Включите дальний свет
+• Снизьте скорость
+• Будьте особенно внимательны
 
 *Берегите себя!* 🏍️
 """
@@ -641,7 +633,7 @@ def callback_handler(call):
 • 🌧️ Учёт осадков
 • 📊 Анализ рисков
 • 💡 Персональные рекомендации
-• 🌙 Учёт времени суток с сезонной корректировкой
+• 🌙 Определение освещённости (светло/темно)
 
 *Источник данных:* OpenWeatherMap
 *Платформа:* Render.com (24/7)
@@ -679,7 +671,7 @@ def send_weather(chat_id):
     
     now = get_minsk_time()
     feels_like = weather.get('feels_like', weather.get('temp', 0))
-    time_of_day = get_time_of_day()
+    light_level = get_light_level()
     
     weather_desc = weather.get('condition', '').replace('🌦️', '').replace('🌧️', '').replace('☀️', '').replace('⛅', '').replace('☁️', '').replace('🌫️', '').replace('❄️', '').replace('⛈️', '').replace('🌤️', '').strip()
     
@@ -696,19 +688,16 @@ def send_weather(chat_id):
     if visibility < 2000:
         visibility_info = f" 🌫️{visibility} м"
     
-    # Определяем жирность для вердикта
-    verdict_bold = "💥 " if "ОПАСНОСТЬ" in analysis['verdict'] else "⚠️ " if "РИСКОВАННО" in analysis['verdict'] else ""
-    
     msg = f"""
 {risk_emoji} *MotoWeather Минск* — *Сейчас*
 
-{time_of_day} ({now})
+{light_level} ({now})
 🌡️ *Температура:* {weather.get('temp', 0)}°C (ощущается как {feels_like}°C)
 💨 *Ветер:* {weather.get('wind_speed', 0):.0f} м/с (порывы до {weather.get('wind_gust', 0):.0f} м/с)
 💧 *Влажность:* {weather.get('humidity', 0)}% {f'({weather_desc})' if weather_desc else ''}{rain_info}{visibility_info}
 📊 *Давление:* {weather.get('pressure', 0):.1f} мм рт.ст.
 
-*{'💥' if analysis['verdict'] == '⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!' else '⚠️' if analysis['verdict'] == '⚠️ РИСКОВАННО - с осторожностью' else '✅'} ВЕРДИКТ:* {analysis['verdict']}
+*ВЕРДИКТ:* {analysis['verdict']}
 📊 *Уровень риска:* {analysis['score']}/10
 """
     
@@ -747,7 +736,7 @@ def send_forecast(chat_id):
 💨 *Ветер:* {forecast.get('wind_speed', 0):.0f} м/с (порывы до {forecast.get('wind_gust', 0):.0f} м/с)
 ☁️ *Погода:* {forecast.get('condition', '')}{rain_info}
 
-*{'💥' if analysis['verdict'] == '⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!' else '⚠️' if analysis['verdict'] == '⚠️ РИСКОВАННО - с осторожностью' else '✅'} ВЕРДИКТ:* {analysis['verdict']}
+*ВЕРДИКТ:* {analysis['verdict']}
 📊 *Уровень риска:* {analysis['score']}/10
 """
     
@@ -782,12 +771,10 @@ def send_weekly(chat_id):
         rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
         msg += f"🗓️ *{day['weekday']}* {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
     
-    msg += f"\n📊 *Обновлено:* {datetime.now(MINSK_TZ).strftime('%H:%M')}"
-    
     windy_days = [d for d in weekly if d['wind_speed'] > 10]
     if windy_days:
         windy_names = ", ".join([d['weekday'] for d in windy_days])
-        msg += f"\n\n💡 *Внимание:* Сильный ветер ({windy_names}) — будьте осторожны!"
+        msg += f"\n💡 *Внимание:* Сильный ветер ({windy_names}) — будьте осторожны!"
     
     rainy_days = [d for d in weekly if d['is_rain']]
     if rainy_days:
@@ -822,7 +809,4 @@ def run_flask():
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
-    print("✅ Добавлен прогноз на неделю")
-    print("✅ Добавлена сезонная корректировка дня/ночи")
-    print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
-    print("✅ Часовой пояс
+    print("✅ Добавлен прог
