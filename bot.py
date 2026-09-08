@@ -1,6 +1,3 @@
-cd ~/moto_bot
-
-cat > bot.py << 'EOF'
 import telebot
 import requests
 import json
