@@ -860,4 +860,4 @@ def send_forecast(chat_id):
     
     msg += f"\n*🛡️ Экипировка:* {gear_rec}"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown
+    bot.send_message(chat_id, msg, parse_mode="Markdown)
