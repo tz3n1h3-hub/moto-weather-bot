@@ -1,3 +1,6 @@
+cd ~/moto_bot
+
+cat > bot.py << 'EOF'
 import telebot
 import requests
 import json
@@ -9,7 +12,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, jsonify
 
 # ============ ТОКЕНЫ ============
-BOT_TOKEN = "8726317506:AAFTww4YFYu76GPuy4ZfSbz5MwoiLtAdTK8"
+BOT_TOKEN = "8726317506:AAFuAzBL9ddUHY66AmowU8EWmgNNW-lkE4o"
 OPENWEATHER_API_KEY = "6454a46bd311f896c7cc92ffdf5781ad"
 
 if not BOT_TOKEN:
@@ -24,11 +27,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 # ============ ЗАЩИТА ОТ ПОДДЕЛКИ ============
-# Укажите ВАШ username бота (без @)
-MY_BOT_USERNAME = "MotoWeatherMinskBot"  # Например: "moto_weather_minsk_bot"
+MY_BOT_USERNAME = "MotoWeatherMinskBot"
 
 def is_my_bot():
-    """Проверяет, что бот — настоящий"""
     try:
         me = bot.get_me()
         return me.username == MY_BOT_USERNAME
@@ -591,30 +592,22 @@ def get_after_weather_keyboard():
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
-    # === ЗАЩИТА ОТ ПОДДЕЛКИ ===
+    save_user(message.chat.id)
+    
     bot_info = bot.get_me()
     bot_username = bot_info.username
     
     # Проверяем, что это настоящий бот
-    if bot_username != "MotoWeatherMinskBot":  # Замените на ваш username
+    if bot_username != "MotoWeatherMinskBot":
         bot.send_message(
             message.chat.id,
             "⚠️ <b>ВНИМАНИЕ! Это поддельный бот!</b>\n\n"
-            f"Настоящий бот: @ваш_username_bot\n"
+            f"Настоящий бот: @MotoWeatherMinskBot\n"
             "Пожалуйста, используйте только официального бота.",
             parse_mode="HTML"
         )
         return
     
-    # === ЗАЩИТА ОТ ПОДДЕЛКИ ===
-    # Проверка, что пользователь не в поддельном боте
-    if message.chat.type == "private":
-        # Проверяем username бота в сообщении (нельзя подделать)
-        pass
-    
-    save_user(message.chat.id)
-    
-    # Добавляем информацию о настоящем боте
     bot.send_message(
         message.chat.id,
         "🏍️ <b>MotoWeather Минск</b>\n\n"
@@ -732,7 +725,6 @@ def callback_handler(call):
 
 Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
 
-═══════════════════════
 <b>📊 ВОЗМОЖНОСТИ БОТА:</b>
 
 🌡️ <b>Текущая погода</b> — температура, ветер, влажность, давление
@@ -746,7 +738,6 @@ def callback_handler(call):
 🕐 <b>Лучшее время для поездки</b> — когда безопаснее
 🌙 <b>Определение освещённости</b> — Светло / Темно
 
-═══════════════════════
 <b>📡 ИСТОЧНИКИ ДАННЫХ:</b>
 • OpenWeatherMap — текущая погода
 
@@ -756,7 +747,6 @@ def callback_handler(call):
 <b>👨‍💻 РАЗРАБОТЧИК:</b>
 • Alexander_K8V
 
-═══════════════════════
 🏍️ <b>Берегите себя на дороге!</b>
 """
             bot.answer_callback_query(call.id, "✅ Информация загружена")
@@ -893,7 +883,6 @@ def send_forecast(chat_id):
     
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
-# ============ ОТПРАВКА НЕДЕЛИ С АНАЛИЗОМ ============
 def send_weekly(chat_id):
     weekly = get_weekly_forecast()
     if not weekly:
@@ -919,8 +908,7 @@ def send_weekly(chat_id):
         
         msg += f"{emoji} <b>{day['weekday']}</b> {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
     
-    msg += "\n" + "═" * 30 + "\n"
-    msg += "<b>📊 ОБЩИЙ АНАЛИЗ НЕДЕЛИ:</b>\n\n"
+    msg += "\n<b>📊 ОБЩИЙ АНАЛИЗ НЕДЕЛИ:</b>\n\n"
     
     windy_days = [d for d in weekly if d['wind_speed'] > 10]
     rainy_days = [d for d in weekly if d['is_rain']]
@@ -994,3 +982,4 @@ if __name__ == "__main__":
     flask_thread.start()
     
     bot.infinity_polling()
+EOF
