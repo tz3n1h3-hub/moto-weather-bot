@@ -602,7 +602,7 @@ def start(message):
         "✅ <b>Это НАСТОЯЩИЙ бот!</b>\n"
         f"🔑 Username: @{bot_username}\n"
         "👨‍💻 Разработчик: Alexander_K8V\n\n"
-        "Я анализирую погоду для мотоциклистов!\n"
+        "Я анализирую погоду для райдеров!\n"
         "Нажмите кнопку ниже, чтобы узнать прогноз.",
         parse_mode="HTML",
         reply_markup=get_main_keyboard()
@@ -666,36 +666,44 @@ def callback_handler(call):
             
         elif call.data == "tips":
             tips = """
-🏍️ <b>Советы для мотоциклистов:</b>
+🏍️ СОВЕТЫ ДЛЯ РАЙДЕРОВ:
 
-🟢 <b>Светло:</b>
+🟢 Светло:
 • Проверьте шины и свет
 • Надевайте защитную экипировку
 
-🟡 <b>Ветер:</b>
+🟡 Ветер:
 • Держите руль крепче
 • Снизьте скорость на открытых участках
 
-🔴 <b>Дождь:</b>
+🔴 Дождь:
 • Увеличьте дистанцию
 • Избегайте резких манёвров
 • Будьте осторожны на разметке
 
-⚡ <b>Гроза:</b>
+⚡ Гроза:
 • НЕМЕДЛЕННО остановитесь
 • Найдите укрытие
 • Не стойте под деревьями
 
-🌫️ <b>Туман:</b>
+🌫️ Туман:
 • Включите противотуманки
 • Снизьте скорость до минимума
 
-🌙 <b>Темно:</b>
+🌙 Темно:
 • Включите дальний свет
 • Снизьте скорость
 • Будьте особенно внимательны
 
-<b>Берегите себя!</b> 🏍️
+💬 ЦИТАТЫ ДЛЯ РАЙДЕРОВ:
+
+"Опытный райдер никогда не выезжает без защиты и нормальных перчаток."
+
+"Для настоящего райдера важен не мотоцикл, а ощущение свободы."
+
+"Среди райдеров есть поговорка: 'Четыре колеса возят тело, два — душу'."
+
+🏍️ Берегите себя на дорогах!
 """
             bot.answer_callback_query(call.id, "✅ Советы загружены")
             bot.send_message(
@@ -707,35 +715,35 @@ def callback_handler(call):
             
         elif call.data == "about":
             about_text = """
-ℹ️ <b>О ПРОЕКТЕ</b>
+ℹ️ О ПРОЕКТЕ
 
-🏍️ <b>MotoWeather Минск</b>
+🏍️ MotoWeather Минск
 
-Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
+Бот создан для райдеров, чтобы анализировать погоду и оценивать риски для безопасных поездок.
 
-<b>📊 ВОЗМОЖНОСТИ БОТА:</b>
+📊 ВОЗМОЖНОСТИ БОТА:
 
-🌡️ <b>Текущая погода</b> — температура, ветер, влажность, давление
-📅 <b>Прогноз на завтра</b> — средняя, мин и макс температура
-📆 <b>Прогноз на неделю</b> — погода на 7 дней вперёд
-💨 <b>Реальные порывы ветра</b> — точные данные с учётом усилений
-🌧️ <b>Учёт осадков</b> — количество мм в час/день
-📊 <b>Анализ рисков</b> — оценка опасности (0-10)
-💡 <b>Персональные рекомендации</b> — советы по поведению
-🛡️ <b>Рекомендации по экипировке</b> — что надеть
-🕐 <b>Лучшее время для поездки</b> — когда безопаснее
-🌙 <b>Определение освещённости</b> — Светло / Темно
+🌡️ Текущая погода — температура, ветер, влажность, давление
+📅 Прогноз на завтра — средняя, мин и макс температура
+📆 Прогноз на неделю — погода на 7 дней вперёд
+💨 Реальные порывы ветра — точные данные с учётом усилений
+🌧️ Учёт осадков — количество мм в час/день
+📊 Анализ рисков — оценка опасности (0-10)
+💡 Персональные рекомендации — советы по поведению
+🛡️ Рекомендации по экипировке — что надеть
+🕐 Лучшее время для поездки — когда безопаснее
+🌙 Определение освещённости — Светло / Темно
 
-<b>📡 ИСТОЧНИКИ ДАННЫХ:</b>
+📡 ИСТОЧНИКИ ДАННЫХ:
 • OpenWeatherMap — текущая погода
 
-<b>🖥️ ПЛАТФОРМА:</b>
+🖥️ ПЛАТФОРМА:
 • Render.com — работает 24/7
 
-<b>👨‍💻 РАЗРАБОТЧИК:</b>
+👨‍💻 РАЗРАБОТЧИК:
 • Alexander_K8V
 
-🏍️ <b>Берегите себя на дороге!</b>
+🏍️ Берегите себя на дорогах!
 """
             bot.answer_callback_query(call.id, "✅ Информация загружена")
             bot.send_message(
@@ -896,44 +904,96 @@ def send_weekly(chat_id):
         
         msg += f"{emoji} <b>{day['weekday']}</b> {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
     
-    msg += "\n<b>📊 ОБЩИЙ АНАЛИЗ НЕДЕЛИ:</b>\n\n"
+    msg += "\n<b>📊 АНАЛИЗ НЕДЕЛИ:</b>\n\n"
     
-    windy_days = [d for d in weekly if d['wind_speed'] > 10]
-    rainy_days = [d for d in weekly if d['is_rain']]
-    thunder_days = [d for d in weekly if d['is_thunder']]
-    hot_days = [d for d in weekly if d['temp_max'] > 30]
-    cold_days = [d for d in weekly if d['temp_min'] < 0]
+    rainy_days_list = []
+    windy_days_list = []
+    best_day_score = float('inf')
+    worst_day_score = -float('inf')
+    best_day = None
+    worst_day = None
     
-    if thunder_days:
-        thunder_names = ", ".join([d['weekday'] for d in thunder_days])
-        msg += f"⚡ <b>ГРОЗА:</b> {thunder_names} — ❌ НЕ ВЫЕЗЖАЙТЕ!\n"
+    for day in weekly:
+        day_name = day['weekday']
+        wind = day['wind_speed']
+        rain = day['rain_total']
+        temp_max = day['temp_max']
+        temp_min = day['temp_min']
+        
+        issues = []
+        if rain > 0:
+            issues.append(f"дождь {rain:.1f}мм")
+            rainy_days_list.append(day_name)
+        if wind > 10:
+            issues.append(f"ветер {wind} м/с")
+            windy_days_list.append(day_name)
+        if temp_max > 30:
+            issues.append("жарко")
+        if temp_min < 0:
+            issues.append("мороз")
+        
+        score = wind + rain * 3
+        if score < best_day_score:
+            best_day_score = score
+            best_day = day
+        if score > worst_day_score:
+            worst_day_score = score
+            worst_day = day
+        
+        if not issues:
+            msg += f"☀️ <b>{day_name}</b>: отличный день для поездки\n"
+        elif len(issues) == 1:
+            msg += f"☀️ <b>{day_name}</b>: {issues[0]} — будьте внимательны\n"
+        else:
+            msg += f"⚠️ <b>{day_name}</b>: {', '.join(issues)} — осторожно!\n"
     
-    if windy_days:
-        windy_names = ", ".join([d['weekday'] for d in windy_days])
-        level = "⚠️ Осторожно" if any(d['wind_speed'] > 14 for d in windy_days) else "🌬️ Ветрено"
-        msg += f"{level}: {windy_names} — держите руль крепче\n"
+    if best_day and worst_day:
+        best_reason = []
+        if best_day['rain_total'] == 0:
+            best_reason.append("без дождя")
+        elif best_day['rain_total'] < 1:
+            best_reason.append(f"небольшой дождь ({best_day['rain_total']:.1f}мм)")
+        if best_day['wind_speed'] <= 5:
+            best_reason.append("слабый ветер")
+        if best_day['temp_max'] >= 18:
+            best_reason.append("тепло")
+        
+        worst_reason = []
+        if worst_day['rain_total'] > 0:
+            worst_reason.append(f"дождь ({worst_day['rain_total']:.1f}мм)")
+        if worst_day['wind_speed'] > 10:
+            worst_reason.append(f"сильный ветер ({worst_day['wind_speed']} м/с)")
+        if worst_day['temp_max'] < 15:
+            worst_reason.append("прохладно")
+        if worst_day['temp_max'] > 30:
+            worst_reason.append("жарко")
+        
+        msg += "\n<b>🏍️ РЕКОМЕНДАЦИИ НА НЕДЕЛЮ:</b>\n\n"
+        msg += f"✅ <b>Лучший день:</b> {best_day['weekday']} ({best_day['temp_min']}°...{best_day['temp_max']}°)\n"
+        if best_reason:
+            msg += f"   → {', '.join(best_reason)}\n"
+        
+        msg += f"\n⚠️ <b>Худший день:</b> {worst_day['weekday']}\n"
+        if worst_reason:
+            msg += f"   → {', '.join(worst_reason)}\n"
+        
+        msg += "\n💡 <b>Общие советы:</b>\n"
+        
+        if rainy_days_list:
+            msg += f"• ☔ Возьмите дождевик: {', '.join(rainy_days_list)}\n"
+        if windy_days_list:
+            msg += f"• 💨 Держите руль крепче: {', '.join(windy_days_list)}\n"
+        
+        if best_day:
+            msg += f"• ⭐ Планируйте поездки: {best_day['weekday']}\n"
+        
+        if any(day['temp_min'] < 0 for day in weekly):
+            msg += f"• 🧥 Тёплая экипировка обязательна\n"
+        
+        if any(day['temp_max'] > 30 for day in weekly):
+            msg += f"• 💧 Пейте больше воды в жаркие дни\n"
     
-    if rainy_days:
-        rainy_names = ", ".join([d['weekday'] for d in rainy_days])
-        msg += f"☔ <b>Дождь:</b> {rainy_names} — возьмите дождевик\n"
-    
-    if hot_days:
-        hot_names = ", ".join([d['weekday'] for d in hot_days])
-        msg += f"🔥 <b>Жарко:</b> {hot_names} — пейте больше воды\n"
-    
-    if cold_days:
-        cold_names = ", ".join([d['weekday'] for d in cold_days])
-        msg += f"🥶 <b>Мороз:</b> {cold_names} — тёплая экипировка обязательна\n"
-    
-    best_day = min(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
-    best_day_name = best_day['weekday']
-    best_day_temp = f"{best_day['temp_min']}°...{best_day['temp_max']}°"
-    
-    worst_day = max(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
-    worst_day_name = worst_day['weekday']
-    
-    msg += f"🏍️ <b>Лучший день для поездки:</b> {best_day_name} ({best_day_temp})"
-    msg += f"\n⚠️ <b>Худший день для поездки:</b> {worst_day_name}"
+    msg += "\n🏍️ <b>Берегите себя на дорогах!</b>"
     
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
@@ -962,6 +1022,7 @@ if __name__ == "__main__":
     print("✅ Добавлена сезонная корректировка дня/ночи")
     print("✅ Добавлено описание ощущения ветра")
     print("✅ Добавлена защита от поддельных ботов")
+    print("✅ Добавлены цитаты для райдеров")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
@@ -970,4 +1031,3 @@ if __name__ == "__main__":
     flask_thread.start()
     
     bot.infinity_polling()
-EOF
