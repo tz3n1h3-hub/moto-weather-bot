@@ -25,7 +25,7 @@ app = Flask(__name__)
 
 # ============ ЗАЩИТА ОТ ПОДДЕЛКИ ============
 # Укажите ВАШ username бота (без @)
-MY_BOT_USERNAME = "ваш_username_bot"  # Например: "moto_weather_minsk_bot"
+MY_BOT_USERNAME = "MotoWeatherMinskBot"  # Например: "moto_weather_minsk_bot"
 
 def is_my_bot():
     """Проверяет, что бот — настоящий"""
