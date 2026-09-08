@@ -23,15 +23,9 @@ if not OPENWEATHER_API_KEY:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# ============ ЭКРАНИРОВАНИЕ MARKDOWN ============
-def escape_markdown(text):
-    """Экранирует спецсимволы для Markdown"""
-    if not isinstance(text, str):
-        text = str(text)
-    chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for char in chars:
-        text = text.replace(char, f'\\{char}')
-    return text
+# ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
+def bold(text):
+    return f"<b>{text}</b>"
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
 MINSK_TZ = timezone(timedelta(hours=3))
@@ -595,10 +589,10 @@ def start(message):
     save_user(message.chat.id)
     bot.send_message(
         message.chat.id,
-        "🏍️ *MotoWeather Минск*\n\n"
+        "🏍️ <b>MotoWeather Минск</b>\n\n"
         "Я анализирую погоду для мотоциклистов!\n"
         "Нажмите кнопку ниже, чтобы узнать прогноз.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
 
@@ -630,10 +624,10 @@ def stats_command(message):
     count = get_users_count()
     bot.reply_to(
         message, 
-        f"📊 *Статистика бота*\n\n"
-        f"👥 Всего пользователей: *{count}*\n"
+        f"📊 <b>Статистика бота</b>\n\n"
+        f"👥 Всего пользователей: <b>{count}</b>\n"
         f"📅 Последнее обновление: {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # ============ ОБРАБОТКА КНОПОК ============
@@ -660,85 +654,85 @@ def callback_handler(call):
             
         elif call.data == "tips":
             tips = """
-🏍️ *Советы для мотоциклистов:*
+🏍️ <b>Советы для мотоциклистов:</b>
 
-🟢 *Светло:*
+🟢 <b>Светло:</b>
 • Проверьте шины и свет
 • Надевайте защитную экипировку
 
-🟡 *Ветер:*
+🟡 <b>Ветер:</b>
 • Держите руль крепче
 • Снизьте скорость на открытых участках
 
-🔴 *Дождь:*
+🔴 <b>Дождь:</b>
 • Увеличьте дистанцию
 • Избегайте резких манёвров
 • Будьте осторожны на разметке
 
-⚡ *Гроза:*
+⚡ <b>Гроза:</b>
 • НЕМЕДЛЕННО остановитесь
 • Найдите укрытие
 • Не стойте под деревьями
 
-🌫️ *Туман:*
+🌫️ <b>Туман:</b>
 • Включите противотуманки
 • Снизьте скорость до минимума
 
-🌙 *Темно:*
+🌙 <b>Темно:</b>
 • Включите дальний свет
 • Снизьте скорость
 • Будьте особенно внимательны
 
-*Берегите себя!* 🏍️
+<b>Берегите себя!</b> 🏍️
 """
             bot.answer_callback_query(call.id, "✅ Советы загружены")
             bot.send_message(
                 call.message.chat.id, 
                 tips, 
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=get_back_keyboard()
             )
             
         elif call.data == "about":
             about_text = """
-ℹ️ *О ПРОЕКТЕ*
+ℹ️ <b>О ПРОЕКТЕ</b>
 
-🏍️ *MotoWeather Минск*
+🏍️ <b>MotoWeather Минск</b>
 
 Бот создан для мотоциклистов, чтобы анализировать погоду и оценивать риски для безопасных поездок.
 
 ═══════════════════════
-*📊 ВОЗМОЖНОСТИ БОТА:*
+<b>📊 ВОЗМОЖНОСТИ БОТА:</b>
 
-🌡️ *Текущая погода* — температура, ветер, влажность, давление
-📅 *Прогноз на завтра* — средняя, мин и макс температура
-📆 *Прогноз на неделю* — погода на 7 дней вперёд
-💨 *Реальные порывы ветра* — точные данные с учётом усилений
-🌧️ *Учёт осадков* — количество мм в час/день
-📊 *Анализ рисков* — оценка опасности (0-10)
-💡 *Персональные рекомендации* — советы по поведению
-🛡️ *Рекомендации по экипировке* — что надеть
-🕐 *Лучшее время для поездки* — когда безопаснее
-🌙 *Определение освещённости* — Светло / Темно
+🌡️ <b>Текущая погода</b> — температура, ветер, влажность, давление
+📅 <b>Прогноз на завтра</b> — средняя, мин и макс температура
+📆 <b>Прогноз на неделю</b> — погода на 7 дней вперёд
+💨 <b>Реальные порывы ветра</b> — точные данные с учётом усилений
+🌧️ <b>Учёт осадков</b> — количество мм в час/день
+📊 <b>Анализ рисков</b> — оценка опасности (0-10)
+💡 <b>Персональные рекомендации</b> — советы по поведению
+🛡️ <b>Рекомендации по экипировке</b> — что надеть
+🕐 <b>Лучшее время для поездки</b> — когда безопаснее
+🌙 <b>Определение освещённости</b> — Светло / Темно
 
 ═══════════════════════
-*📡 ИСТОЧНИКИ ДАННЫХ:*
+<b>📡 ИСТОЧНИКИ ДАННЫХ:</b>
 • OpenWeatherMap — текущая погода
 
-*🖥️ ПЛАТФОРМА:*
+<b>🖥️ ПЛАТФОРМА:</b>
 • Render.com — работает 24/7
 
-*👨‍💻 РАЗРАБОТЧИК:*
+<b>👨‍💻 РАЗРАБОТЧИК:</b>
 • Alexander_K8V
 
 ═══════════════════════
-🏍️ *Берегите себя на дороге!*
+🏍️ <b>Берегите себя на дороге!</b>
 """
             bot.answer_callback_query(call.id, "✅ Информация загружена")
             bot.send_message(
                 call.message.chat.id, 
                 about_text, 
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=get_back_keyboard()
             )
             
@@ -746,9 +740,9 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "🔙 Возвращаюсь...")
             bot.send_message(
                 call.message.chat.id,
-                "🏍️ *MotoWeather Минск*\n\n"
+                "🏍️ <b>MotoWeather Минск</b>\n\n"
                 "Выберите действие:",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=get_main_keyboard()
             )
             
@@ -792,39 +786,39 @@ def send_weather(chat_id):
     best_time = get_best_time()
     
     if weather.get('wind_gust', 0) > wind_speed:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {weather.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
+        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с (порывы до {weather.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
     else:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
+        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
     
     msg = f"""
-{risk_emoji} *MotoWeather Минск* — *сейчас {escape_markdown(now)}*
+{risk_emoji} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
 
 {light_level}
-🌡️ *Температура:* {escape_markdown(str(weather.get('temp', 0)))}°C (ощущается как {escape_markdown(str(feels_like))}°C, {escape_markdown(temp_desc)})
+🌡️ <b>Температура:</b> {weather.get('temp', 0)}°C (ощущается как {feels_like}°C, {temp_desc})
 {wind_line}
-💧 *Влажность:* {escape_markdown(str(weather.get('humidity', 0)))}% {f'({escape_markdown(weather_desc)})' if weather_desc else ''}{rain_info}{visibility_info}
-📊 *Давление:* {escape_markdown(str(weather.get('pressure', 0)))} мм рт.ст.
+💧 <b>Влажность:</b> {weather.get('humidity', 0)}% {f'({weather_desc})' if weather_desc else ''}{rain_info}{visibility_info}
+📊 <b>Давление:</b> {weather.get('pressure', 0)} мм рт.ст.
 
-*ВЕРДИКТ:* {escape_markdown(analysis['verdict'])}
-📊 *Уровень риска:* {escape_markdown(str(analysis['score']))}/10
+<b>ВЕРДИКТ:</b> {analysis['verdict']}
+📊 <b>Уровень риска:</b> {analysis['score']}/10
 """
     
     if analysis["risks"]:
-        msg += "\n*⚠️ Факторы риска:*\n"
+        msg += "\n<b>⚠️ Факторы риска:</b>\n"
         for risk in analysis["risks"]:
-            msg += f"• {escape_markdown(risk)}\n"
+            msg += f"• {risk}\n"
     else:
-        msg += "\n✅ *Нет факторов риска*\n"
+        msg += "\n✅ <b>Нет факторов риска</b>\n"
     
     if analysis["recommendations"]:
-        msg += "\n*💡 Рекомендации:*\n"
+        msg += "\n<b>💡 Рекомендации:</b>\n"
         for rec in analysis["recommendations"]:
-            msg += f"• {escape_markdown(rec)}\n"
+            msg += f"• {rec}\n"
     
-    msg += f"\n*🛡️ Экипировка:* {escape_markdown(gear_rec)}"
-    msg += f"\n*{escape_markdown(best_time)}*"
+    msg += f"\n<b>🛡️ Экипировка:</b> {gear_rec}"
+    msg += f"\n<b>{best_time}</b>"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 def send_forecast(chat_id):
     forecast = get_forecast_tomorrow()
@@ -847,36 +841,36 @@ def send_forecast(chat_id):
     gear_rec = get_gear_recommendation(avg_temp)
     
     if forecast.get('wind_gust', 0) > wind_speed:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {forecast.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
+        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с (порывы до {forecast.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
     else:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
+        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
     
     msg = f"""
-{risk_emoji} *MotoWeather Минск* — *завтра {escape_markdown(forecast.get('date', 'завтра'))}*
+{risk_emoji} <b>MotoWeather Минск</b> — <b>завтра {forecast.get('date', 'завтра')}</b>
 
-🌡️ *Средняя температура:* {escape_markdown(str(avg_temp))}°C (мин {escape_markdown(str(forecast.get('temp_min', 0)))}°C / макс {escape_markdown(str(forecast.get('temp_max', 0)))}°C)
+🌡️ <b>Средняя температура:</b> {avg_temp}°C (мин {forecast.get('temp_min', 0)}°C / макс {forecast.get('temp_max', 0)}°C)
 {wind_line}
 {forecast.get('condition', '')}{rain_info}
 
-*ВЕРДИКТ:* {escape_markdown(analysis['verdict'])}
-📊 *Уровень риска:* {escape_markdown(str(analysis['score']))}/10
+<b>ВЕРДИКТ:</b> {analysis['verdict']}
+📊 <b>Уровень риска:</b> {analysis['score']}/10
 """
     
     if analysis["risks"]:
-        msg += "\n*⚠️ Факторы риска:*\n"
+        msg += "\n<b>⚠️ Факторы риска:</b>\n"
         for risk in analysis["risks"]:
-            msg += f"• {escape_markdown(risk)}\n"
+            msg += f"• {risk}\n"
     else:
-        msg += "\n✅ *Нет факторов риска*\n"
+        msg += "\n✅ <b>Нет факторов риска</b>\n"
     
     if analysis["recommendations"]:
-        msg += "\n*💡 Рекомендации:*\n"
+        msg += "\n<b>💡 Рекомендации:</b>\n"
         for rec in analysis["recommendations"]:
-            msg += f"• {escape_markdown(rec)}\n"
+            msg += f"• {rec}\n"
     
-    msg += f"\n*🛡️ Экипировка:* {escape_markdown(gear_rec)}"
+    msg += f"\n<b>🛡️ Экипировка:</b> {gear_rec}"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 def send_weekly(chat_id):
     weekly = get_weekly_forecast()
@@ -885,7 +879,7 @@ def send_weekly(chat_id):
         return
     
     msg = f"""
-📆 *ПРОГНОЗ НА НЕДЕЛЮ (Минск)*
+📆 <b>ПРОГНОЗ НА НЕДЕЛЮ (Минск)</b>
 
 """
     
@@ -893,19 +887,19 @@ def send_weekly(chat_id):
         temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
         wind_str = f"{day['wind_speed']} м/с"
         rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
-        msg += f"🗓️ *{escape_markdown(day['weekday'])}* {escape_markdown(day['date'])}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
+        msg += f"🗓️ <b>{day['weekday']}</b> {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
     
     windy_days = [d for d in weekly if d['wind_speed'] > 10]
     if windy_days:
         windy_names = ", ".join([d['weekday'] for d in windy_days])
-        msg += f"\n💡 *Внимание:* Сильный ветер ({escape_markdown(windy_names)}) — будьте осторожны!"
+        msg += f"\n💡 <b>Внимание:</b> Сильный ветер ({windy_names}) — будьте осторожны!"
     
     rainy_days = [d for d in weekly if d['is_rain']]
     if rainy_days:
         rainy_names = ", ".join([d['weekday'] for d in rainy_days])
-        msg += f"\n☔ *Дождь:* {escape_markdown(rainy_names)} — возьмите дождевик!"
+        msg += f"\n☔ <b>Дождь:</b> {rainy_names} — возьмите дождевик!"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 # ============ ВЕБ-СЕРВЕР ДЛЯ ПИНГА ============
 @app.route('/')
