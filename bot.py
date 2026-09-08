@@ -495,10 +495,9 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # Ощущаемая температура
+    # ОЩУЩАЕМАЯ ТЕМПЕРАТУРА (ИСПРАВЛЕНО)
     if is_forecast:
-        wind = weather.get("wind_speed", 0)
-        feels_like = int(temp - (wind * 0.2))
+        feels_like = temp  # Для прогноза используем среднюю температуру
     else:
         feels_like = weather.get("feels_like", temp)
     
