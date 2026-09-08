@@ -645,6 +645,7 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "⏳ Обновляю...")
             send_weather(call.message.chat.id)
         elif call.data == "tips":
+            bot.answer_callback_query(call.id, "⏳ Загружаю советы...")
             tips = """
 🏍️ *Советы для мотоциклистов:*
 
@@ -684,6 +685,7 @@ def callback_handler(call):
                 reply_markup=get_back_keyboard()
             )
         elif call.data == "about":
+            bot.answer_callback_query(call.id, "⏳ Загружаю информацию...")
             about_text = """
 ℹ️ *О ПРОЕКТЕ*
 
@@ -734,7 +736,7 @@ def callback_handler(call):
                 reply_markup=get_main_keyboard()
             )
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка в callback: {e}")
 
 # ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
