@@ -596,7 +596,7 @@ def start(message):
     bot_username = bot_info.username
     
     # Проверяем, что это настоящий бот
-    if bot_username != "ваш_username_bot":  # Замените на ваш username
+    if bot_username != "MotoWeatherMinskBot":  # Замените на ваш username
         bot.send_message(
             message.chat.id,
             "⚠️ <b>ВНИМАНИЕ! Это поддельный бот!</b>\n\n"
