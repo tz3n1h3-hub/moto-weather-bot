@@ -497,7 +497,7 @@ def analyze_risks(weather, is_forecast=False):
     
     # ОЩУЩАЕМАЯ ТЕМПЕРАТУРА (ИСПРАВЛЕНО)
     if is_forecast:
-        feels_like = temp  # Для прогноза используем среднюю температуру
+        feels_like = temp
     else:
         feels_like = weather.get("feels_like", temp)
     
@@ -635,17 +635,20 @@ def callback_handler(call):
         if call.data == "weather":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз...")
             send_weather(call.message.chat.id)
+            
         elif call.data == "forecast":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на завтра...")
             send_forecast(call.message.chat.id)
+            
         elif call.data == "weekly":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на неделю...")
             send_weekly(call.message.chat.id)
+            
         elif call.data == "update":
             bot.answer_callback_query(call.id, "⏳ Обновляю...")
             send_weather(call.message.chat.id)
+            
         elif call.data == "tips":
-            bot.answer_callback_query(call.id, "⏳ Загружаю советы...")
             tips = """
 🏍️ *Советы для мотоциклистов:*
 
@@ -678,14 +681,15 @@ def callback_handler(call):
 
 *Берегите себя!* 🏍️
 """
+            bot.answer_callback_query(call.id, "✅ Советы загружены")
             bot.send_message(
                 call.message.chat.id, 
                 tips, 
                 parse_mode="Markdown",
                 reply_markup=get_back_keyboard()
             )
+            
         elif call.data == "about":
-            bot.answer_callback_query(call.id, "⏳ Загружаю информацию...")
             about_text = """
 ℹ️ *О ПРОЕКТЕ*
 
@@ -720,12 +724,14 @@ def callback_handler(call):
 ═══════════════════════
 🏍️ *Берегите себя на дороге!*
 """
+            bot.answer_callback_query(call.id, "✅ Информация загружена")
             bot.send_message(
                 call.message.chat.id, 
                 about_text, 
                 parse_mode="Markdown",
                 reply_markup=get_back_keyboard()
             )
+            
         elif call.data == "back":
             bot.answer_callback_query(call.id, "🔙 Возвращаюсь...")
             bot.send_message(
@@ -735,8 +741,10 @@ def callback_handler(call):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard()
             )
+            
     except Exception as e:
         print(f"Ошибка в callback: {e}")
+        bot.send_message(call.message.chat.id, f"❌ Произошла ошибка: {e}")
 
 # ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
