@@ -564,7 +564,7 @@ def get_main_keyboard():
 def get_after_weather_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🔄 Обновить", callback_data="update"),
+        InlineKeyboardButton("🔄 Сегодня", callback_data="update"),
         InlineKeyboardButton("📅 Завтра", callback_data="forecast")
     )
     markup.row(
@@ -573,13 +573,6 @@ def get_after_weather_keyboard():
     )
     markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
-    )
-    return markup
-
-def get_back_keyboard():
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("🔙 Назад", callback_data="back")
     )
     return markup
 
@@ -690,7 +683,7 @@ def callback_handler(call):
                 call.message.chat.id, 
                 tips, 
                 parse_mode="HTML",
-                reply_markup=get_back_keyboard()
+                reply_markup=get_main_keyboard()
             )
             
         elif call.data == "about":
@@ -732,16 +725,6 @@ def callback_handler(call):
             bot.send_message(
                 call.message.chat.id, 
                 about_text, 
-                parse_mode="HTML",
-                reply_markup=get_back_keyboard()
-            )
-            
-        elif call.data == "back":
-            bot.answer_callback_query(call.id, "🔙 Возвращаюсь...")
-            bot.send_message(
-                call.message.chat.id,
-                "🏍️ <b>MotoWeather Минск</b>\n\n"
-                "Выберите действие:",
                 parse_mode="HTML",
                 reply_markup=get_main_keyboard()
             )
