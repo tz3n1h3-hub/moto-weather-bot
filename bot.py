@@ -122,14 +122,14 @@ def get_gear_recommendation(temp):
 
 def get_best_time():
     hour = get_minsk_hour()
-    if 10 <= hour <= 16:
-        return "🕐 Сейчас лучшее время для поездки (самая тёплая часть дня)"
+    if 9 <= hour <= 18:
+        return "🕐 Лучшее время для поездки: с 9:00 до 18:00 ☀️"
     elif 7 <= hour <= 9:
-        return "🕐 Утро — будьте осторожны, дорога может быть скользкой"
-    elif 17 <= hour <= 20:
-        return "🕐 Вечер — видимость ухудшается, включите свет"
+        return "🕐 Утро (с 7:00 до 9:00) — будьте осторожны 🌅"
+    elif 18 <= hour <= 20:
+        return "🕐 Вечер (с 18:00 до 20:00) — включите свет 🌇"
     else:
-        return "🕐 Ночное время — только с хорошим светом и сниженной скоростью"
+        return "🕐 Ночное время (с 20:00 до 7:00) — только с хорошим светом 🌙"
 
 # ============ РАБОТА С ФАЙЛОМ ПОЛЬЗОВАТЕЛЕЙ ============
 USERS_FILE = "users.json"
@@ -855,6 +855,7 @@ def send_forecast(chat_id):
     
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
+# ============ ОТПРАВКА НЕДЕЛИ С АНАЛИЗОМ ============
 def send_weekly(chat_id):
     weekly = get_weekly_forecast()
     if not weekly:
@@ -866,21 +867,63 @@ def send_weekly(chat_id):
 
 """
     
+    # Дни недели с цветовой индикацией
     for day in weekly:
         temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
         wind_str = f"{day['wind_speed']} м/с"
         rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
-        msg += f"🗓️ <b>{day['weekday']}</b> {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
+        
+        # Определяем цвет
+        if day['wind_speed'] > 14 or day['is_thunder']:
+            emoji = "🔴"
+        elif day['wind_speed'] > 10 or day['rain_total'] > 5:
+            emoji = "🟡"
+        else:
+            emoji = "🟢"
+        
+        msg += f"{emoji} <b>{day['weekday']}</b> {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
     
+    msg += "\n" + "═" * 30 + "\n"
+    msg += "<b>📊 ОБЩИЙ АНАЛИЗ НЕДЕЛИ:</b>\n\n"
+    
+    # Анализ
     windy_days = [d for d in weekly if d['wind_speed'] > 10]
+    rainy_days = [d for d in weekly if d['is_rain']]
+    thunder_days = [d for d in weekly if d['is_thunder']]
+    hot_days = [d for d in weekly if d['temp_max'] > 30]
+    cold_days = [d for d in weekly if d['temp_min'] < 0]
+    
+    if thunder_days:
+        thunder_names = ", ".join([d['weekday'] for d in thunder_days])
+        msg += f"⚡ <b>ГРОЗА:</b> {thunder_names} — ❌ НЕ ВЫЕЗЖАЙТЕ!\n"
+    
     if windy_days:
         windy_names = ", ".join([d['weekday'] for d in windy_days])
-        msg += f"\n💡 <b>Внимание:</b> Сильный ветер ({windy_names}) — будьте осторожны!"
+        level = "⚠️ Осторожно" if any(d['wind_speed'] > 14 for d in windy_days) else "🌬️ Ветрено"
+        msg += f"{level}: {windy_names} — держите руль крепче\n"
     
-    rainy_days = [d for d in weekly if d['is_rain']]
     if rainy_days:
         rainy_names = ", ".join([d['weekday'] for d in rainy_days])
-        msg += f"\n☔ <b>Дождь:</b> {rainy_names} — возьмите дождевик!"
+        msg += f"☔ <b>Дождь:</b> {rainy_names} — возьмите дождевик\n"
+    
+    if hot_days:
+        hot_names = ", ".join([d['weekday'] for d in hot_days])
+        msg += f"🔥 <b>Жарко:</b> {hot_names} — пейте больше воды\n"
+    
+    if cold_days:
+        cold_names = ", ".join([d['weekday'] for d in cold_days])
+        msg += f"🥶 <b>Мороз:</b> {cold_names} — тёплая экипировка обязательна\n"
+    
+    # Лучший и худший день
+    best_day = min(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
+    best_day_name = best_day['weekday']
+    best_day_temp = f"{best_day['temp_min']}°...{best_day['temp_max']}°"
+    
+    worst_day = max(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
+    worst_day_name = worst_day['weekday']
+    
+    msg += f"\n🏍️ <b>Лучший день для поездки:</b> {best_day_name} ({best_day_temp})"
+    msg += f"\n⚠️ <b>Худший день для поездки:</b> {worst_day_name}"
     
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
@@ -905,7 +948,7 @@ def run_flask():
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
-    print("✅ Добавлен прогноз на неделю")
+    print("✅ Добавлен анализ недели")
     print("✅ Добавлена сезонная корректировка дня/ночи")
     print("✅ Добавлено описание ощущения ветра")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
