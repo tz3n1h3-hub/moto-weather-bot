@@ -63,7 +63,7 @@ def is_night_time():
 def get_wind_description(speed):
     if speed <= 1:
         return "штиль"
-    elif speed <= 5:
+    elif speed <= 6:
         return "лёгкий ветер"
     elif speed <= 10:
         return "умеренный ветер"
@@ -73,6 +73,20 @@ def get_wind_description(speed):
         return "очень сильный ветер"
     else:
         return "штормовой ветер! ⚠️"
+
+def get_wind_feeling(speed):
+    if speed <= 1:
+        return "🌿 Безветренно"
+    elif speed <= 6:
+        return "🍃 Комфортно, ветер почти не ощущается"
+    elif speed <= 10:
+        return "🌬️ Ощущается, но не мешает"
+    elif speed <= 14:
+        return "💨 Требует внимания на дороге"
+    elif speed <= 19:
+        return "⚠️ Сильно влияет на управление"
+    else:
+        return "🚫 Опасно для езды!"
 
 def get_temp_description(temp):
     if temp >= 25:
@@ -483,7 +497,8 @@ def analyze_risks(weather, is_forecast=False):
     
     # Ощущаемая температура
     if is_forecast:
-        feels_like = temp
+        wind = weather.get("wind_speed", 0)
+        feels_like = int(temp - (wind * 0.2))
     else:
         feels_like = weather.get("feels_like", temp)
     
@@ -752,14 +767,15 @@ def send_weather(chat_id):
     
     wind_speed = weather.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
+    wind_feeling = get_wind_feeling(wind_speed)
     temp_desc = get_temp_description(feels_like)
     gear_rec = get_gear_recommendation(feels_like)
     best_time = get_best_time()
     
     if weather.get('wind_gust', 0) > wind_speed:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {weather.get('wind_gust', 0)} м/с, {wind_desc})"
+        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {weather.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
     else:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc})"
+        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
     
     msg = f"""
 {risk_emoji} *MotoWeather Минск* — *сейчас {now}*
@@ -807,13 +823,14 @@ def send_forecast(chat_id):
     
     wind_speed = forecast.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
+    wind_feeling = get_wind_feeling(wind_speed)
     avg_temp = forecast.get('temp_avg', 0)
     gear_rec = get_gear_recommendation(avg_temp)
     
     if forecast.get('wind_gust', 0) > wind_speed:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {forecast.get('wind_gust', 0)} м/с, {wind_desc})"
+        wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {forecast.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
     else:
-        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc})"
+        wind_line = f"💨 *Ветер:* {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
     
     msg = f"""
 {risk_emoji} *MotoWeather Минск* — *завтра {forecast.get('date', 'завтра')}*
@@ -840,4 +857,66 @@ def send_forecast(chat_id):
     
     msg += f"\n*🛡️ Экипировка:* {gear_rec}"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_m
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+
+def send_weekly(chat_id):
+    weekly = get_weekly_forecast()
+    if not weekly:
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на неделю.")
+        return
+    
+    msg = f"""
+📆 *ПРОГНОЗ НА НЕДЕЛЮ (Минск)*
+
+"""
+    
+    for day in weekly:
+        temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
+        wind_str = f"{day['wind_speed']} м/с"
+        rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
+        msg += f"🗓️ *{day['weekday']}* {day['date']}: {day['condition']} {temp_str} | 💨 {wind_str}{rain_str}\n"
+    
+    windy_days = [d for d in weekly if d['wind_speed'] > 10]
+    if windy_days:
+        windy_names = ", ".join([d['weekday'] for d in windy_days])
+        msg += f"\n💡 *Внимание:* Сильный ветер ({windy_names}) — будьте осторожны!"
+    
+    rainy_days = [d for d in weekly if d['is_rain']]
+    if rainy_days:
+        rainy_names = ", ".join([d['weekday'] for d in rainy_days])
+        msg += f"\n☔ *Дождь:* {rainy_names} — возьмите дождевик!"
+    
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=get_after_weather_keyboard())
+
+# ============ ВЕБ-СЕРВЕР ДЛЯ ПИНГА ============
+@app.route('/')
+def home():
+    return "🏍️ MotoWeather Bot is running! Use /weather in Telegram.", 200
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "ok",
+        "bot": "MotoWeather Minsk",
+        "users": get_users_count(),
+        "time": datetime.now(MINSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    }), 200
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
+
+# ============ ЗАПУСК ============
+if __name__ == "__main__":
+    print("🏍️ MotoWeather Бот запущен!")
+    print("✅ Источник: OpenWeatherMap")
+    print("✅ Добавлен прогноз на неделю")
+    print("✅ Добавлена сезонная корректировка дня/ночи")
+    print("✅ Добавлено описание ощущения ветра")
+    print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
+    print("✅ Часовой пояс: Минск (UTC+3)")
+    print("📡 Бот готов к работе")
+    
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    bot.infinity_polling()
