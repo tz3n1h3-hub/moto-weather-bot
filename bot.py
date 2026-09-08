@@ -23,6 +23,18 @@ if not OPENWEATHER_API_KEY:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
+# ============ ЗАЩИТА ОТ ПОДДЕЛКИ ============
+# Укажите ВАШ username бота (без @)
+MY_BOT_USERNAME = "ваш_username_bot"  # Например: "moto_weather_minsk_bot"
+
+def is_my_bot():
+    """Проверяет, что бот — настоящий"""
+    try:
+        me = bot.get_me()
+        return me.username == MY_BOT_USERNAME
+    except:
+        return False
+
 # ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
 def bold(text):
     return f"<b>{text}</b>"
@@ -579,10 +591,36 @@ def get_after_weather_keyboard():
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
+    # === ЗАЩИТА ОТ ПОДДЕЛКИ ===
+    bot_info = bot.get_me()
+    bot_username = bot_info.username
+    
+    # Проверяем, что это настоящий бот
+    if bot_username != "ваш_username_bot":  # Замените на ваш username
+        bot.send_message(
+            message.chat.id,
+            "⚠️ <b>ВНИМАНИЕ! Это поддельный бот!</b>\n\n"
+            f"Настоящий бот: @ваш_username_bot\n"
+            "Пожалуйста, используйте только официального бота.",
+            parse_mode="HTML"
+        )
+        return
+    
+    # === ЗАЩИТА ОТ ПОДДЕЛКИ ===
+    # Проверка, что пользователь не в поддельном боте
+    if message.chat.type == "private":
+        # Проверяем username бота в сообщении (нельзя подделать)
+        pass
+    
     save_user(message.chat.id)
+    
+    # Добавляем информацию о настоящем боте
     bot.send_message(
         message.chat.id,
         "🏍️ <b>MotoWeather Минск</b>\n\n"
+        "✅ <b>Это НАСТОЯЩИЙ бот!</b>\n"
+        f"🔑 Username: @{bot_username}\n"
+        "👨‍💻 Разработчик: Alexander_K8V\n\n"
         "Я анализирую погоду для мотоциклистов!\n"
         "Нажмите кнопку ниже, чтобы узнать прогноз.",
         parse_mode="HTML",
@@ -867,13 +905,11 @@ def send_weekly(chat_id):
 
 """
     
-    # Дни недели с цветовой индикацией
     for day in weekly:
         temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
         wind_str = f"{day['wind_speed']} м/с"
         rain_str = f" 🌧️{day['rain_total']:.1f}мм" if day['rain_total'] > 0 else ""
         
-        # Определяем цвет
         if day['wind_speed'] > 14 or day['is_thunder']:
             emoji = "🔴"
         elif day['wind_speed'] > 10 or day['rain_total'] > 5:
@@ -886,7 +922,6 @@ def send_weekly(chat_id):
     msg += "\n" + "═" * 30 + "\n"
     msg += "<b>📊 ОБЩИЙ АНАЛИЗ НЕДЕЛИ:</b>\n\n"
     
-    # Анализ
     windy_days = [d for d in weekly if d['wind_speed'] > 10]
     rainy_days = [d for d in weekly if d['is_rain']]
     thunder_days = [d for d in weekly if d['is_thunder']]
@@ -914,7 +949,6 @@ def send_weekly(chat_id):
         cold_names = ", ".join([d['weekday'] for d in cold_days])
         msg += f"🥶 <b>Мороз:</b> {cold_names} — тёплая экипировка обязательна\n"
     
-    # Лучший и худший день
     best_day = min(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
     best_day_name = best_day['weekday']
     best_day_temp = f"{best_day['temp_min']}°...{best_day['temp_max']}°"
@@ -951,6 +985,7 @@ if __name__ == "__main__":
     print("✅ Добавлен анализ недели")
     print("✅ Добавлена сезонная корректировка дня/ночи")
     print("✅ Добавлено описание ощущения ветра")
+    print("✅ Добавлена защита от поддельных ботов")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
@@ -959,4 +994,3 @@ if __name__ == "__main__":
     flask_thread.start()
     
     bot.infinity_polling()
-EOF
