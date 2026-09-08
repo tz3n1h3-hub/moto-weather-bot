@@ -26,13 +26,6 @@ app = Flask(__name__)
 # ============ ЗАЩИТА ОТ ПОДДЕЛКИ ============
 MY_BOT_USERNAME = "MotoWeatherMinskBot"
 
-def is_my_bot():
-    try:
-        me = bot.get_me()
-        return me.username == MY_BOT_USERNAME
-    except:
-        return False
-
 # ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
 def bold(text):
     return f"<b>{text}</b>"
@@ -90,17 +83,17 @@ def get_wind_description(speed):
 
 def get_wind_feeling(speed):
     if speed <= 1:
-        return "🌿 Безветренно"
+        return "🌿 безветренно"
     elif speed <= 6:
-        return "🍃 Комфортно, ветер почти не ощущается"
+        return "🍃 комфортно, ветер почти не ощущается"
     elif speed <= 10:
-        return "🌬️ Ощущается, но не мешает"
+        return "🌬️ ощущается, но не мешает"
     elif speed <= 14:
-        return "💨 Требует внимания на дороге"
+        return "💨 требует внимания на дороге"
     elif speed <= 19:
-        return "⚠️ Сильно влияет на управление"
+        return "⚠️ сильно влияет на управление"
     else:
-        return "🚫 Опасно для езды!"
+        return "🚫 опасно для езды!"
 
 def get_temp_description(temp):
     if temp >= 25:
@@ -139,7 +132,7 @@ def get_best_time():
     elif 18 <= hour <= 20:
         return "🕐 Вечер (с 18:00 до 20:00) — включите свет 🌇"
     else:
-        return "🕐 Ночное время (с 20:00 до 7:00) — только с хорошим светом 🌙"
+        return "🕐 Ночное время (с 20:00 до 7:00) — только с хорошим светом"
 
 # ============ РАБОТА С ФАЙЛОМ ПОЛЬЗОВАТЕЛЕЙ ============
 USERS_FILE = "users.json"
@@ -509,7 +502,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # Ощущаемая температура
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -559,7 +551,7 @@ def analyze_risks(weather, is_forecast=False):
 def get_main_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("📊 Сейчас", callback_data="weather"),
+        InlineKeyboardButton("📊 Сегодня", callback_data="weather"),
         InlineKeyboardButton("📅 Завтра", callback_data="forecast")
     )
     markup.row(
@@ -594,7 +586,6 @@ def start(message):
     bot_info = bot.get_me()
     bot_username = bot_info.username
     
-    # Проверяем, что это настоящий бот
     if bot_username != "MotoWeatherMinskBot":
         bot.send_message(
             message.chat.id,
@@ -941,7 +932,7 @@ def send_weekly(chat_id):
     worst_day = max(weekly, key=lambda d: (d['wind_speed'] + d['rain_total'] * 2))
     worst_day_name = worst_day['weekday']
     
-    msg += f"\n🏍️ <b>Лучший день для поездки:</b> {best_day_name} ({best_day_temp})"
+    msg += f"🏍️ <b>Лучший день для поездки:</b> {best_day_name} ({best_day_temp})"
     msg += f"\n⚠️ <b>Худший день для поездки:</b> {worst_day_name}"
     
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
