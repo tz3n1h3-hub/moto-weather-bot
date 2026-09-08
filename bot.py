@@ -6,6 +6,7 @@ import time
 import threading
 from datetime import datetime, timedelta, timezone
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from flask import Flask, jsonify
 
 # ============ ТОКЕНЫ ============
 BOT_TOKEN = "8726317506:AAFTww4YFYu76GPuy4ZfSbz5MwoiLtAdTK8"
@@ -20,6 +21,7 @@ if not OPENWEATHER_API_KEY:
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
 MINSK_TZ = timezone(timedelta(hours=3))
@@ -86,7 +88,7 @@ def get_temp_description(temp):
     else:
         return "морозно! ⚠️"
 
-def get_gear_recommendation(temp, is_rain):
+def get_gear_recommendation(temp):
     if temp >= 25:
         return "🟢 Лёгкая экипировка, сетка, пейте больше воды"
     elif temp >= 18:
@@ -678,45 +680,23 @@ def callback_handler(call):
 ═══════════════════════
 *📊 ВОЗМОЖНОСТИ БОТА:*
 
-🌡️ *Текущая погода*
-— температура, ветер, влажность, давление
-
-📅 *Прогноз на завтра*
-— средняя, мин и макс температура
-
-📆 *Прогноз на неделю*
-— погода на 7 дней вперёд
-
-💨 *Реальные порывы ветра*
-— точные данные с учётом усилений
-
-🌧️ *Учёт осадков*
-— количество мм в час/день
-
-📊 *Анализ рисков*
-— оценка опасности для мотоциклиста (0-10)
-
-💡 *Персональные рекомендации*
-— конкретные советы по поведению на дороге
-
-🛡️ *Рекомендации по экипировке*
-— что надеть в зависимости от погоды
-
-🕐 *Лучшее время для поездки*
-— когда безопаснее всего выезжать
-
-🌙 *Определение освещённости*
-— Светло / Темно (с учётом сезона)
+🌡️ *Текущая погода* — температура, ветер, влажность, давление
+📅 *Прогноз на завтра* — средняя, мин и макс температура
+📆 *Прогноз на неделю* — погода на 7 дней вперёд
+💨 *Реальные порывы ветра* — точные данные с учётом усилений
+🌧️ *Учёт осадков* — количество мм в час/день
+📊 *Анализ рисков* — оценка опасности для мотоциклиста (0-10)
+💡 *Персональные рекомендации* — конкретные советы по поведению
+🛡️ *Рекомендации по экипировке* — что надеть в зависимости от погоды
+🕐 *Лучшее время для поездки* — когда безопаснее всего выезжать
+🌙 *Определение освещённости* — Светло / Темно (с учётом сезона)
 
 ═══════════════════════
 *📡 ИСТОЧНИКИ ДАННЫХ:*
-
 • OpenWeatherMap — текущая погода
-• wttr.in — резервный источник
 
 *🖥️ ПЛАТФОРМА:*
 • Render.com — работает 24/7
-• Бесплатный тариф (возможна задержка при пробуждении)
 
 *👨‍💻 РАЗРАБОТЧИК:*
 • Alexander_K8V
@@ -773,7 +753,7 @@ def send_weather(chat_id):
     wind_speed = weather.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
     temp_desc = get_temp_description(feels_like)
-    gear_rec = get_gear_recommendation(feels_like, weather.get('is_rain', False))
+    gear_rec = get_gear_recommendation(feels_like)
     best_time = get_best_time()
     
     if weather.get('wind_gust', 0) > wind_speed:
@@ -828,7 +808,7 @@ def send_forecast(chat_id):
     wind_speed = forecast.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
     avg_temp = forecast.get('temp_avg', 0)
-    gear_rec = get_gear_recommendation(avg_temp, forecast.get('is_rain', False))
+    gear_rec = get_gear_recommendation(avg_temp)
     
     if forecast.get('wind_gust', 0) > wind_speed:
         wind_line = f"💨 *Ветер:* {wind_speed} м/с (порывы до {forecast.get('wind_gust', 0)} м/с, {wind_desc})"
@@ -860,4 +840,4 @@ def send_forecast(chat_id):
     
     msg += f"\n*🛡️ Экипировка:* {gear_rec}"
     
-    bot.send_message(chat_id, msg, parse_mode="Markdown")
+    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_m
