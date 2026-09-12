@@ -14,11 +14,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 if not BOT_TOKEN:
-    print("❌ ОШИБКА: BOT_TOKEN не найден! Добавьте переменную на Render.")
+    print("❌ ОШИБКА: BOT_TOKEN не найден!")
     exit(1)
 
 if not OPENWEATHER_API_KEY:
-    print("❌ ОШИБКА: OPENWEATHER_API_KEY не найден! Добавьте переменную на Render.")
+    print("❌ ОШИБКА: OPENWEATHER_API_KEY не найден!")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -121,18 +121,20 @@ def get_gear_recommendation(temp):
         return "🔴 Мороз! Только с полным подогревом!"
 
 def get_best_time():
+    """Лучшее время для поездки с учётом дня/вечера/ночи"""
     hour = get_minsk_hour()
     if 9 <= hour <= 18:
         return "🕐 Лучшее время для поездки: с 9:00 до 18:00 ☀️"
     elif 7 <= hour <= 9:
         return "🕐 Утро (с 7:00 до 9:00) — будьте осторожны 🌅"
-    elif 18 <= hour <= 20:
-        return "🕐 Вечер (с 18:00 до 20:00) — включите свет 🌇"
+    elif 18 <= hour <= 22:
+        return "🕐 Вечер (с 18:00 до 22:00) — включите свет 🌆"
+    elif 22 <= hour or hour <= 5:
+        return "🕐 Ночь (с 22:00 до 6:00) — только с хорошим светом 🌙"
     else:
-        return "🕐 Ночное время (с 20:00 до 7:00) — только с хорошим светом"
+        return "🕐 Раннее утро (с 5:00 до 7:00) — будьте внимательны 🌄"
 
 def get_visibility_rating(vis_m):
-    """Оценка видимости для райдера"""
     if vis_m >= 10000:
         return "✅ отличная"
     elif vis_m >= 5000:
@@ -147,7 +149,6 @@ def get_visibility_rating(vis_m):
         return "🔴🔴 критичная (туман)"
 
 def format_visibility(vis_m):
-    """Форматирует видимость в км или м"""
     if vis_m >= 10000:
         return "10+ км"
     elif vis_m >= 1000:
@@ -190,31 +191,25 @@ def parse_clouds(metar_text):
         return "⛅", "Облачно с прояснениями"
     elif "FEW" in metar_text:
         return "🌤️", "Малооблачно"
-    elif "NSC" in metar_text or "SKC" in metar_text or "CLR" in metar_text:
-        return "☀️", "Ясно"
     elif "CAVOK" in metar_text:
-        return "☀️", "Ясно"
+        return "🌤️", "Преимущественно ясно"
+    elif "NSC" in metar_text or "SKC" in metar_text or "CLR" in metar_text:
+        return "🌤️", "Преимущественно ясно"
     else:
         return "⛅", "Облачно"
 
 def parse_visibility(metar_text):
-    """Извлекает видимость из METAR (в метрах)"""
     if "CAVOK" in metar_text:
         return 10000
-    
     if "9999" in metar_text:
         return 10000
-    
     vis_match = re.search(r'\s(\d{4})\s', metar_text)
     if vis_match:
         return int(vis_match.group(1))
     return 10000
 
 def parse_weather_phenomena(metar_text):
-    """
-    Извлекает тип осадков/явлений из METAR.
-    Возвращает: emoji, описание, is_rain, is_thunder
-    """
+    """Возвращает: emoji, описание, is_rain, is_thunder"""
     if "TS" in metar_text:
         if "TSRA" in metar_text:
             return "⛈️", "Гроза с дождём", True, True
@@ -328,7 +323,6 @@ def get_metar_data():
 
 # ============ РАСЧЁТ ОЩУЩАЕМОЙ ТЕМПЕРАТУРЫ ============
 def calculate_feels_like(temp, wind_speed):
-    """Расчёт ощущаемой температуры"""
     if temp <= 10 and wind_speed > 1.3:
         wind_kmh = wind_speed * 3.6
         feels = 13.12 + 0.6215 * temp - 11.37 * (wind_kmh ** 0.16) + 0.3965 * temp * (wind_kmh ** 0.16)
@@ -357,71 +351,41 @@ def get_weather():
             print(f"Ошибка OpenWeatherMap: {data.get('message')}")
             return None
         
-        # ===== ДАННЫЕ ИЗ OPENWEATHERMAP =====
+        # ===== FALLBACK ИЗ OPENWEATHERMAP =====
         owm_temp = int(data["main"]["temp"])
         owm_wind = int(data["wind"]["speed"])
-        humidity = int(data["main"]["humidity"])
-        owm_visibility = data.get("visibility", 10000)
         
-        # ===== ДАННЫЕ ИЗ METAR (ПРИОРИТЕТ) =====
+        # ===== ОСНОВНЫЕ ДАННЫЕ ИЗ METAR =====
         metar = get_metar_data()
         
         if metar:
             temp = metar.get("temp", owm_temp)
             wind_speed = metar.get("wind_speed", owm_wind)
-            condition = f"{metar['cloud_emoji']} {metar['cloud_text']}"
-            cloud_text = metar['cloud_text']
-            visibility = metar.get("visibility", owm_visibility)
+            cloud_emoji = metar.get('cloud_emoji', '⛅')
+            cloud_text = metar.get('cloud_text', 'Облачно')
+            visibility = metar.get("visibility", 10000)
             weather_text = metar.get("weather_text")
             weather_emoji = metar.get("weather_emoji")
             dew_point = metar.get("dew_point")
             is_rain = metar.get("is_rain", False)
             is_thunder = metar.get("is_thunder", False)
-            
-            if metar.get("wind_gust") is not None:
-                wind_gust = metar["wind_gust"]
-                gust_source = "METAR"
-            else:
-                wind_gust = None
-                gust_source = None
-            
+            wind_gust = metar.get("wind_gust")
+            gust_source = "METAR" if wind_gust else None
             source_text = "METAR (аэропорт Минск)"
         else:
             temp = owm_temp
             wind_speed = owm_wind
-            wind_gust = data["wind"].get("gust")
-            if wind_gust:
-                wind_gust = int(wind_gust)
-                gust_source = "OpenWeatherMap"
-            else:
-                wind_gust = None
-                gust_source = None
-            visibility = owm_visibility
+            cloud_emoji = "⛅"
             cloud_text = "—"
+            visibility = 10000
             weather_text = None
             weather_emoji = None
             dew_point = None
             is_rain = False
             is_thunder = False
-            
-            weather_id = data["weather"][0]["id"]
-            if weather_id == 800:
-                condition = "☀️ Ясно"
-            elif weather_id > 800:
-                if weather_id >= 803:
-                    condition = "☁️ Пасмурно"
-                else:
-                    condition = "⛅ Облачно"
-            else:
-                condition = "🌧️ Осадки"
-                is_rain = True
-            
+            wind_gust = None
+            gust_source = None
             source_text = "OpenWeatherMap"
-        
-        rain = data.get("rain")
-        rain_1h = 0
-        if rain:
-            rain_1h = rain.get("1h", 0)
         
         feels_like = calculate_feels_like(temp, wind_speed)
         is_night = is_night_time()
@@ -429,7 +393,7 @@ def get_weather():
         return {
             "temp": temp,
             "feels_like": feels_like,
-            "condition": condition,
+            "cloud_emoji": cloud_emoji,
             "cloud_text": cloud_text,
             "weather_text": weather_text,
             "weather_emoji": weather_emoji,
@@ -437,15 +401,11 @@ def get_weather():
             "wind_speed": wind_speed,
             "wind_gust": wind_gust,
             "gust_source": gust_source,
-            "humidity": humidity,
-            "rain_1h": rain_1h,
             "visibility": visibility,
             "is_rain": is_rain,
             "is_thunder": is_thunder,
             "is_night": is_night,
-            "source": source_text,
-            "timestamp": get_minsk_time(),
-            "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
+            "source": source_text
         }
         
     except Exception as e:
@@ -466,10 +426,8 @@ def get_forecast_tomorrow():
         tomorrow = datetime.now(MINSK_TZ) + timedelta(days=1)
         tomorrow_str = tomorrow.strftime("%Y-%m-%d")
         
-        temps = []
-        wind_speeds = []
+        temps, wind_speeds, conditions = [], [], []
         rain_total = 0
-        conditions = []
         
         for item in data["list"]:
             dt = datetime.fromtimestamp(item["dt"], tz=MINSK_TZ)
@@ -493,32 +451,18 @@ def get_forecast_tomorrow():
         most_common = max(set(conditions), key=conditions.count) if conditions else 800
         
         if most_common >= 200 and most_common < 300:
-            condition = "⛈️ Гроза"
-            is_rain = True
-            is_thunder = True
+            condition, is_rain, is_thunder = "⛈️ Гроза", True, True
         elif most_common >= 500 and most_common < 600:
-            if most_common >= 502:
-                condition = "🌧️ Сильный дождь"
-            else:
-                condition = "🌧️ Дождь"
-            is_rain = True
-            is_thunder = False
+            condition = "🌧️ Сильный дождь" if most_common >= 502 else "🌧️ Дождь"
+            is_rain, is_thunder = True, False
         elif most_common >= 600 and most_common < 700:
-            condition = "❄️ Снег"
-            is_rain = False
-            is_thunder = False
+            condition, is_rain, is_thunder = "❄️ Снег", False, False
         elif most_common == 800:
-            condition = "☀️ Ясно"
-            is_rain = False
-            is_thunder = False
+            condition, is_rain, is_thunder = "☀️ Ясно", False, False
         elif most_common > 800:
-            condition = "☁️ Облачно"
-            is_rain = False
-            is_thunder = False
+            condition, is_rain, is_thunder = "☁️ Облачно", False, False
         else:
-            condition = "🌤️ Переменная облачность"
-            is_rain = False
-            is_thunder = False
+            condition, is_rain, is_thunder = "🌤️ Переменная облачность", False, False
         
         return {
             "date": tomorrow.strftime("%d.%m.%Y"),
@@ -531,8 +475,7 @@ def get_forecast_tomorrow():
             "condition": condition,
             "is_rain": is_rain,
             "is_thunder": is_thunder,
-            "source": "OpenWeatherMap (прогноз)",
-            "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
+            "source": "OpenWeatherMap (прогноз)"
         }
         
     except Exception as e:
@@ -596,29 +539,17 @@ def get_weekly_forecast():
             most_common = max(set(conditions), key=conditions.count) if conditions else 800
             
             if most_common >= 200 and most_common < 300:
-                condition = "⛈️"
-                is_rain = True
-                is_thunder = True
+                condition, is_rain, is_thunder = "⛈️", True, True
             elif most_common >= 500 and most_common < 600:
-                condition = "🌧️"
-                is_rain = True
-                is_thunder = False
+                condition, is_rain, is_thunder = "🌧️", True, False
             elif most_common >= 600 and most_common < 700:
-                condition = "❄️"
-                is_rain = False
-                is_thunder = False
+                condition, is_rain, is_thunder = "❄️", False, False
             elif most_common == 800:
-                condition = "☀️"
-                is_rain = False
-                is_thunder = False
+                condition, is_rain, is_thunder = "☀️", False, False
             elif most_common > 800:
-                condition = "☁️"
-                is_rain = False
-                is_thunder = False
+                condition, is_rain, is_thunder = "☁️", False, False
             else:
-                condition = "🌤️"
-                is_rain = False
-                is_thunder = False
+                condition, is_rain, is_thunder = "🌤️", False, False
             
             weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
             weekday = weekday_names[data_day["date"].weekday()]
@@ -700,10 +631,7 @@ def analyze_risks(weather, is_forecast=False):
             score += 2
             recommendations.append("💡 Включите ближний свет, будьте внимательны")
     
-    if is_forecast:
-        feels_like = weather.get("temp_avg", temp)
-    else:
-        feels_like = weather.get("feels_like", temp)
+    feels_like = weather.get("temp_avg", temp) if is_forecast else weather.get("feels_like", temp)
     
     if feels_like < 5:
         risks.append(f"🥶 Очень холодно (ощущается как {feels_like}°C)")
@@ -724,17 +652,13 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите свет, снизьте скорость")
     
     if score >= 8:
-        verdict = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!"
-        color = "🔴"
+        verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
-        verdict = "⚠️ РИСКОВАННО - с осторожностью"
-        color = "🟡"
+        verdict, color = "⚠️ РИСКОВАННО - с осторожностью", "🟡"
     elif score >= 2:
-        verdict = "🟡 УМЕРЕННЫЙ РИСК - будьте внимательны"
-        color = "🟠"
+        verdict, color = "🟡 УМЕРЕННЫЙ РИСК - будьте внимательны", "🟠"
     else:
-        verdict = "✅ БЕЗОПАСНО - отличная погода!"
-        color = "🟢"
+        verdict, color = "✅ БЕЗОПАСНО - отличная погода!", "🟢"
     
     return {
         "score": min(score, 10),
@@ -784,11 +708,11 @@ def start(message):
     bot_info = bot.get_me()
     bot_username = bot_info.username
     
-    if bot_username != "MotoWeatherMinskBot":
+    if bot_username != MY_BOT_USERNAME:
         bot.send_message(
             message.chat.id,
             "⚠️ <b>ВНИМАНИЕ! Это поддельный бот!</b>\n\n"
-            f"Настоящий бот: @MotoWeatherMinskBot\n"
+            f"Настоящий бот: @{MY_BOT_USERNAME}\n"
             "Пожалуйста, используйте только официального бота.",
             parse_mode="HTML"
         )
@@ -849,51 +773,47 @@ def callback_handler(call):
         if call.data == "weather":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз...")
             send_weather(call.message.chat.id)
-            
         elif call.data == "forecast":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на завтра...")
             send_forecast(call.message.chat.id)
-            
         elif call.data == "weekly":
             bot.answer_callback_query(call.id, "⏳ Загружаю прогноз на неделю...")
             send_weekly(call.message.chat.id)
-            
         elif call.data == "update":
             bot.answer_callback_query(call.id, "⏳ Обновляю...")
             send_weather(call.message.chat.id)
-            
         elif call.data == "tips":
             tips = """
-🏍️ СОВЕТЫ ДЛЯ РАЙДЕРОВ:
+🏍️ <b>СОВЕТЫ ДЛЯ РАЙДЕРОВ:</b>
 
-🟢 Светло:
+🟢 <b>Светло:</b>
 • Проверьте шины и свет
 • Надевайте защитную экипировку
 
-🟡 Ветер:
+🟡 <b>Ветер:</b>
 • Держите руль крепче
 • Снизьте скорость на открытых участках
 
-🔴 Дождь:
+🔴 <b>Дождь:</b>
 • Увеличьте дистанцию
 • Избегайте резких манёвров
 • Будьте осторожны на разметке
 
-⚡ Гроза:
+⚡ <b>Гроза:</b>
 • НЕМЕДЛЕННО остановитесь
 • Найдите укрытие
 • Не стойте под деревьями
 
-🌫️ Туман:
+🌫️ <b>Туман:</b>
 • Включите противотуманки
 • Снизьте скорость до минимума
 
-🌙 Темно:
+🌙 <b>Темно:</b>
 • Включите дальний свет
 • Снизьте скорость
 • Будьте особенно внимательны
 
-💬 ЦИТАТЫ ДЛЯ РАЙДЕРОВ:
+💬 <b>ЦИТАТЫ ДЛЯ РАЙДЕРОВ:</b>
 
 "Опытный райдер никогда не выезжает без защиты и нормальных перчаток."
 
@@ -904,22 +824,16 @@ def callback_handler(call):
 🏍️ Берегите себя на дорогах!
 """
             bot.answer_callback_query(call.id, "✅ Советы загружены")
-            bot.send_message(
-                call.message.chat.id, 
-                tips, 
-                parse_mode="HTML",
-                reply_markup=get_main_keyboard()
-            )
-            
+            bot.send_message(call.message.chat.id, tips, parse_mode="HTML", reply_markup=get_main_keyboard())
         elif call.data == "about":
             about_text = """
-ℹ️ О ПРОЕКТЕ
+ℹ️ <b>О ПРОЕКТЕ</b>
 
-🏍️ MotoWeather Минск
+🏍️ <b>MotoWeather Минск</b>
 
 Бот создан для райдеров, чтобы анализировать погоду и оценивать риски для безопасных поездок.
 
-📊 ВОЗМОЖНОСТИ БОТА:
+📊 <b>ВОЗМОЖНОСТИ БОТА:</b>
 
 🌡️ Текущая погода — METAR аэропорта Минск
 📅 Прогноз на завтра — OpenWeatherMap
@@ -935,23 +849,17 @@ def callback_handler(call):
 🕐 Лучшее время для поездки
 🌙 Определение освещённости
 
-📡 ИСТОЧНИКИ:
+📡 <b>ИСТОЧНИКИ:</b>
 ✈️ METAR (UMMS) — основной для "Сегодня"
 🌐 OpenWeatherMap — для "Завтра" и "Неделя"
 
-👨‍💻 РАЗРАБОТЧИК:
+👨‍💻 <b>РАЗРАБОТЧИК:</b>
 • Alexander_K8V
 
 🏍️ Берегите себя на дорогах!
 """
             bot.answer_callback_query(call.id, "✅ Информация загружена")
-            bot.send_message(
-                call.message.chat.id, 
-                about_text, 
-                parse_mode="HTML",
-                reply_markup=get_main_keyboard()
-            )
-            
+            bot.send_message(call.message.chat.id, about_text, parse_mode="HTML", reply_markup=get_main_keyboard())
     except Exception as e:
         print(f"Ошибка в callback: {e}")
 
@@ -963,14 +871,12 @@ def send_weather(chat_id):
         return
     
     analysis = analyze_risks(weather)
-    
     now = get_minsk_time()
     feels_like = analysis.get('feels_like', weather.get('feels_like', weather.get('temp', 0)))
     light_level = get_light_level()
-    
     risk_emoji = analysis['color']
     
-    # ===== СТРОКА ТЕМПЕРАТУРЫ (без дублирования) =====
+    # Строка температуры (без дублирования)
     temp_value = weather.get('temp', 0)
     temp_desc = get_temp_description(feels_like)
     
@@ -979,48 +885,41 @@ def send_weather(chat_id):
     else:
         temp_line = f"🌡️ <b>Температура:</b> {temp_value}°C ({temp_desc})"
     
-    # ===== ОСАДКИ (без аббревиатур) =====
+    # Осадки
     weather_info = weather.get('weather_text')
     if weather_info:
         weather_info = f"{weather.get('weather_emoji', '')} {weather_info}"
     else:
         weather_info = "✅ Без осадков"
     
-    rain_info = ""
-    if weather.get('rain_1h', 0) > 0:
-        rain_info = f" 🌧️{weather.get('rain_1h', 0):.1f} мм/ч"
-    
-    # ===== ТОЧКА РОСЫ =====
+    # Точка росы
     dew_info = ""
     if weather.get('dew_point') is not None:
         dew_info = f"\n💧 <b>Точка росы:</b> {weather.get('dew_point')}°C"
     
-    # ===== ВИДИМОСТЬ =====
+    # Видимость
     visibility = weather.get('visibility', 10000)
     vis_rating = get_visibility_rating(visibility)
     vis_text = format_visibility(visibility)
     vis_info = f"\n🌫️ <b>Видимость:</b> {vis_text} ({vis_rating})"
     
-    # ===== ВЕТЕР =====
+    # Ветер
     wind_speed = weather.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
     wind_feeling = get_wind_feeling(wind_speed)
-    
     wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}."
     
     wind_gust = weather.get('wind_gust')
-    gust_source = weather.get('gust_source', '')
-    
+    ( gust_source = weather.get('gust_source', '')
     if wind_gust and wind_gust > wind_speed:
         if "METAR" in gust_source:
-            wind_line += f"\n✈️ <b>Порывы (METAR):</b> до {wind_gust} м/с."
+            wind_line += f"\n✈️ <b>ПорывыMETAR):</b> до {wind_gust} м/с."
         else:
             wind_line += f" Порывы до {wind_gust} м/с."
     
     gear_rec = get_gear_recommendation(feels_like)
     best_time = get_best_time()
     
-    # ===== СООБЩЕНИЕ =====
     msg = f"""
 {risk_emoji} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
 
@@ -1028,7 +927,7 @@ def send_weather(chat_id):
 {temp_line}
 {wind_line}
 {weather.get('cloud_emoji', '')} <b>Облачность:</b> {weather.get('cloud_text', '—')}
-🌧️ <b>Осадки:</b> {weather_info}{rain_info}{dew_info}{vis_info}
+🌧️ <b>Осадки:</b> {weather_info}{dew_info}{vis_info}
 
 📡 <b>Источник:</b> {weather.get('source', 'Неизвестно')}
 
@@ -1060,12 +959,9 @@ def send_forecast(chat_id):
         return
     
     analysis = analyze_risks(forecast, is_forecast=True)
-    
     risk_emoji = analysis['color']
     
-    rain_info = ""
-    if forecast.get('rain_total', 0) > 0:
-        rain_info = f" 🌧️{forecast.get('rain_total', 0):.1f} мм (за день)"
+    rain_info = f" 🌧️{forecast.get('rain_total', 0):.1f} мм (за день)" if forecast.get('rain_total', 0) > 0 else ""
     
     wind_speed = forecast.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
@@ -1112,10 +1008,7 @@ def send_weekly(chat_id):
         bot.send_message(chat_id, "❌ Не удалось получить прогноз на неделю.")
         return
     
-    msg = f"""
-📆 <b>ПРОГНОЗ НА НЕДЕЛЮ (Минск)</b>
-
-"""
+    msg = f"📆 <b>ПРОГНОЗ НА НЕДЕЛЮ (Минск)</b>\n\n"
     
     for day in weekly:
         temp_str = f"{day['temp_min']}°...{day['temp_max']}°"
@@ -1135,17 +1028,13 @@ def send_weekly(chat_id):
     
     rainy_days_list = []
     windy_days_list = []
-    best_day_score = float('inf')
-    worst_day_score = -float('inf')
-    best_day = None
-    worst_day = None
+    best_day, worst_day = None, None
+    best_day_score, worst_day_score = float('inf'), -float('inf')
     
     for day in weekly:
         day_name = day['weekday']
-        wind = day['wind_speed']
-        rain = day['rain_total']
-        temp_max = day['temp_max']
-        temp_min = day['temp_min']
+        wind, rain = day['wind_speed'], day['rain_total']
+        temp_max, temp_min = day['temp_max'], day['temp_min']
         
         issues = []
         if rain > 0:
@@ -1161,11 +1050,9 @@ def send_weekly(chat_id):
         
         score = wind + rain * 3
         if score < best_day_score:
-            best_day_score = score
-            best_day = day
+            best_day_score, best_day = score, day
         if score > worst_day_score:
-            worst_day_score = score
-            worst_day = day
+            worst_day_score, worst_day = score, day
         
         if not issues:
             msg += f"☀️ <b>{day_name}</b>: отличный день для поездки\n"
@@ -1205,18 +1092,14 @@ def send_weekly(chat_id):
             msg += f"   → {', '.join(worst_reason)}\n"
         
         msg += "\n💡 <b>Общие советы:</b>\n"
-        
         if rainy_days_list:
             msg += f"• ☔ Возьмите дождевик: {', '.join(rainy_days_list)}\n"
         if windy_days_list:
             msg += f"• 💨 Держите руль крепче: {', '.join(windy_days_list)}\n"
-        
         if best_day:
             msg += f"• ⭐ Планируйте поездки: {best_day['weekday']}\n"
-        
         if any(day['temp_min'] < 0 for day in weekly):
             msg += f"• 🧥 Тёплая экипировка обязательна\n"
-        
         if any(day['temp_max'] > 30 for day in weekly):
             msg += f"• 💧 Пейте больше воды в жаркие дни\n"
     
@@ -1245,13 +1128,11 @@ def run_flask():
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
-    print("✅ Основной источник (Сегодня): METAR (аэропорт Минск)")
-    print("✅ Парсинг: ветер, порывы, температура, точка росы")
-    print("✅ Парсинг: облачность, видимость, осадки (без аббревиатур)")
-    print("✅ Убрано дублирование ощущаемой температуры")
-    print("✅ Убрано давление")
-    print("✅ Прогноз (Завтра/Неделя): OpenWeatherMap")
-    print("✅ Токены из переменных окружения")
+    print("✅ Источник (Сегодня): METAR аэропорта Минск")
+    print("✅ Источник (Завтра/Неделя): OpenWeatherMap")
+    print("✅ Без аббревиатур, без дублирования, без давления")
+    print("✅ Облачность: Преимущественно ясно / Малооблачно / Облачно с прояснениями")
+    print("✅ Время: Вечер (18-22), Ночь (22-6)")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
