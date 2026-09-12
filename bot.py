@@ -13,11 +13,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 if not BOT_TOKEN:
-    print("❌ ОШИБКА: BOT_TOKEN не найден!")
+    print("❌ ОШИБКА: BOT_TOKEN не найден! Добавьте переменную на Render.")
     exit(1)
 
 if not OPENWEATHER_API_KEY:
-    print("❌ ОШИБКА: OPENWEATHER_API_KEY не найден!")
+    print("❌ ОШИБКА: OPENWEATHER_API_KEY не найден! Добавьте переменную на Render.")
     exit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -25,10 +25,6 @@ app = Flask(__name__)
 
 # ============ ЗАЩИТА ОТ ПОДДЕЛКИ ============
 MY_BOT_USERNAME = "MotoWeatherMinskBot"
-
-# ============ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ============
-def bold(text):
-    return f"<b>{text}</b>"
 
 # ============ ЧАСОВОЙ ПОЯС МИНСКА ============
 MINSK_TZ = timezone(timedelta(hours=3))
@@ -158,6 +154,30 @@ def save_user(user_id):
 def get_users_count():
     return len(load_users())
 
+# ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ ПРОГНОЗА ============
+def get_current_gust():
+    """Получает порывы ветра из почасового прогноза OpenWeatherMap"""
+    try:
+        url = f"https://api.openweathermap.org/data/2.5/forecast?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=1"
+        
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if data.get("cod") != "200":
+            print(f"Ошибка получения порывов: {data.get('message')}")
+            return None
+        
+        if data.get("list") and len(data["list"]) > 0:
+            gust = data["list"][0].get("wind", {}).get("gust")
+            if gust is not None:
+                return int(gust)
+        
+        return None
+        
+    except Exception as e:
+        print(f"Ошибка получения порывов: {e}")
+        return None
+
 # ============ ПОЛУЧЕНИЕ ТЕКУЩЕЙ ПОГОДЫ ============
 def get_weather():
     try:
@@ -179,9 +199,20 @@ def get_weather():
         
         temp = int(data["main"]["temp"])
         wind_speed = int(data["wind"]["speed"])
-        wind_gust = int(data["wind"].get("gust", wind_speed * 1.2))
         humidity = int(data["main"]["humidity"])
         pressure = int(data["main"]["pressure"] * 0.75006)
+        
+        # ===== ПОРЫВЫ ВЕТРА =====
+        wind_gust = data["wind"].get("gust")
+        
+        if wind_gust is None:
+            gust_from_forecast = get_current_gust()
+            if gust_from_forecast is not None:
+                wind_gust = gust_from_forecast
+            else:
+                wind_gust = int(wind_speed * 1.2)
+        else:
+            wind_gust = int(wind_gust)
         
         rain = data.get("rain")
         rain_1h = 0
@@ -792,10 +823,13 @@ def send_weather(chat_id):
     gear_rec = get_gear_recommendation(feels_like)
     best_time = get_best_time()
     
+    # ===== ФОРМИРОВАНИЕ СТРОКИ ВЕТРА С ПОРЫВАМИ =====
+    wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
+    
     if weather.get('wind_gust', 0) > wind_speed:
-        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с (порывы до {weather.get('wind_gust', 0)} м/с, {wind_desc}) — {wind_feeling}"
+        wind_line += f"; местами порывы ветра могут достигать до {weather.get('wind_gust', 0)} м/с."
     else:
-        wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
+        wind_line += "."
     
     msg = f"""
 {risk_emoji} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
@@ -1018,11 +1052,10 @@ def run_flask():
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap")
+    print("✅ Токены из переменных окружения")
+    print("✅ Добавлены порывы ветра из почасового прогноза")
     print("✅ Добавлен анализ недели")
-    print("✅ Добавлена сезонная корректировка дня/ночи")
-    print("✅ Добавлено описание ощущения ветра")
     print("✅ Добавлена защита от поддельных ботов")
-    print("✅ Добавлены цитаты для райдеров")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
