@@ -2,12 +2,11 @@ services:
   - type: web
     name: moto-weather-bot
     runtime: python
-    repo: https://github.com/ваш-username/moto-weather-bot
     plan: free
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: YANDEX_API_KEY
+      - key: OPENWEATHER_API_KEY
         sync: false
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
