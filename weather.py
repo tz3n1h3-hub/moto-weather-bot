@@ -123,7 +123,7 @@ def parse_weather_phenomena(metar_text):
     if "GR" in metar_text:
         return "🧊", "Град", False, False
 
-    return None, None, False, False
+    return "", "", False, False
 
 
 def get_metar_data():
@@ -216,8 +216,8 @@ def get_weather():
             cloud_emoji = metar.get("cloud_emoji", "⛅")
             cloud_text = metar.get("cloud_text", "Облачно")
             visibility = metar.get("visibility", 10000)
-            weather_text = metar.get("weather_text")
-            weather_emoji = metar.get("weather_emoji")
+            weather_text = metar.get("weather_text") or ""
+            weather_emoji = metar.get("weather_emoji") or ""
             dew_point = metar.get("dew_point")
             is_rain = metar.get("is_rain", False)
             is_thunder = metar.get("is_thunder", False)
@@ -229,8 +229,8 @@ def get_weather():
             cloud_emoji = "⛅"
             cloud_text = "—"
             visibility = 10000
-            weather_text = None
-            weather_emoji = None
+            weather_text = ""
+            weather_emoji = ""
             dew_point = None
             is_rain = False
             is_thunder = False
