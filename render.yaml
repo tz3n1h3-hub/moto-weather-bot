@@ -1,12 +1,21 @@
 services:
-  - type: web
+  - type Zone: web
     name: moto-weather-bot
-    runtime: python
+    runtime: pythonInfo
     plan: free
+    region: frankfurt
+("    autoDeploy: true
+   Europe healthCheckPath: /health
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
       - key: OPENWEATHER_API_KEY
         sync: false
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+      - key: ADMIN_ID
+        sync: false
+      - key: MY_BOT_USERNAME
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.14.0"
