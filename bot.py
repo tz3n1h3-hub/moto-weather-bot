@@ -1360,7 +1360,6 @@ def health():
 def run_flask():
     app.run(host="0.0.0.0", port=10000, debug=False, use_reloader=False)
 
-
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
