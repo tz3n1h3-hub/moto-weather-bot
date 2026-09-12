@@ -910,7 +910,7 @@ def send_weather(chat_id):
     wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}."
     
     wind_gust = weather.get('wind_gust')
-    ( gust_source = weather.get('gust_source', '')
+    gust_source = weather.get('gust_source', '')
     if wind_gust and wind_gust > wind_speed:
         if "METAR" in gust_source:
             wind_line += f"\n✈️ <b>ПорывыMETAR):</b> до {wind_gust} м/с."
