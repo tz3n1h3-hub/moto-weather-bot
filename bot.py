@@ -4,6 +4,7 @@ import json
 import os
 import time
 import threading
+import re
 from datetime import datetime, timedelta, timezone
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, jsonify
@@ -154,9 +155,49 @@ def save_user(user_id):
 def get_users_count():
     return len(load_users())
 
+# ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ METAR ============
+def get_metar_gust():
+    """
+    Получает порывы ветра из METAR для аэропорта Минск (UMMS).
+    Возвращает скорость порывов в м/с или None.
+    """
+    try:
+        url = "https://metar.vatsim.net/UMMS"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"METAR API вернул статус {response.status_code}")
+            return None
+        
+        metar_text = response.text.strip()
+        print(f"METAR: {metar_text}")
+        
+        # METAR формат ветра: DDDSSKT или DDDSSGKKT
+        # Пример: 23008KT (ветер 230° 8 узлов)
+        # Пример с порывами: 23008G15KT (ветер 230° 8 узлов, порывы до 15 узлов)
+        
+        wind_match = re.search(r'\b(\d{3})(\d{2,3})(G(\d{2,3}))?KT\b', metar_text)
+        
+        if wind_match:
+            if wind_match.group(4):
+                gust_knots = int(wind_match.group(4))
+                gust_ms = round(gust_knots * 0.514444)
+                print(f"METAR порывы: {gust_knots} узлов = {gust_ms} м/с")
+                return gust_ms
+            else:
+                print("METAR: порывы не указаны")
+                return None
+        else:
+            print("METAR: группа ветра не найдена")
+            return None
+            
+    except Exception as e:
+        print(f"Ошибка получения METAR: {e}")
+        return None
+
 # ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ ПРОГНОЗА ============
 def get_current_gust():
-    """Получает порывы ветра из почасового прогноза OpenWeatherMap"""
+    """Получает порывы ветра из почасового прогноза OpenWeatherMap (резерв)"""
     try:
         url = f"https://api.openweathermap.org/data/2.5/forecast?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=1"
         
@@ -202,17 +243,38 @@ def get_weather():
         humidity = int(data["main"]["humidity"])
         pressure = int(data["main"]["pressure"] * 0.75006)
         
-        # ===== ПОРЫВЫ ВЕТРА =====
-        wind_gust = data["wind"].get("gust")
+        # ===== ПОРЫВЫ ВЕТРА: METAR → OpenWeatherMap → fallback =====
+        wind_gust = None
+        gust_source = None
         
+        # 1. Пробуем METAR (самый точный, но для аэропорта)
+        metar_gust = get_metar_gust()
+        if metar_gust is not None:
+            wind_gust = metar_gust
+            gust_source = "METAR"
+            print(f"Порывы из METAR: {wind_gust} м/с")
+        
+        # 2. Если METAR не дал — пробуем OpenWeatherMap (текущая погода)
         if wind_gust is None:
-            gust_from_forecast = get_current_gust()
-            if gust_from_forecast is not None:
-                wind_gust = gust_from_forecast
-            else:
-                wind_gust = int(wind_speed * 1.2)
-        else:
-            wind_gust = int(wind_gust)
+            owm_gust = data["wind"].get("gust")
+            if owm_gust is not None:
+                wind_gust = int(owm_gust)
+                gust_source = "OpenWeatherMap"
+                print(f"Порывы из OpenWeatherMap (current): {wind_gust} м/с")
+        
+        # 3. Если и там нет — берём из почасового прогноза
+        if wind_gust is None:
+            forecast_gust = get_current_gust()
+            if forecast_gust is not None:
+                wind_gust = forecast_gust
+                gust_source = "OpenWeatherMap (прогноз)"
+                print(f"Порывы из OpenWeatherMap (forecast): {wind_gust} м/с")
+        
+        # 4. Если совсем ничего — расчётный fallback
+        if wind_gust is None:
+            wind_gust = int(wind_speed * 1.2)
+            gust_source = "расчёт"
+            print(f"Порывы расчётные: {wind_gust} м/с")
         
         rain = data.get("rain")
         rain_1h = 0
@@ -280,6 +342,7 @@ def get_weather():
             "condition": condition,
             "wind_speed": wind_speed,
             "wind_gust": wind_gust,
+            "gust_source": gust_source,
             "humidity": humidity,
             "pressure": pressure,
             "rain_1h": rain_1h,
@@ -288,7 +351,7 @@ def get_weather():
             "is_rain": is_rain,
             "is_thunder": is_thunder,
             "is_night": is_night,
-            "source": "OpenWeatherMap",
+            "source": "OpenWeatherMap + METAR",
             "timestamp": get_minsk_time(),
             "description": weather_desc,
             "update_time": datetime.now(MINSK_TZ).strftime("%H:%M:%S")
@@ -757,7 +820,7 @@ def callback_handler(call):
 🌡️ Текущая погода — температура, ветер, влажность, давление
 📅 Прогноз на завтра — средняя, мин и макс температура
 📆 Прогноз на неделю — погода на 7 дней вперёд
-💨 Реальные порывы ветра — точные данные с учётом усилений
+💨 Порывы ветра — из METAR (аэропорт Минск) + OpenWeatherMap
 🌧️ Учёт осадков — количество мм в час/день
 📊 Анализ рисков — оценка опасности (0-10)
 💡 Персональные рекомендации — советы по поведению
@@ -766,7 +829,8 @@ def callback_handler(call):
 🌙 Определение освещённости — Светло / Темно
 
 📡 ИСТОЧНИКИ ДАННЫХ:
-• OpenWeatherMap — текущая погода
+• METAR (UMMS) — порывы ветра с аэропорта Минск
+• OpenWeatherMap — температура, влажность, давление
 
 🖥️ ПЛАТФОРМА:
 • Render.com — работает 24/7
@@ -824,12 +888,19 @@ def send_weather(chat_id):
     best_time = get_best_time()
     
     # ===== ФОРМИРОВАНИЕ СТРОКИ ВЕТРА С ПОРЫВАМИ =====
-    wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}"
+    wind_line = f"💨 <b>Ветер:</b> {wind_speed} м/с ({wind_desc}) — {wind_feeling}."
     
-    if weather.get('wind_gust', 0) > wind_speed:
-        wind_line += f"; местами порывы ветра могут достигать до {weather.get('wind_gust', 0)} м/с."
-    else:
-        wind_line += "."
+    wind_gust = weather.get('wind_gust', 0)
+    gust_source = weather.get('gust_source', '')
+    
+    # Показываем порывы отдельной строкой с указанием источника
+    if wind_gust >= 3:
+        if "METAR" in gust_source:
+            # Для METAR — отдельная строка с пометкой об аэропорте
+            wind_line += f"\n✈️ <b>Порывы (METAR, аэропорт Минск):</b> до {wind_gust} м/с."
+        else:
+            # Для OpenWeatherMap — в скобках, как раньше
+            wind_line += f" Местами порывы до {wind_gust} м/с."
     
     msg = f"""
 {risk_emoji} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
@@ -1051,11 +1122,10 @@ def run_flask():
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
-    print("✅ Источник: OpenWeatherMap")
+    print("✅ Источник: OpenWeatherMap + METAR")
     print("✅ Токены из переменных окружения")
-    print("✅ Добавлены порывы ветра из почасового прогноза")
+    print("✅ Порывы ветра: METAR (аэропорт) → OpenWeatherMap")
     print("✅ Добавлен анализ недели")
-    print("✅ Добавлена защита от поддельных ботов")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
     print("📡 Бот готов к работе")
