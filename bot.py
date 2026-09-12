@@ -9,8 +9,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, jsonify
 
 # ============ ТОКЕНЫ ============
-BOT_TOKEN = "8726317506:AAFuAzBL9ddUHY66AmowU8EWmgNNW-lkE4o"
-OPENWEATHER_API_KEY = "6454a46bd311f896c7cc92ffdf5781ad"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 if not BOT_TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден!")
