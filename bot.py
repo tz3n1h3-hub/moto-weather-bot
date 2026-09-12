@@ -155,10 +155,11 @@ def save_user(user_id):
 def get_users_count():
     return len(load_users())
 
-# ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ METAR ============
+# ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ METAR (ИСПРАВЛЕНО) ============
 def get_metar_gust():
     """
     Получает порывы ветра из METAR для аэропорта Минск (UMMS).
+    Поддерживает единицы KT (узлы) и MPS (метры в секунду).
     Возвращает скорость порывов в м/с или None.
     """
     try:
@@ -172,17 +173,27 @@ def get_metar_gust():
         metar_text = response.text.strip()
         print(f"METAR: {metar_text}")
         
-        # METAR формат ветра: DDDSSKT или DDDSSGKKT
+        # METAR формат ветра: DDDSSKT, DDDSSGKKT, DDDSSMPS, DDDSSGKKMPS
         # Пример: 23008KT (ветер 230° 8 узлов)
-        # Пример с порывами: 23008G15KT (ветер 230° 8 узлов, порывы до 15 узлов)
+        # Пример: 23008G15KT (ветер 230° 8 узлов, порывы до 15 узлов)
+        # Пример: 04007G11MPS (ветер 040° 7 м/с, порывы до 11 м/с)
         
-        wind_match = re.search(r'\b(\d{3})(\d{2,3})(G(\d{2,3}))?KT\b', metar_text)
+        # Ищем ветер с порывами в KT или MPS
+        wind_match = re.search(r'\b(\d{3})(\d{2,3})(G(\d{2,3}))?(KT|MPS)\b', metar_text)
         
         if wind_match:
             if wind_match.group(4):
-                gust_knots = int(wind_match.group(4))
-                gust_ms = round(gust_knots * 0.514444)
-                print(f"METAR порывы: {gust_knots} узлов = {gust_ms} м/с")
+                gust_value = int(wind_match.group(4))
+                unit = wind_match.group(5)
+                
+                if unit == "KT":
+                    # Узлы → м/с
+                    gust_ms = round(gust_value * 0.514444)
+                else:  # MPS
+                    # Уже в м/с
+                    gust_ms = gust_value
+                
+                print(f"METAR порывы: {gust_value} {unit} = {gust_ms} м/с")
                 return gust_ms
             else:
                 print("METAR: порывы не указаны")
@@ -1121,16 +1132,17 @@ def run_flask():
 
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
-    print("🏍️ MotoWeather Бот запущен!")
+   UB print("🏍️ MotoWeather Бот запущен!")
     print("✅ Источник: OpenWeatherMap + METAR")
+    print("✅ Порывы: METAR (KT и MPS) → OpenWeatherMap")
     print("✅ Токены из переменных окружения")
-    print("✅ Порывы ветра: METAR (аэропорт) → OpenWeatherMap")
-    print("✅ Добавлен анализ недели")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
     print("✅ Часовой пояс: Минск (UTC+3)")
-    print("📡 Бот готов к работе")
+    print("📡 Бот
+
+ готов к работе")
     
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+```    flask_thread = threading.Thread(target=run_flask,bash daemon=True)
     flask_thread.start()
     
     bot.infinity_polling()
