@@ -179,23 +179,23 @@ def save_user(user_id):
 def get_users_count():
     return len(load_users())
 
-# ============ РАСШИРЕННЫЙ ПАРСЕР METAR ============
+# ============ ПАРСЕР METAR ============
 def parse_clouds(metar_text):
-    """Определяет тип облачности из METAR"""
+    """Определяет тип облачности из METAR (без аббревиатур)"""
     if "OVC" in metar_text:
-        return "☁️", "Пасмурно", "OVC"
+        return "☁️", "Пасмурно"
     elif "BKN" in metar_text:
-        return "☁️", "Значительная облачность", "BKN"
+        return "☁️", "Значительная облачность"
     elif "SCT" in metar_text:
-        return "⛅", "Облачно с прояснениями", "SCT"
+        return "⛅", "Облачно с прояснениями"
     elif "FEW" in metar_text:
-        return "🌤️", "Малооблачно", "FEW"
+        return "🌤️", "Малооблачно"
     elif "NSC" in metar_text or "SKC" in metar_text or "CLR" in metar_text:
-        return "☀️", "Ясно", "NSC"
+        return "☀️", "Ясно"
     elif "CAVOK" in metar_text:
-        return "☀️", "Ясно (CAVOK)", "CAVOK"
+        return "☀️", "Ясно"
     else:
-        return "⛅", "Облачно", "—"
+        return "⛅", "Облачно"
 
 def parse_visibility(metar_text):
     """Извлекает видимость из METAR (в метрах)"""
@@ -215,7 +215,6 @@ def parse_weather_phenomena(metar_text):
     Извлекает тип осадков/явлений из METAR.
     Возвращает: emoji, описание, is_rain, is_thunder
     """
-    # Проверяем на грозу
     if "TS" in metar_text:
         if "TSRA" in metar_text:
             return "⛈️", "Гроза с дождём", True, True
@@ -224,13 +223,11 @@ def parse_weather_phenomena(metar_text):
         else:
             return "⛈️", "Гроза", False, True
     
-    # Ливневые осадки
     if "SHRA" in metar_text:
         return "🌧️", "Ливневый дождь", True, False
     if "SHSN" in metar_text:
         return "🌨️", "Ливневый снег", False, False
     
-    # Дождь
     if "+RA" in metar_text:
         return "🌧️", "Сильный дождь", True, False
     if "RA" in metar_text:
@@ -238,11 +235,9 @@ def parse_weather_phenomena(metar_text):
     if "-RA" in metar_text:
         return "🌦️", "Слабый дождь", True, False
     
-    # Морось
     if "DZ" in metar_text:
         return "🌦️", "Морось", True, False
     
-    # Снег
     if "+SN" in metar_text:
         return "❄️", "Сильный снег", False, False
     if "SN" in metar_text:
@@ -250,7 +245,6 @@ def parse_weather_phenomena(metar_text):
     if "-SN" in metar_text:
         return "🌨️", "Слабый снег", False, False
     
-    # Туман
     if "FG" in metar_text:
         return "🌫️", "Туман", False, False
     if "BR" in metar_text:
@@ -258,19 +252,10 @@ def parse_weather_phenomena(metar_text):
     if "HZ" in metar_text:
         return "🌫️", "Мгла", False, False
     
-    # Град
     if "GR" in metar_text:
         return "🧊", "Град", False, False
     
     return None, None, False, False
-
-def parse_dew_point(metar_text):
-    """Извлекает точку росы из METAR"""
-    temp_match = re.search(r'\s(M?\d{2})/(M?\d{2})\s', metar_text)
-    if temp_match:
-        dew_str = temp_match.group(2).replace("M", "-")
-        return int(dew_str)
-    return None
 
 def get_metar_data():
     """Получает полные данные из METAR для аэропорта Минск (UMMS)"""
@@ -312,10 +297,9 @@ def get_metar_data():
                 result["wind_gust"] = None
         
         # ===== ОБЛАЧНОСТЬ =====
-        emoji, cloud_text, cloud_code = parse_clouds(metar_text)
+        emoji, cloud_text = parse_clouds(metar_text)
         result["cloud_emoji"] = emoji
         result["cloud_text"] = cloud_text
-        result["cloud_code"] = cloud_code
         
         # ===== ВИДИМОСТЬ =====
         result["visibility"] = parse_visibility(metar_text)
@@ -342,43 +326,15 @@ def get_metar_data():
         print(f"Ошибка получения METAR: {e}")
         return None
 
-# ============ ПОЛУЧЕНИЕ ПОРЫВОВ ИЗ ПРОГНОЗА ============
-def get_current_gust():
-    """Получает порывы ветра из почасового прогноза OpenWeatherMap"""
-    try:
-        url = f"https://api.openweathermap.org/data/2.5/forecast?lat=53.9045&lon=27.5615&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=1"
-        
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        
-        if data.get("cod") != "200":
-            return None
-        
-        if data.get("list") and len(data["list"]) > 0:
-            gust = data["list"][0].get("wind", {}).get("gust")
-            if gust is not None:
-                return int(gust)
-        
-        return None
-        
-    except Exception as e:
-        print(f"Ошибка получения порывов: {e}")
-        return None
-
 # ============ РАСЧЁТ ОЩУЩАЕМОЙ ТЕМПЕРАТУРЫ ============
 def calculate_feels_like(temp, wind_speed):
-    """
-    Расчёт ощущаемой температуры (wind chill для холода, heat index для жары).
-    """
+    """Расчёт ощущаемой температуры"""
     if temp <= 10 and wind_speed > 1.3:
-        # Wind chill (формула для ветра в м/с)
         wind_kmh = wind_speed * 3.6
         feels = 13.12 + 0.6215 * temp - 11.37 * (wind_kmh ** 0.16) + 0.3965 * temp * (wind_kmh ** 0.16)
         return round(feels)
     elif temp >= 27:
-        # Heat index (упрощённо для влажности 50%)
-        feels = temp + 1
-        return round(feels)
+        return round(temp + 1)
     else:
         return round(temp)
 
@@ -405,7 +361,6 @@ def get_weather():
         owm_temp = int(data["main"]["temp"])
         owm_wind = int(data["wind"]["speed"])
         humidity = int(data["main"]["humidity"])
-        pressure = int(data["main"]["pressure"] * 0.75006)
         owm_visibility = data.get("visibility", 10000)
         
         # ===== ДАННЫЕ ИЗ METAR (ПРИОРИТЕТ) =====
@@ -416,7 +371,6 @@ def get_weather():
             wind_speed = metar.get("wind_speed", owm_wind)
             condition = f"{metar['cloud_emoji']} {metar['cloud_text']}"
             cloud_text = metar['cloud_text']
-            cloud_code = metar.get('cloud_code', '—')
             visibility = metar.get("visibility", owm_visibility)
             weather_text = metar.get("weather_text")
             weather_emoji = metar.get("weather_emoji")
@@ -444,7 +398,6 @@ def get_weather():
                 gust_source = None
             visibility = owm_visibility
             cloud_text = "—"
-            cloud_code = "—"
             weather_text = None
             weather_emoji = None
             dew_point = None
@@ -465,15 +418,12 @@ def get_weather():
             
             source_text = "OpenWeatherMap"
         
-        # ===== ОСАДКИ =====
         rain = data.get("rain")
         rain_1h = 0
         if rain:
             rain_1h = rain.get("1h", 0)
         
-        # ===== ОЩУЩАЕМАЯ ТЕМПЕРАТУРА =====
         feels_like = calculate_feels_like(temp, wind_speed)
-        
         is_night = is_night_time()
         
         return {
@@ -481,7 +431,6 @@ def get_weather():
             "feels_like": feels_like,
             "condition": condition,
             "cloud_text": cloud_text,
-            "cloud_code": cloud_code,
             "weather_text": weather_text,
             "weather_emoji": weather_emoji,
             "dew_point": dew_point,
@@ -489,7 +438,6 @@ def get_weather():
             "wind_gust": wind_gust,
             "gust_source": gust_source,
             "humidity": humidity,
-            "pressure": pressure,
             "rain_1h": rain_1h,
             "visibility": visibility,
             "is_rain": is_rain,
@@ -709,7 +657,6 @@ def analyze_risks(weather, is_forecast=False):
     is_thunder = weather.get("is_thunder", False)
     visibility = weather.get("visibility", 10000)
     
-    # ===== ВЕТЕР =====
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -722,7 +669,6 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
     
-    # ===== ОСАДКИ =====
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -740,7 +686,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     
-    # ===== ВИДИМОСТЬ =====
     if not is_forecast:
         if visibility < 500:
             risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({visibility} м)!")
@@ -755,7 +700,6 @@ def analyze_risks(weather, is_forecast=False):
             score += 2
             recommendations.append("💡 Включите ближний свет, будьте внимательны")
     
-    # ===== ТЕМПЕРАТУРА =====
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -774,7 +718,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду, делайте частые остановки")
     
-    # ===== НОЧЬ =====
     if not is_forecast and weather.get("is_night", False):
         risks.append("🌙 Темно - плохая видимость")
         score += 2
@@ -982,9 +925,9 @@ def callback_handler(call):
 📅 Прогноз на завтра — OpenWeatherMap
 📆 Прогноз на неделю — OpenWeatherMap
 💨 Порывы ветра — METAR (точные данные)
-☁️ Облачность — METAR (OVC/BKN/SCT/FEW)
+☁️ Облачность — METAR
 🌫️ Видимость — METAR с оценкой для дороги
-🌧️ Тип осадков — METAR (RA/SHRA/SN)
+🌧️ Тип осадков — METAR
 💧 Точка росы — METAR
 📊 Анализ рисков — оценка опасности (0-10)
 💡 Персональные рекомендации
@@ -1027,31 +970,38 @@ def send_weather(chat_id):
     
     risk_emoji = analysis['color']
     
-    # ===== ФОРМИРУЕМ СТРОКИ =====
+    # ===== СТРОКА ТЕМПЕРАТУРЫ (без дублирования) =====
+    temp_value = weather.get('temp', 0)
+    temp_desc = get_temp_description(feels_like)
     
-    # Влажность (METAR + осадки)
+    if feels_like != temp_value:
+        temp_line = f"🌡️ <b>Температура:</b> {temp_value}°C (ощущается как {feels_like}°C, {temp_desc})"
+    else:
+        temp_line = f"🌡️ <b>Температура:</b> {temp_value}°C ({temp_desc})"
+    
+    # ===== ОСАДКИ (без аббревиатур) =====
     weather_info = weather.get('weather_text')
     if weather_info:
         weather_info = f"{weather.get('weather_emoji', '')} {weather_info}"
     else:
-        weather_info = "—"
+        weather_info = "✅ Без осадков"
     
     rain_info = ""
     if weather.get('rain_1h', 0) > 0:
         rain_info = f" 🌧️{weather.get('rain_1h', 0):.1f} мм/ч"
     
-    # Точка росы
+    # ===== ТОЧКА РОСЫ =====
     dew_info = ""
     if weather.get('dew_point') is not None:
         dew_info = f"\n💧 <b>Точка росы:</b> {weather.get('dew_point')}°C"
     
-    # Видимость с оценкой
+    # ===== ВИДИМОСТЬ =====
     visibility = weather.get('visibility', 10000)
     vis_rating = get_visibility_rating(visibility)
     vis_text = format_visibility(visibility)
     vis_info = f"\n🌫️ <b>Видимость:</b> {vis_text} ({vis_rating})"
     
-    # Ветер с порывами
+    # ===== ВЕТЕР =====
     wind_speed = weather.get('wind_speed', 0)
     wind_desc = get_wind_description(wind_speed)
     wind_feeling = get_wind_feeling(wind_speed)
@@ -1067,7 +1017,6 @@ def send_weather(chat_id):
         else:
             wind_line += f" Порывы до {wind_gust} м/с."
     
-    temp_desc = get_temp_description(feels_like)
     gear_rec = get_gear_recommendation(feels_like)
     best_time = get_best_time()
     
@@ -1076,11 +1025,10 @@ def send_weather(chat_id):
 {risk_emoji} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
 
 {light_level}
-🌡️ <b>Температура:</b> {weather.get('temp', 0)}°C (ощущается как {feels_like}°C, {temp_desc})
+{temp_line}
 {wind_line}
-{weather.get('cloud_emoji', '')} <b>Облачность:</b> {weather.get('cloud_text', '—')} ({weather.get('cloud_code', '—')})
+{weather.get('cloud_emoji', '')} <b>Облачность:</b> {weather.get('cloud_text', '—')}
 🌧️ <b>Осадки:</b> {weather_info}{rain_info}{dew_info}{vis_info}
-📊 <b>Давление:</b> {weather.get('pressure', 0)} мм рт.ст.
 
 📡 <b>Источник:</b> {weather.get('source', 'Неизвестно')}
 
@@ -1299,7 +1247,9 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ Основной источник (Сегодня): METAR (аэропорт Минск)")
     print("✅ Парсинг: ветер, порывы, температура, точка росы")
-    print("✅ Парсинг: облачность (OVC/BKN/SCT/FEW), видимость, осадки")
+    print("✅ Парсинг: облачность, видимость, осадки (без аббревиатур)")
+    print("✅ Убрано дублирование ощущаемой температуры")
+    print("✅ Убрано давление")
     print("✅ Прогноз (Завтра/Неделя): OpenWeatherMap")
     print("✅ Токены из переменных окружения")
     print("✅ Веб-сервер для пинга: https://moto-weather-bot.onrender.com/health")
