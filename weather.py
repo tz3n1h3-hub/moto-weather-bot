@@ -235,7 +235,13 @@ def get_weather():
             dew_point = metar.get("dew_point")
             is_rain = metar.get("is_rain", False)
             is_thunder = metar.get("is_thunder", False)
-            wind_gust = metar.get("wind_gust") or owm_gust
+
+            # При штиле в METAR игнорируем OWM-порывы — они не согласуются
+            if wind_speed == 0:
+                wind_gust = None
+            else:
+                wind_gust = metar.get("wind_gust") or owm_gust
+
             source = "METAR (аэропорт Минск)"
         else:
             temp = owm_temp
