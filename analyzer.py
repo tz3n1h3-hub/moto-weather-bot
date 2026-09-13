@@ -111,7 +111,7 @@ def analyze_risks(weather, is_forecast=False):
 
     # НОЧЬ
     if not is_forecast and weather.get("is_night", False):
-        risks.append("🌙 Темно - плохая видимость")
+        risks.append("🌙 Темно — плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет")
 
@@ -119,11 +119,11 @@ def analyze_risks(weather, is_forecast=False):
     if score >= 8:
         verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
-        verdict, color = "⚠️ РИСКОВАННО - с осторожностью", "🟡"
+        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟡"
     elif score >= 2:
         verdict, color = "🟡 УМЕРЕННЫЙ РИСК", "🟠"
     else:
-        verdict, color = "✅ БЕЗОПАСНО - отличная погода!", "🟢"
+        verdict, color = "✅ БЕЗОПАСНО — отличная погода!", "🟢"
 
     return {
         "score": min(score, 10),
