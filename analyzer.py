@@ -135,7 +135,7 @@ def analyze_risks(weather, is_forecast=False):
     }
 
 
-# ============ КОРОТКИЙ ВЕРДИКТ (для нового шаблона) ============
+# ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
     """Возвращает сокращённый вердикт для нового формата."""
     if score <= 2:
@@ -145,7 +145,7 @@ def get_short_verdict(score):
     return "РИСКОВАННО"
 
 
-# ============ ЭКИПИРОВКА — СТАРЫЙ ФОРМАТ (для send_forecast) ============
+# ============ ЭКИПИРОВКА — СТАРЫЙ ФОРМАТ ============
 def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     gear = []
 
@@ -214,7 +214,7 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
 
 # ============ ОДИН ПРАКТИЧНЫЙ СОВЕТ ============
 def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility):
-    """Один практичный совет для нового шаблона."""
+    """Один практичный совет. Влажность проверяется ДО ночи."""
     if is_thunder:
         return "Гроза — остановитесь в укрытии, не выезжайте"
     if temp < 5 and humidity and humidity > 85:
@@ -225,16 +225,16 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
         return "Увеличьте дистанцию в 2 раза — тормозной путь длиннее"
     if visibility and visibility < 1000:
         return "Плохая видимость — противотуманки, снизьте скорость"
+    if humidity and humidity >= 90:
+        return "Высокая влажность — возможен туман, будьте внимательны"
     if is_night:
         return "Ночью усталость приходит быстрее — делайте паузы"
     if wind_speed and wind_speed > 8:
         return "Боковой ветер — держите руль крепче, избегайте обгонов"
-    if humidity and humidity >= 90:
-        return "Высокая влажность — возможен туман, будьте внимательны"
     return "Проверьте давление в шинах перед выездом"
 
 
-# ============ ЛУЧШЕЕ ВРЕМЯ (используется в других местах) ============
+# ============ ЛУЧШЕЕ ВРЕМЯ ============
 def get_best_time(sunrise=None, sunset=None):
     hour = get_minsk_hour()
 
