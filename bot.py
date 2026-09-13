@@ -6,7 +6,10 @@ from datetime import datetime
 import telebot
 from flask import Flask, jsonify
 
-from config import BOT_TOKEN, MY_BOT_USERNAME, USERS_FILE, ADMIN_ID, MINSK_TZ
+from config import (
+    BOT_TOKEN, OPENWEATHER_API_KEY, MY_BOT_USERNAME,
+    USERS_FILE, ADMIN_ID, MINSK_TZ,
+)
 from weather import (
     get_weather, get_forecast_tomorrow, get_weekly_forecast,
     get_trend, get_minsk_time, get_light_level, get_minsk_hour
@@ -15,6 +18,7 @@ from analyzer import analyze_risks, get_detailed_gear, get_best_time
 from keyboards import get_main_keyboard, get_after_weather_keyboard
 
 
+# ============ ПРОВЕРКА КОНФИГА ============
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!")
     exit(1)
@@ -22,6 +26,8 @@ if not BOT_TOKEN:
 if not OPENWEATHER_API_KEY:
     print("⚠️ OPENWEATHER_API_KEY не найден — прогнозы работать не будут!")
 
+
+# ============ ИНИЦИАЛИЗАЦИЯ ============
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
@@ -84,7 +90,7 @@ def get_visibility_rating(v):
     if v >= 2000: return "🟡 средняя"
     if v >= 1000: return "🟠 плохая"
     if v >= 500: return "🔴 очень плохая"
-    return "🔴🔴 ( критичнаятуман)"
+    return "🔴🔴 критичная (туман)"
 
 
 def format_visibility(v):
@@ -227,7 +233,7 @@ def send_weather(chat_id):
         else f"🌡️ <b>Температура:</b> {w['temp']}°C ({get_temp_description(feels)})"
     )
 
-    weather_info = f"{w.get('weather_emoji', '')} {w.get('weather_text', '')}".strip() or "✅ Без осадков"
+    weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip() or "✅ Без осадков"
 
     dew_info = ""
     if w.get("dew_point") is not None:
