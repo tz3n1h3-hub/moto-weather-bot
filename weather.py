@@ -42,7 +42,7 @@ def is_night_time():
 
 
 def get_daylight_info(sunrise, sunset):
-    """Возвращает: 'осталось X ч Y мин' / 'рассвет через X ч' / 'Темно (закат HH:MM)'."""
+    """Возвращает с эмодзи по времени суток."""
     if not sunrise or not sunset:
         return "—"
     try:
@@ -57,14 +57,14 @@ def get_daylight_info(sunrise, sunset):
             delta = sunrise_dt - now
             h = int(delta.total_seconds() // 3600)
             m = int((delta.total_seconds() % 3600) // 60)
-            return f"рассвет через {h} ч {m} мин"
+            return f"🌅 Рассвет через {h} ч {m} мин"
         elif now < sunset_dt:
             delta = sunset_dt - now
             h = int(delta.total_seconds() // 3600)
             m = int((delta.total_seconds() % 3600) // 60)
-            return f"Светло, осталось {h} ч {m} мин (закат {sunset})"
+            return f"☀️ Светло, осталось {h} ч {m} мин (закат {sunset})"
         else:
-            return f"Темно (закат {sunset})"
+            return f"🌇 Темно (закат {sunset})"
     except Exception:
         return "—"
 
@@ -519,7 +519,7 @@ def get_short_forecast():
         if data.get("cod") != "200" or not data.get("list"):
             return {"next_hour": "нет данных", "morning": "нет данных"}
 
-        # Ближайший час (первый слот = ближайшие 3 часа)
+        # Ближайший час (первый слот)
         item = data["list"][0]
         t = round(item["main"]["temp"])
         w = round(item["wind"]["speed"])
