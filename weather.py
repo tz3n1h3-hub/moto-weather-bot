@@ -41,6 +41,34 @@ def is_night_time():
     return get_light_level() == "🌙 Темно"
 
 
+def get_daylight_info(sunrise, sunset):
+    """Возвращает: 'осталось X ч Y мин' / 'рассвет через X ч' / 'Темно (закат HH:MM)'."""
+    if not sunrise or not sunset:
+        return "—"
+    try:
+        now = datetime.now(MINSK_TZ)
+        h_s, m_s = map(int, sunrise.split(":"))
+        h_e, m_e = map(int, sunset.split(":"))
+
+        sunrise_dt = now.replace(hour=h_s, minute=m_s, second=0, microsecond=0)
+        sunset_dt = now.replace(hour=h_e, minute=m_e, second=0, microsecond=0)
+
+        if now < sunrise_dt:
+            delta = sunrise_dt - now
+            h = int(delta.total_seconds() // 3600)
+            m = int((delta.total_seconds() % 3600) // 60)
+            return f"рассвет через {h} ч {m} мин"
+        elif now < sunset_dt:
+            delta = sunset_dt - now
+            h = int(delta.total_seconds() // 3600)
+            m = int((delta.total_seconds() % 3600) // 60)
+            return f"Светло, осталось {h} ч {m} мин (закат {sunset})"
+        else:
+            return f"Темно (закат {sunset})"
+    except Exception:
+        return "—"
+
+
 # ============ РАСЧЁТ ВЛАЖНОСТИ ============
 def calculate_humidity(temp, dew_point):
     try:
@@ -425,8 +453,6 @@ def get_trend():
         fc_temp = int(data["list"][0]["main"]["temp"])
         fc_wind = int(data["list"][0]["wind"]["speed"])
 
-        # Текущие данные берём из METAR — того же источника,
-        # что используется в send_weather. Это даёт консистентность.
         metar = get_metar_data()
         cur_temp = None
         cur_wind = None
@@ -435,7 +461,6 @@ def get_trend():
             cur_temp = metar.get("temp")
             cur_wind = metar.get("wind_speed")
 
-        # Фолбэк на OWM, если METAR не дал данных
         if cur_temp is None or cur_wind is None:
             owm = requests.get(
                 f"{OWM_WEATHER_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
@@ -480,3 +505,44 @@ def get_trend():
     except Exception as e:
         print(f"Ошибка тренда: {e}")
         return None
+
+
+# ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО ============
+def get_short_forecast():
+    """Возвращает {next_hour, morning} — короткие прогнозы."""
+    try:
+        url = (
+            f"{OWM_FORECAST_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
+            f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=8"
+        )
+        data = requests.get(url, timeout=10).json()
+        if data.get("cod") != "200" or not data.get("list"):
+            return {"next_hour": "нет данных", "morning": "нет данных"}
+
+        # Ближайший час (первый слот = ближайшие 3 часа)
+        item = data["list"][0]
+        t = round(item["main"]["temp"])
+        w = round(item["wind"]["speed"])
+        cond = item["weather"][0]["description"].capitalize()
+        next_hour = f"{t}°C, {cond}, {w} м/с"
+
+        # Утро завтра (6:00–9:00)
+        tomorrow = (datetime.now(MINSK_TZ) + timedelta(days=1)).date()
+        morning_items = []
+        for it in data["list"]:
+            dt = datetime.fromtimestamp(it["dt"], tz=MINSK_TZ)
+            if dt.date() == tomorrow and 6 <= dt.hour <= 9:
+                morning_items.append(it)
+
+        if morning_items:
+            avg_t = round(sum(i["main"]["temp"] for i in morning_items) / len(morning_items))
+            avg_w = round(sum(i["wind"]["speed"] for i in morning_items) / len(morning_items))
+            cond = morning_items[0]["weather"][0]["description"].capitalize()
+            morning = f"{avg_t}°C, {cond}, {avg_w} м/с"
+        else:
+            morning = "нет данных"
+
+        return {"next_hour": next_hour, "morning": morning}
+    except Exception as e:
+        print(f"Ошибка короткого прогноза: {e}")
+        return {"next_hour": "нет данных", "morning": "нет данных"}
