@@ -17,7 +17,8 @@ from weather import (
 )
 from analyzer import (
     analyze_risks, get_detailed_gear, get_best_time,
-    get_short_verdict, get_gear_short, get_tech_check, get_tip,
+    get_short_verdict, get_rider_verdict,
+    get_gear_short, get_tech_check, get_tip,
 )
 from keyboards import get_main_keyboard, get_after_weather_keyboard
 
@@ -314,7 +315,8 @@ def send_weather(chat_id):
         w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
     )
 
-    verdict_short = get_short_verdict(a["score"])
+    # Райдерский вердикт
+    rider_verdict = get_rider_verdict(a["score"])
 
     # Сборка — дерзкий стиль
     msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date}, {now}
@@ -326,7 +328,7 @@ def send_weather(chat_id):
 {light_info}
 ━━━━━━━━━━━━━━━━━━━━
 
-⚠️ <b>РИСК {a['score']}/10 — {verdict_short}</b>
+<b>{rider_verdict}</b>
 
 <b>🎯 ЧТО НА ДОРОГЕ:</b>
 {risk_block}
@@ -335,10 +337,9 @@ def send_weather(chat_id):
 <b>🎽 НА СЕБЯ:</b>
 {gear_block}
 
-<b>🔧 ПРОВЕРЬ ЖЕЛЕЗО:</b>
+<b>🔧 ПЕРЕД ВЫЕЗДОМ:</b>
 {tech_block}
 ━━━━━━━━━━━━━━━━━━━━
-
 ⏱️ <b>ЧЕРЕЗ 3 ЧАСА:</b> {next_hour}
 
 🌅 <b>УТРОМ:</b> {morning}
