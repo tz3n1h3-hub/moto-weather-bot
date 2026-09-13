@@ -106,39 +106,25 @@ def format_visibility(v):
 
 
 # ============ ТЕКСТЫ ============
-TIPS_TEXT = """🏍️ <b>СОВЕТЫ ДЛЯ РАЙДЕРОВ:</b>
-
-🟢 <b>Светло:</b> проверьте шины и свет
-🟡 <b>Ветер:</b> держите руль крепче
-🔴 <b>Дождь:</b> увеличьте дистанцию
-⚡ <b>Гроза:</b> остановитесь, найдите укрытие
-🌫️ <b>Туман:</b> противотуманки, снизьте скорость
-🌙 <b>Темно:</b> включите свет
-
-💬 <b>ЦИТАТЫ:</b>
-"Опытный райдер никогда не выезжает без защиты и перчаток."
-"Для настоящего райдера важен не мотоцикл, а ощущение свободы."
-
-🏍️ Берегите себя на дорогах!"""
-
 ABOUT_TEXT = """ℹ️ <b>О ПРОЕКТЕ</b>
 
 🏍️ <b>MotoWeather Минск</b>
 
-📊 <b>ВОЗМОЖНОСТИ:</b>
-• Текущая погода (METAR аэропорта)
-• Прогноз на завтра и неделю
-• Порывы ветра, видимость, точка росы
-• Рассвет/закат, тренд за 3 часа
-• Анализ рисков и экипировка
+Погода для тех, кто на двух колёсах. Без соплей и лишних слов — только то, что нужно перед выездом.
 
-📡 <b>ИСТОЧНИКИ:</b>
-✈️ METAR (UMMS) — основной
-🌐 OpenWeatherMap — дополнительный
+<b>Что показывает:</b>
+• METAR аэропорта Минск (реальные данные)
+• Риск 0–10 — ехать или не ехать
+• Экипировка и подготовка
+• Что будет через 3 часа и утром
 
-👨‍💻 <b>РАЗРАБОТЧИК:</b> Alexander_K8V
+<b>Откуда данные:</b>
+✈️ METAR (UMMS) — основной источник
+🌐 OpenWeatherMap — для прогнозов
 
-🏍️ Берегите себя!"""
+<b>Автор:</b> Alexander_K8V
+
+🏍️ <i>Ровной дороги!</i>"""
 
 
 # ============ КОМАНДЫ ============
@@ -155,32 +141,24 @@ def start(message):
 
     bot.send_message(message.chat.id,
         "🏍️ <b>MotoWeather Минск</b>\n\n"
-        "✅ <b>Это НАСТОЯЩИЙ бот!</b>\n"
-        f"🔑 Username: @{info.username}\n"
-        "👨‍💻 Разработчик: Alexander_K8V\n\n"
-        "Я анализирую погоду для райдеров!",
+        "Погода для тех, кто на двух колёсах.\n"
+        "Проверяю аэропорт Минск и говорю прямо: ехать или нет.\n\n"
+        "<b>Жми «Сейчас» — и вперёд.</b>",
         parse_mode="HTML", reply_markup=get_main_keyboard())
 
 
 @bot.message_handler(commands=['weather'])
 def weather_cmd(m):
     save_user(m.chat.id)
-    bot.send_message(m.chat.id, "⏳ Загружаю данные...")
+    bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
     send_weather(m.chat.id)
 
 
-@bot.message_handler(commands=['forecast'])
-def forecast_cmd(m):
+@bot.message_handler(commands=['about'])
+def about_cmd(m):
     save_user(m.chat.id)
-    bot.send_message(m.chat.id, "⏳ Загружаю прогноз...")
-    send_forecast(m.chat.id)
-
-
-@bot.message_handler(commands=['weekly'])
-def weekly_cmd(m):
-    save_user(m.chat.id)
-    bot.send_message(m.chat.id, "⏳ Загружаю прогноз на неделю...")
-    send_weekly(m.chat.id)
+    bot.send_message(m.chat.id, ABOUT_TEXT,
+                     parse_mode="HTML", reply_markup=get_main_keyboard())
 
 
 @bot.message_handler(commands=['stats'])
@@ -201,20 +179,10 @@ def callback(call):
         save_user(call.message.chat.id)
 
         if call.data in ("weather", "update"):
-            bot.answer_callback_query(call.id, "⏳ Загружаю...")
+            bot.answer_callback_query(call.id, "⏳ Смотрю на небо...")
             send_weather(call.message.chat.id)
-        elif call.data == "forecast":
-            bot.answer_callback_query(call.id, "⏳ Загружаю...")
-            send_forecast(call.message.chat.id)
-        elif call.data == "weekly":
-            bot.answer_callback_query(call.id, "⏳ Загружаю...")
-            send_weekly(call.message.chat.id)
-        elif call.data == "tips":
-            bot.answer_callback_query(call.id, "✅ Загружено")
-            bot.send_message(call.message.chat.id, TIPS_TEXT,
-                             parse_mode="HTML", reply_markup=get_main_keyboard())
         elif call.data == "about":
-            bot.answer_callback_query(call.id, "✅ Загружено")
+            bot.answer_callback_query(call.id, "✅ Открываю")
             bot.send_message(call.message.chat.id, ABOUT_TEXT,
                              parse_mode="HTML", reply_markup=get_main_keyboard())
     except Exception as e:
@@ -225,7 +193,7 @@ def callback(call):
 def send_weather(chat_id):
     w = get_weather()
     if not w:
-        bot.send_message(chat_id, "❌ Ошибка получения данных")
+        bot.send_message(chat_id, "❌ Небо молчит. Попробуй позже.")
         return
 
     a = analyze_risks(w)
@@ -236,7 +204,7 @@ def send_weather(chat_id):
     feels = a.get("feels_like", w.get("feels_like", 0))
     wind_desc = get_wind_description(w["wind_speed"])
 
-    # Ветро-строка: скорость цифрой + описание + порывы (если значимы)
+    # Ветро-строка: скорость + описание + порывы (если значимы)
     wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
     if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
         wind_part += f" / порывы {w['wind_gust']}"
@@ -246,30 +214,22 @@ def send_weather(chat_id):
     if not weather_info:
         weather_info = "без осадков"
 
-    # Строка «сейчас»
-    current_line = (
-        f"🌡️ {w['temp']}°C | 💨 {wind_part} | "
-        f"{w.get('cloud_emoji', '')} {w.get('cloud_text', '—').lower()} | "
-        f"🌧️ {weather_info.lower()}"
-    )
-
     # Влажность + видимость
     humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
     vis_str = format_visibility(w["visibility"])
-    comfort_line = f"💧 Влажность {humidity_str} | 👁️ {vis_str}"
 
-    # Светлое время (эмодзи уже внутри)
+    # Светлое время
     light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
 
     # Факторы риска (максимум 3)
     risk_factors = a["risks"][:3]
-    risk_block = "\n".join(f"• {r}" for r in risk_factors) if risk_factors else "• ✅ Нет факторов риска"
+    risk_block = "\n".join(f"• {r}" for r in risk_factors) if risk_factors else "• ✅ Дорога чистая"
 
-    # Экипировка (короткая)
+    # Экипировка
     gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
     gear_block = "\n".join(f"• {g}" for g in gear)
 
-    # Подготовка техники
+    # Подготовка
     tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
                           w.get("humidity"), w.get("dew_point"))
     tech_block = "\n".join(f"• {t}" for t in tech)
@@ -279,7 +239,7 @@ def send_weather(chat_id):
     next_hour = short.get("next_hour", "нет данных")
     morning = short.get("morning", "нет данных")
 
-    # Дельта температуры для «через 3 часа»
+    # Дельта температуры
     if next_hour != "нет данных":
         try:
             fc_temp = int(next_hour.split("°C")[0])
@@ -291,7 +251,7 @@ def send_weather(chat_id):
         except (ValueError, IndexError):
             pass
 
-    # Прогноз на завтра (одной строкой)
+    # Прогноз на завтра одной строкой
     f = get_forecast_tomorrow()
     tomorrow_line = "нет данных"
     if f:
@@ -304,7 +264,7 @@ def send_weather(chat_id):
             f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
         )
 
-    # Один совет
+    # Совет
     tip = get_tip(
         feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
         w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
@@ -312,138 +272,40 @@ def send_weather(chat_id):
 
     verdict_short = get_short_verdict(a["score"])
 
-    # Сборка
-    msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date} {now}
+    # Сборка — дерзкий стиль
+    msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date}, {now}
 
 ━━━━━━━━━━━━━━━━━━━━
-{current_line}
-{comfort_line}
+🌡️ {w['temp']}°C | 💨 {wind_part}
+{w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} | 🌧️ {weather_info.lower()}
+💧 Влажность {humidity_str} | 👁️ {vis_str}
 {light_info}
 ━━━━━━━━━━━━━━━━━━━━
 
-⚠️ <b>РИСК: {a['score']}/10 — {verdict_short}</b>
+⚠️ <b>РИСК {a['score']}/10 — {verdict_short}</b>
 
-<b>Факторы риска:</b>
+<b>🎯 ЧТО НА ДОРОГЕ:</b>
 {risk_block}
 
 ━━━━━━━━━━━━━━━━━━━━
-<b>🛡️ ЭКИПИРОВКА:</b>
+<b>🎽 НА СЕБЯ:</b>
 {gear_block}
 
-<b>🔧 ПОДГОТОВКА:</b>
+<b>🔧 ПРОВЕРЬ ЖЕЛЕЗО:</b>
 {tech_block}
 ━━━━━━━━━━━━━━━━━━━━
 
-📈 <b>ЧЕРЕЗ 3 ЧАСА:</b> {next_hour}
-🌅 <b>НА УТРО:</b> {morning}
+⏱️ <b>ЧЕРЕЗ 3 ЧАСА:</b> {next_hour}
+🌅 <b>УТРОМ:</b> {morning}
 
 📅 <b>ЗАВТРА:</b> {tomorrow_line}
 ━━━━━━━━━━━━━━━━━━━━
 💡 <i>{tip}</i>
 
-🏍️ <b>Берегите себя!</b>"""
+🏍️ <b>Ровной дороги!</b>"""
 
     bot.send_message(chat_id, msg, parse_mode="HTML",
                      reply_markup=get_after_weather_keyboard())
-
-
-# ============ ОТПРАВКА: ПРОГНОЗ НА ЗАВТРА ============
-def send_forecast(chat_id):
-    f = get_forecast_tomorrow()
-    if not f:
-        bot.send_message(chat_id, "❌ Ошибка прогноза")
-        return
-
-    a = analyze_risks(f, is_forecast=True)
-    rain_info = f" 🌧️{f['rain_total']:.1f} мм" if f.get("rain_total", 0) > 0 else ""
-    feels = f["temp_avg"]
-
-    msg = f"""{a['color']} <b>MotoWeather Минск</b> — <b>завтра {f['date']}</b>
-
-🌡️ <b>Средняя температура:</b> {feels}°C (мин {f['temp_min']}°C / макс {f['temp_max']}°C)
-💨 <b>Ветер:</b> {f['wind_speed']} м/с (порывы до {f['wind_gust']} м/с)
-{f['condition']}{rain_info}
-
-<b>ВЕРДИКТ:</b> {a['verdict']}
-📊 <b>Уровень риска:</b> {a['score']}/10
-"""
-
-    if a["risks"]:
-        msg += "\n<b>⚠️ Факторы риска:</b>\n" + "\n".join(f"• {r}" for r in a["risks"])
-
-    if a["recommendations"]:
-        msg += "\n\n<b>💡 Рекомендации:</b>\n" + "\n".join(f"• {r}" for r in a["recommendations"])
-
-    gear = get_detailed_gear(feels, f["wind_speed"], False, f.get("is_rain", False), None)
-    msg += "\n\n<b>🛡️ Экипировка:</b>\n" + "\n".join(f"• {g}" for g in gear)
-    msg += "\n\n📡 <b>Источник:</b> OpenWeatherMap"
-
-    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
-
-
-# ============ ОТПРАВКА: НЕДЕЛЯ ============
-def send_weekly(chat_id):
-    w = get_weekly_forecast()
-    if not w:
-        bot.send_message(chat_id, "❌ Ошибка прогноза")
-        return
-
-    msg = "📆 <b>ПРОГНОЗ НА НЕДЕЛЮ (Минск)</b>\n\n"
-
-    for d in w:
-        emoji = "🔴" if d["wind_speed"] > 14 or d["is_thunder"] else \
-                "🟡" if d["wind_speed"] > 10 or d["rain_total"] > 5 else "🟢"
-        rain = f" 🌧️{d['rain_total']:.1f}мм" if d["rain_total"] > 0 else ""
-        msg += f"{emoji} <b>{d['weekday']}</b> {d['date']}: {d['condition']} {d['temp_min']}°...{d['temp_max']}° | 💨 {d['wind_speed']} м/с{rain}\n"
-
-    msg += "\n<b>📊 АНАЛИЗ НЕДЕЛИ:</b>\n\n"
-
-    rainy, windy = [], []
-    best, worst = None, None
-    best_s, worst_s = float("inf"), -float("inf")
-
-    for d in w:
-        issues = []
-        if d["rain_total"] > 0:
-            issues.append(f"дождь {d['rain_total']:.1f}мм")
-            rainy.append(d["weekday"])
-        if d["wind_speed"] > 10:
-            issues.append(f"ветер {d['wind_speed']} м/с")
-            windy.append(d["weekday"])
-        if d["temp_max"] > 30:
-            issues.append("жарко")
-        if d["temp_min"] < 0:
-            issues.append("мороз")
-
-        score = d["wind_speed"] + d["rain_total"] * 3
-        if score < best_s:
-            best_s, best = score, d
-        if score > worst_s:
-            worst_s, worst = score, d
-
-        if not issues:
-            msg += f"☀️ <b>{d['weekday']}</b>: отличный день\n"
-        elif len(issues) == 1:
-            msg += f"☀️ <b>{d['weekday']}</b>: {issues[0]}\n"
-        else:
-            msg += f"⚠️ <b>{d['weekday']}</b>: {', '.join(issues)}\n"
-
-    if best and worst:
-        msg += f"\n<b>🏍️ РЕКОМЕНДАЦИИ:</b>\n\n"
-        msg += f"✅ <b>Лучший день:</b> {best['weekday']} ({best['temp_min']}°...{best['temp_max']}°)\n"
-        msg += f"⚠️ <b>Худший день:</b> {worst['weekday']}\n"
-
-        msg += "\n💡 <b>Общие советы:</b>\n"
-        if rainy:
-            msg += f"• ☔ Дождевик: {', '.join(rainy)}\n"
-        if windy:
-            msg += f"• 💨 Держите руль: {', '.join(windy)}\n"
-        if best:
-            msg += f"• ⭐ Планируйте: {best['weekday']}\n"
-
-    msg += "\n📡 <b>Источник:</b> OpenWeatherMap\n🏍️ <b>Берегите себя!</b>"
-
-    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 
 # ============ FLASK ДЛЯ ПИНГА ============
@@ -483,7 +345,6 @@ if __name__ == "__main__":
     print("✅ METAR + OpenWeatherMap")
     print("📡 Бот готов к работе")
 
-    # Сброс webhook — защита от 409 Conflict при rolling deploy
     try:
         bot.remove_webhook()
     except Exception as e:
