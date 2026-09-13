@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from config import (
     OPENWEATHER_API_KEY, MINSK_TZ,
-    METAR_URL, OWM_WEATHER_URL, OWM_FORECAST_URL,
+    METAR_URL, METAR_FALLBACK_URL, OWM_WEATHER_URL, OWM_FORECAST_URL,
     MINSK_LAT, MINSK_LON
 )
 
@@ -126,15 +126,26 @@ def parse_weather_phenomena(metar_text):
     return "", "", False, False
 
 
+def _fetch_metar_text():
+    """Пробует основной источник METAR, при неудаче — резервный."""
+    for url in (METAR_URL, METAR_FALLBACK_URL):
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200 and "UMMS" in response.text:
+                return response.text.strip()
+            print(f"METAR: {url} вернул status={response.status_code}")
+        except Exception as e:
+            print(f"METAR: ошибка {url}: {e}")
+    return None
+
+
 def get_metar_data():
     try:
-        response = requests.get(METAR_URL, timeout=10)
-        if response.status_code != 200:
+        metar_text = _fetch_metar_text()
+        if not metar_text:
             return None
 
-        metar_text = response.text.strip()
         print(f"METAR: {metar_text}")
-
         result = {}
 
         # Ветер
