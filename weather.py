@@ -217,6 +217,9 @@ def get_weather():
 
         owm_temp = int(data["main"]["temp"])
         owm_wind = int(data["wind"]["speed"])
+        owm_gust = data.get("wind", {}).get("gust")
+        if owm_gust is not None:
+            owm_gust = round(owm_gust)
         sunrise, sunset = get_sun_times(data)
 
         metar = get_metar_data()
@@ -232,7 +235,7 @@ def get_weather():
             dew_point = metar.get("dew_point")
             is_rain = metar.get("is_rain", False)
             is_thunder = metar.get("is_thunder", False)
-            wind_gust = metar.get("wind_gust")
+            wind_gust = metar.get("wind_gust") or owm_gust
             source = "METAR (аэропорт Минск)"
         else:
             temp = owm_temp
@@ -245,7 +248,7 @@ def get_weather():
             dew_point = None
             is_rain = False
             is_thunder = False
-            wind_gust = None
+            wind_gust = owm_gust
             source = "OpenWeatherMap"
 
         feels_like = calculate_feels_like(temp, wind_speed)
@@ -413,19 +416,34 @@ def get_trend():
         if data.get("cod") != "200" or not data.get("list"):
             return None
 
-        owm = requests.get(
-            f"{OWM_WEATHER_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
-            f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru",
-            timeout=10
-        ).json()
-
-        if owm.get("cod") != 200:
-            return None
-
-        cur_temp = int(owm["main"]["temp"])
-        cur_wind = int(owm["wind"]["speed"])
         fc_temp = int(data["list"][0]["main"]["temp"])
         fc_wind = int(data["list"][0]["wind"]["speed"])
+
+        # Текущие данные берём из METAR — того же источника,
+        # что используется в send_weather. Это даёт консистентность.
+        metar = get_metar_data()
+        cur_temp = None
+        cur_wind = None
+
+        if metar:
+            cur_temp = metar.get("temp")
+            cur_wind = metar.get("wind_speed")
+
+        # Фолбэк на OWM, если METAR не дал данных
+        if cur_temp is None or cur_wind is None:
+            owm = requests.get(
+                f"{OWM_WEATHER_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
+                f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru",
+                timeout=10
+            ).json()
+
+            if owm.get("cod") != 200:
+                return None
+
+            if cur_temp is None:
+                cur_temp = int(owm["main"]["temp"])
+            if cur_wind is None:
+                cur_wind = int(owm["wind"]["speed"])
 
         temp_diff = fc_temp - cur_temp
         wind_diff = fc_wind - cur_wind
@@ -445,7 +463,8 @@ def get_trend():
             trend.append("💨 Ветер без изменений")
 
         if "rain" in data["list"][0]:
-            trend.append("🌧️ Ожидается дождь")
+            pop = data["list"][0].get("pop", 0)
+            trend.append(f"🌧️ Вероятность дождя {int(pop * 100)}%")
         elif any("rain" in item for item in data["list"][:2]):
             trend.append("🌧️ Возможен дождь")
         else:
