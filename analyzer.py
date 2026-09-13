@@ -1,14 +1,21 @@
+from datetime import datetime, timedelta
+
+from config import MINSK_TZ
+from weather import get_minsk_hour
+
+
+# ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
     score = 0
 
     wind_gust = weather.get("wind_gust") or 0
-    wind_speed = weather.get("wind_speed", 0)
-    temp = weather.get("temp", 0)
-    rain_total = weather.get("rain_total", 0)
+    wind_speed = weather.get("wind_speed") or 0
+    temp = weather.get("temp") or 0
+    rain_total = weather.get("rain_total") or 0
     is_rain = weather.get("is_rain", False)
     is_thunder = weather.get("is_thunder", False)
-    visibility = weather.get("visibility", 10000)
+    visibility = weather.get("visibility") or 10000
     dew_point = weather.get("dew_point")
 
     # ВЕТЕР
@@ -57,7 +64,7 @@ def analyze_risks(weather, is_forecast=False):
             score += 2
             recommendations.append("💡 Включите ближний свет")
 
-    # РОСА/ТУМАН
+    # РОСА / ТУМАН
     if not is_forecast and dew_point is not None:
         diff = temp - dew_point
         if diff <= 0:
@@ -73,7 +80,10 @@ def analyze_risks(weather, is_forecast=False):
             score += 1
 
     # ТЕМПЕРАТУРА
-    feels_like = weather.get("temp_avg", temp) if is_forecast else weather.get("feels_like", temp)
+    if is_forecast:
+        feels_like = weather.get("temp_avg", temp)
+    else:
+        feels_like = weather.get("feels_like", temp)
 
     if feels_like < 0:
         risks.append(f"❄️ Мороз (ощущается как {feels_like}°C)")
@@ -118,6 +128,7 @@ def analyze_risks(weather, is_forecast=False):
     }
 
 
+# ============ ЭКИПИРОВКА ============
 def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     gear = []
 
@@ -135,7 +146,7 @@ def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     else:
         gear.append("❄️ Зимняя экипировка")
 
-    if wind_speed > 10:
+    if wind_speed and wind_speed > 10:
         gear.append("💨 Плотная ветрозащита")
 
     if is_night:
@@ -145,36 +156,43 @@ def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     if is_rain:
         gear.append("🌧️ Дождевик / мембрана")
         gear.append("🧤 Водонепроницаемые перчатки")
-    elif dew_point is not None and temp - dew_point <= 2:
+    elif dew_point is not None and temp is not None and temp - dew_point <= 2:
         gear.append("💧 Антизапотеватель для визора")
 
     return gear
 
 
+# ============ ЛУЧШЕЕ ВРЕМЯ ============
 def get_best_time(sunrise=None, sunset=None):
-    from weather import get_minsk_hour, MINSK_TZ
     hour = get_minsk_hour()
-    now = datetime_now = __import__("datetime").datetime.now(MINSK_TZ)
 
     if 9 <= hour <= 18:
         return "🕐 Лучшее время для поездки: с 9:00 до 18:00 ☀️"
     elif 7 <= hour <= 9:
         return "🕐 Утро (7:00–9:00) — будьте осторожны 🌅"
     elif 18 <= hour <= 22:
-        return f"🕐 Вечер — закат был в {sunset}, включите свет 🌆" if sunset else "🕐 Вечер — включите свет 🌆"
-    elif 22 <= hour or hour <= 5:
+        if sunset:
+            return f"🕐 Вечер — закат был в {sunset}, включите свет 🌆"
+        return "🕐 Вечер — включите свет 🌆"
+    elif hour >= 22 or hour <= 5:
         if sunrise:
-            from datetime import datetime as dt, timedelta as td
-            sr = dt.strptime(sunrise, "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day, tzinfo=MINSK_TZ
-            )
-            if now.hour >= 22:
-                sr += td(days=1)
-            elif now.hour < 6 and sr < now:
-                sr += td(days=1)
+            now = datetime.now(MINSK_TZ)
+            sr = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            try:
+                h, m = map(int, sunrise.split(":"))
+                sr = sr.replace(hour=h, minute=m)
+            except (ValueError, AttributeError):
+                return "🕐 Ночь — только с хорошим светом 🌙"
+
+            # если рассвет уже прошёл — берём завтрашний
+            if sr <= now:
+                sr += timedelta(days=1)
+
             delta = sr - now
-            h = int(delta.total_seconds() // 3600)
-            m = int((delta.total_seconds() % 3600) // 60)
-            return f"🕐 Ночь — до рассвета ещё {h} ч {m} мин 🌙"
+            total_min = max(0, int(delta.total_seconds() // 60))
+            hours = total_min // 60
+            mins = total_min % 60
+            return f"🕐 Ночь — до рассвета ещё {hours} ч {mins} мин 🌙"
         return "🕐 Ночь — только с хорошим светом 🌙"
+
     return "🕐 Раннее утро — будьте внимательны 🌄"
