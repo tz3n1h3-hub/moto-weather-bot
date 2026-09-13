@@ -325,8 +325,8 @@ def send_weather(chat_id):
     # Райдерский вердикт
     rider_verdict = get_rider_verdict(a["score"])
 
-    # ============ НОВЫЙ ФОРМАТ (вариант A) ============
-    msg = f"""{a['color']} <b>MotoWeather Минск</b>
+    # ============ ФОРМАТ (без иконки в заголовке) ============
+    msg = f"""<b>MotoWeather Минск</b>
 📅 {date}, {now}
 
 ━━━━━━━━━━━━━━━━━━━━
