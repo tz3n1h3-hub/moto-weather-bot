@@ -145,6 +145,18 @@ def get_short_verdict(score):
     return "РИСКОВАННО"
 
 
+# ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
+def get_rider_verdict(score):
+    """Райдерский вердикт — дерзкий, сразу понятно ехать или нет."""
+    if score <= 2:
+        return "🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ"
+    if score <= 5:
+        return "🟡 ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
+    if score <= 7:
+        return "🟠 С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
+    return "🔴 ГЛУШИ МОТОР — СЕГОДНЯ НЕ ТВОЙ ДЕНЬ"
+
+
 # ============ ЭКИПИРОВКА — СТАРЫЙ ФОРМАТ ============
 def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     gear = []
@@ -199,16 +211,19 @@ def get_gear_short(temp, is_rain, is_night, wind_speed):
     return gear
 
 
-# ============ ПОДГОТОВКА ТЕХНИКИ ============
+# ============ ПОДГОТОВКА ТЕХНИКИ — конкретика ============
 def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
-    """Подготовка техники — 2 пункта."""
-    tech = ["Шины + свет"]
+    """Подготовка техники — конкретные действия."""
+    tech = [
+        "Давление в шинах — на холодную",
+        "Свет: ближний + стоп + поворотники",
+    ]
     if is_night:
-        tech.append("Чистый визор + антизапотеватель")
+        tech.append("Визор — протри и обработай")
     elif is_rain or (humidity and humidity >= 85):
-        tech.append("Чистый визор + антизапотеватель")
+        tech.append("Визор — антизапотеватель обязателен")
     else:
-        tech.append("Проверить давление в шинах")
+        tech.append("Зеркала — под себя")
     return tech
 
 
