@@ -19,6 +19,9 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!")
     exit(1)
 
+if not OPENWEATHER_API_KEY:
+    print("⚠️ OPENWEATHER_API_KEY не найден — прогнозы работать не будут!")
+
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
