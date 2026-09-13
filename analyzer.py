@@ -74,7 +74,6 @@ def analyze_risks(weather, is_forecast=False):
             score += 3
             recommendations.append("🐢 Снизьте скорость, дорога мокрая")
         elif diff <= 2:
-            # При высокой влажности это уже риск тумана
             if humidity >= 90:
                 risks.append(f"🌫️ Очень высокая влажность {humidity}% (разница {diff}°C) — риск тумана!")
                 score += 3
@@ -136,7 +135,17 @@ def analyze_risks(weather, is_forecast=False):
     }
 
 
-# ============ ЭКИПИРОВКА ============
+# ============ КОРОТКИЙ ВЕРДИКТ (для нового шаблона) ============
+def get_short_verdict(score):
+    """Возвращает сокращённый вердикт для нового формата."""
+    if score <= 2:
+        return "БЕЗОПАСНО"
+    if score <= 5:
+        return "ОСТОРОЖНО"
+    return "РИСКОВАННО"
+
+
+# ============ ЭКИПИРОВКА — СТАРЫЙ ФОРМАТ (для send_forecast) ============
 def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     gear = []
 
@@ -170,7 +179,62 @@ def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
     return gear
 
 
-# ============ ЛУЧШЕЕ ВРЕМЯ ============
+# ============ ЭКИПИРОВКА — НОВЫЙ ФОРМАТ ============
+def get_gear_short(temp, is_rain, is_night, wind_speed):
+    """Короткая экипировка для нового шаблона — 1–3 пункта."""
+    gear = []
+    if temp >= 25:
+        gear.append("🧢 Вентиляция + перчатки")
+    elif temp >= 15:
+        gear.append("🧥 Лёгкая ветрозащита")
+    elif temp >= 5:
+        gear.append("🧥 Тёплая подкладка + подогрев ручек")
+    else:
+        gear.append("🧥 Термобельё + балаклава + подогрев")
+
+    if is_rain:
+        gear.append("☔ Дождевик / мембрана")
+    if is_night:
+        gear.append("💡 Дополнительный свет (обязательно)")
+    return gear
+
+
+# ============ ПОДГОТОВКА ТЕХНИКИ ============
+def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
+    """Подготовка техники — 2 пункта."""
+    tech = ["Шины + свет"]
+    if is_night:
+        tech.append("Чистый визор + антизапотеватель")
+    elif is_rain or (humidity and humidity >= 85):
+        tech.append("Чистый визор + антизапотеватель")
+    else:
+        tech.append("Проверить давление в шинах")
+    return tech
+
+
+# ============ ОДИН ПРАКТИЧНЫЙ СОВЕТ ============
+def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility):
+    """Один практичный совет для нового шаблона."""
+    if is_thunder:
+        return "Гроза — остановитесь в укрытии, не выезжайте"
+    if temp < 5 and humidity and humidity > 85:
+        return "На мостах и эстакадах возможен гололёд — снизьте скорость"
+    if temp < 0:
+        return "Возможен гололёд — проверьте шины, снизьте скорость"
+    if is_rain:
+        return "Увеличьте дистанцию в 2 раза — тормозной путь длиннее"
+    if visibility and visibility < 1000:
+        return "Плохая видимость — противотуманки, снизьте скорость"
+    if is_night:
+        return "Ночью усталость приходит быстрее — делайте паузы"
+    if wind_speed and wind_speed > 8:
+        return "Боковой ветер — держите руль крепче, избегайте обгонов"
+    if humidity and humidity >= 90:
+        return "Высокая влажность — возможен туман, будьте внимательны"
+    return "Проверьте давление в шинах перед выездом"
+
+
+# ============ ЛУЧШЕЕ ВРЕМЯ (используется в других местах) ============
 def get_best_time(sunrise=None, sunset=None):
     hour = get_minsk_hour()
 
