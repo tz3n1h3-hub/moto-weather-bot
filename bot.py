@@ -12,9 +12,13 @@ from config import (
 )
 from weather import (
     get_weather, get_forecast_tomorrow, get_weekly_forecast,
-    get_trend, get_minsk_time, get_light_level, get_minsk_hour
+    get_trend, get_minsk_time, get_light_level, get_minsk_hour,
+    get_short_forecast, get_daylight_info,
 )
-from analyzer import analyze_risks, get_detailed_gear, get_best_time
+from analyzer import (
+    analyze_risks, get_detailed_gear, get_best_time,
+    get_short_verdict, get_gear_short, get_tech_check, get_tip,
+)
 from keyboards import get_main_keyboard, get_after_weather_keyboard
 
 
@@ -217,7 +221,7 @@ def callback(call):
         print(f"Ошибка callback: {e}")
 
 
-# ============ ОТПРАВКА ============
+# ============ ОТПРАВКА: ПОГОДА СЕЙЧАС (НОВЫЙ ФОРМАТ) ============
 def send_weather(chat_id):
     w = get_weather()
     if not w:
@@ -225,77 +229,108 @@ def send_weather(chat_id):
         return
 
     a = analyze_risks(w)
-    now = get_minsk_time()
+    now_dt = datetime.now(MINSK_TZ)
+    now = now_dt.strftime("%H:%M")
+    date = now_dt.strftime("%d.%m")
+
     feels = a.get("feels_like", w.get("feels_like", 0))
-    light = get_light_level()
+    wind_desc = get_wind_description(w["wind_speed"])
 
-    temp_line = (
-        f"🌡️ <b>Температура:</b> {w['temp']}°C (ощущается как {feels}°C, {get_temp_description(feels)})"
-        if feels != w["temp"]
-        else f"🌡️ <b>Температура:</b> {w['temp']}°C ({get_temp_description(feels)})"
+    # Осадки
+    weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
+    if not weather_info:
+        weather_info = "без осадков"
+
+    # Строка «сейчас»
+    current_line = (
+        f"🌡️ {w['temp']}°C | 💨 {wind_desc} | "
+        f"{w.get('cloud_emoji', '')} {w.get('cloud_text', '—').lower()} | "
+        f"🌧️ {weather_info.lower()}"
     )
 
-    weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip() or "✅ Без осадков"
+    # Влажность + видимость
+    humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
+    vis_str = format_visibility(w["visibility"])
+    comfort_line = f"💧 Влажность {humidity_str} | 👁️ {vis_str}"
 
-    dew_info = ""
-    if w.get("dew_point") is not None:
-        dew_info = f"\n💧 <b>Точка росы:</b> {w['dew_point']}°C"
-        if w.get("humidity"):
-            dew_info += f" (влажность {w['humidity']}%)"
+    # Светлое время
+    light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
 
-    vis_info = f"\n🌫️ <b>Видимость:</b> {format_visibility(w['visibility'])} ({get_visibility_rating(w['visibility'])})"
+    # Факторы риска (максимум 3)
+    risk_factors = a["risks"][:3]
+    risk_block = "\n".join(f"• {r}" for r in risk_factors) if risk_factors else "• ✅ Нет факторов риска"
 
-    wind_line = (
-        f"💨 <b>Ветер:</b> {w['wind_speed']} м/с ({get_wind_description(w['wind_speed'])}) — {get_wind_feeling(w['wind_speed'])}."
+    # Экипировка (короткая)
+    gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
+    gear_block = "\n".join(f"• {g}" for g in gear)
+
+    # Подготовка техники
+    tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
+                          w.get("humidity"), w.get("dew_point"))
+    tech_block = "\n".join(f"• {t}" for t in tech)
+
+    # Короткий прогноз
+    short = get_short_forecast()
+    next_hour = short.get("next_hour", "нет данных")
+    morning = short.get("morning", "нет данных")
+
+    # Прогноз на завтра (одной строкой)
+    f = get_forecast_tomorrow()
+    tomorrow_line = "нет данных"
+    if f:
+        fa = analyze_risks(f, is_forecast=True)
+        fa_short = get_short_verdict(fa["score"])
+        cond_low = f["condition"].split(" ", 1)[-1].lower()
+        tomorrow_line = (
+            f"{f['temp_min']}–{f['temp_max']}°C, "
+            f"{cond_low}, "
+            f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
+        )
+
+    # Один совет
+    tip = get_tip(
+        feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
+        w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
     )
 
-    if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"]:
-        wind_line += (f"\n⚠️ <b>ОПАСНЫЕ ПОРЫВЫ:</b> до {w['wind_gust']} м/с!"
-                      if w["wind_gust"] > 10
-                      else f"\n✈️ <b>Порывы:</b> до {w['wind_gust']} м/с.")
+    verdict_short = get_short_verdict(a["score"])
 
-    sun_line = ""
-    if w.get("sunrise") and w.get("sunset"):
-        sun_line = f"\n🌅 Рассвет: {w['sunrise']} | 🌇 Закат: {w['sunset']}"
+    # Сборка финального сообщения
+    msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date} {now}
 
-    best_time = get_best_time(w.get("sunrise"), w.get("sunset"))
+━━━━━━━━━━━━━━━━━━━━
+{current_line}
+{comfort_line}
+🌅 {light_info}
+━━━━━━━━━━━━━━━━━━━━
 
-    trend = get_trend()
-    trend_line = ("\n\n📈 <b>Что будет через 3 часа:</b>\n" +
-                  "\n".join(f"• {t}" for t in trend)) if trend else ""
+⚠️ <b>РИСК: {a['score']}/10 — {verdict_short}</b>
 
-    gear = get_detailed_gear(feels, w["wind_speed"], w.get("is_night", False),
-                              w.get("is_rain", False), w.get("dew_point"))
-    gear_text = "\n".join(f"• {g}" for g in gear)
+<b>Факторы риска:</b>
+{risk_block}
 
-    msg = f"""{a['color']} <b>MotoWeather Минск</b> — <b>сейчас {now}</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>🛡️ ЭКИПИРОВКА:</b>
+{gear_block}
 
-{light}
-{temp_line}
-{wind_line}
-{w.get('cloud_emoji', '')} <b>Облачность:</b> {w.get('cloud_text', '—')}
-🌧️ <b>Осадки:</b> {weather_info}{dew_info}{vis_info}{sun_line}
+<b>🔧 ПОДГОТОВКА:</b>
+{tech_block}
+━━━━━━━━━━━━━━━━━━━━
 
-📡 <b>Источник:</b> {w['source']}
-ℹ️ <i>Данные с метеостанции аэропорта Минск. В городе может отличаться.</i>
+📈 <b>БЛИЖАЙШИЙ ЧАС:</b> {next_hour}
+🌅 <b>НА УТРО:</b> {morning}
 
-<b>ВЕРДИКТ:</b> {a['verdict']}
-📊 <b>Уровень риска:</b> {a['score']}/10
-"""
+📅 <b>ЗАВТРА:</b> {tomorrow_line}
+━━━━━━━━━━━━━━━━━━━━
+💡 <i>{tip}</i>
 
-    if a["risks"]:
-        msg += "\n<b>⚠️ Факторы риска:</b>\n" + "\n".join(f"• {r}" for r in a["risks"])
-    else:
-        msg += "\n✅ <b>Нет факторов риска</b>"
+🏍️ <b>Берегите себя!</b>"""
 
-    if a["recommendations"]:
-        msg += "\n\n<b>💡 Рекомендации:</b>\n" + "\n".join(f"• {r}" for r in a["recommendations"])
-
-    msg += f"\n\n<b>🛡️ Экипировка:</b>\n{gear_text}{trend_line}\n\n<b>{best_time}</b>"
-
-    bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
+    bot.send_message(chat_id, msg, parse_mode="HTML",
+                     reply_markup=get_after_weather_keyboard())
 
 
+# ============ ОТПРАВКА: ПРОГНОЗ НА ЗАВТРА (СТАРЫЙ ФОРМАТ) ============
 def send_forecast(chat_id):
     f = get_forecast_tomorrow()
     if not f:
@@ -329,6 +364,7 @@ def send_forecast(chat_id):
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 
+# ============ ОТПРАВКА: НЕДЕЛЯ (БЕЗ ИЗМЕНЕНИЙ) ============
 def send_weekly(chat_id):
     w = get_weekly_forecast()
     if not w:
@@ -430,7 +466,7 @@ if __name__ == "__main__":
     print("✅ METAR + OpenWeatherMap")
     print("📡 Бот готов к работе")
 
-    # Сброс webhook — защита от 409 Conflict при rolling deploy на Render
+    # Сброс webhook — защита от 409 Conflict при rolling deploy
     try:
         bot.remove_webhook()
     except Exception as e:
