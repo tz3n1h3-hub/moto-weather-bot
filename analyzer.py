@@ -75,15 +75,15 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("🐢 Снизьте скорость, дорога мокрая")
         elif diff <= 2:
             if humidity >= 90:
-                risks.append(f"🌫️ Очень высокая влажность {humidity}% (разница {diff}°C) — риск тумана!")
+                risks.append(f"🌫️ Влажность {humidity}% — воздух близок к туману")
                 score += 3
                 recommendations.append("🌫️ Возможен туман — противотуманки, снизьте скорость")
             else:
-                risks.append(f"💧 Высокая влажность (разница {diff}°C)")
+                risks.append(f"💧 Высокая влажность {humidity}%")
                 score += 2
                 recommendations.append("🐢 Осторожно на разметке и в поворотах")
         elif diff <= 4:
-            risks.append(f"💧 Повышенная влажность (разница {diff}°C)")
+            risks.append(f"💧 Повышенная влажность {humidity}%")
             score += 1
 
     # ТЕМПЕРАТУРА
