@@ -236,6 +236,11 @@ def send_weather(chat_id):
     feels = a.get("feels_like", w.get("feels_like", 0))
     wind_desc = get_wind_description(w["wind_speed"])
 
+    # Ветро-строка: скорость цифрой + описание + порывы (если значимы)
+    wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
+    if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
+        wind_part += f" / порывы {w['wind_gust']}"
+
     # Осадки
     weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
     if not weather_info:
@@ -243,7 +248,7 @@ def send_weather(chat_id):
 
     # Строка «сейчас»
     current_line = (
-        f"🌡️ {w['temp']}°C | 💨 {wind_desc} | "
+        f"🌡️ {w['temp']}°C | 💨 {wind_part} | "
         f"{w.get('cloud_emoji', '')} {w.get('cloud_text', '—').lower()} | "
         f"🌧️ {weather_info.lower()}"
     )
@@ -253,7 +258,7 @@ def send_weather(chat_id):
     vis_str = format_visibility(w["visibility"])
     comfort_line = f"💧 Влажность {humidity_str} | 👁️ {vis_str}"
 
-    # Светлое время
+    # Светлое время (эмодзи уже внутри)
     light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
 
     # Факторы риска (максимум 3)
@@ -295,13 +300,13 @@ def send_weather(chat_id):
 
     verdict_short = get_short_verdict(a["score"])
 
-    # Сборка финального сообщения
+    # Сборка
     msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date} {now}
 
 ━━━━━━━━━━━━━━━━━━━━
 {current_line}
 {comfort_line}
-🌅 {light_info}
+{light_info}
 ━━━━━━━━━━━━━━━━━━━━
 
 ⚠️ <b>РИСК: {a['score']}/10 — {verdict_short}</b>
@@ -330,7 +335,7 @@ def send_weather(chat_id):
                      reply_markup=get_after_weather_keyboard())
 
 
-# ============ ОТПРАВКА: ПРОГНОЗ НА ЗАВТРА (СТАРЫЙ ФОРМАТ) ============
+# ============ ОТПРАВКА: ПРОГНОЗ НА ЗАВТРА ============
 def send_forecast(chat_id):
     f = get_forecast_tomorrow()
     if not f:
@@ -364,7 +369,7 @@ def send_forecast(chat_id):
     bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=get_after_weather_keyboard())
 
 
-# ============ ОТПРАВКА: НЕДЕЛЯ (БЕЗ ИЗМЕНЕНИЙ) ============
+# ============ ОТПРАВКА: НЕДЕЛЯ ============
 def send_weekly(chat_id):
     w = get_weekly_forecast()
     if not w:
