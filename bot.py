@@ -221,7 +221,7 @@ def callback(call):
         print(f"Ошибка callback: {e}")
 
 
-# ============ ОТПРАВКА: ПОГОДА СЕЙЧАС (НОВЫЙ ФОРМАТ) ============
+# ============ ОТПРАВКА: ПОГОДА СЕЙЧАС ============
 def send_weather(chat_id):
     w = get_weather()
     if not w:
@@ -279,6 +279,18 @@ def send_weather(chat_id):
     next_hour = short.get("next_hour", "нет данных")
     morning = short.get("morning", "нет данных")
 
+    # Дельта температуры для «через 3 часа»
+    if next_hour != "нет данных":
+        try:
+            fc_temp = int(next_hour.split("°C")[0])
+            delta = fc_temp - w["temp"]
+            if delta >= 2:
+                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
+            elif delta <= -2:
+                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
+        except (ValueError, IndexError):
+            pass
+
     # Прогноз на завтра (одной строкой)
     f = get_forecast_tomorrow()
     tomorrow_line = "нет данных"
@@ -322,7 +334,7 @@ def send_weather(chat_id):
 {tech_block}
 ━━━━━━━━━━━━━━━━━━━━
 
-📈 <b>БЛИЖАЙШИЙ ЧАС:</b> {next_hour}
+📈 <b>ЧЕРЕЗ 3 ЧАСА:</b> {next_hour}
 🌅 <b>НА УТРО:</b> {morning}
 
 📅 <b>ЗАВТРА:</b> {tomorrow_line}
