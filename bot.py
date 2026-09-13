@@ -252,7 +252,7 @@ def send_weather(chat_id):
     if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"]:
         wind_line += (f"\n⚠️ <b>ОПАСНЫЕ ПОРЫВЫ:</b> до {w['wind_gust']} м/с!"
                       if w["wind_gust"] > 10
-                      else f"\n✈️ <b>Порывы (METAR):</b> до {w['wind_gust']} м/с.")
+                      else f"\n✈️ <b>Порывы:</b> до {w['wind_gust']} м/с.")
 
     sun_line = ""
     if w.get("sunrise") and w.get("sunset"):
@@ -429,6 +429,12 @@ if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!")
     print("✅ METAR + OpenWeatherMap")
     print("📡 Бот готов к работе")
+
+    # Сброс webhook — защита от 409 Conflict при rolling deploy на Render
+    try:
+        bot.remove_webhook()
+    except Exception as e:
+        print(f"⚠️ remove_webhook: {e}")
 
     threading.Thread(target=run_flask, daemon=True).start()
     bot.infinity_polling()
