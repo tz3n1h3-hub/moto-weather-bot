@@ -119,8 +119,6 @@ ABOUT_TEXT = """ℹ️ <b>О ПРОЕКТЕ</b>
 • Прогноз на 3 часа и утро
 
 ━━━━━━━━━━━━━━━━━━━━
-🟢 <b>ОТЛИЧНЫЙ ДЕНЬ</b> — 1/10
-
 🌡️ +22°C | 💨 2 м/с (лёгкий ветер)
 ☀️ Ясно | 🌧️ без осадков
 💧 Влажность 45% | 👁️ 10+ км
@@ -137,8 +135,6 @@ ABOUT_TEXT = """ℹ️ <b>О ПРОЕКТЕ</b>
 💡 <i>Погода шепчет — едь</i>
 
 ━━━━━━━━━━━━━━━━━━━━
-🟠 <b>С ОСТОРОЖНОСТЬЮ</b> — 6/10
-
 🌡️ +8°C | 💨 1 м/с | 🌫️ туман
 💧 Влажность 93% — воздух близок к туману
 
@@ -159,8 +155,6 @@ ABOUT_TEXT = """ℹ️ <b>О ПРОЕКТЕ</b>
 💡 <i>Визор вниз, дистанцию больше</i>
 
 ━━━━━━━━━━━━━━━━━━━━
-🔴 <b>ОПАСНО</b> — 9/10
-
 🌡️ +2°C | 💨 18 м/с | ⛈️ гроза
 💨 Порывы до 25 м/с
 
@@ -262,42 +256,32 @@ def send_weather(chat_id):
     feels = a.get("feels_like", w.get("feels_like", 0))
     wind_desc = get_wind_description(w["wind_speed"])
 
-    # Ветро-строка: скорость + описание + порывы (если значимы)
     wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
     if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
         wind_part += f" / порывы {w['wind_gust']}"
 
-    # Осадки
     weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
     if not weather_info:
         weather_info = "без осадков"
 
-    # Влажность + видимость
     humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
     vis_str = format_visibility(w["visibility"])
-
-    # Светлое время
     light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
 
-    # Факторы риска (максимум 3)
     risk_factors = a["risks"][:3]
     risk_block = "\n".join(f"• {r}" for r in risk_factors) if risk_factors else "• ✅ Дорога чистая"
 
-    # Экипировка
     gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
     gear_block = "\n".join(f"• {g}" for g in gear)
 
-    # Подготовка
     tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
                           w.get("humidity"), w.get("dew_point"))
     tech_block = "\n".join(f"• {t}" for t in tech)
 
-    # Короткий прогноз
     short = get_short_forecast()
     next_hour = short.get("next_hour", "нет данных")
     morning = short.get("morning", "нет данных")
 
-    # Дельта температуры
     if next_hour != "нет данных":
         try:
             fc_temp = int(next_hour.split("°C")[0])
@@ -309,7 +293,6 @@ def send_weather(chat_id):
         except (ValueError, IndexError):
             pass
 
-    # Прогноз на завтра одной строкой
     f = get_forecast_tomorrow()
     tomorrow_line = "нет данных"
     if f:
@@ -322,16 +305,13 @@ def send_weather(chat_id):
             f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
         )
 
-    # Совет
     tip = get_tip(
         feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
         w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
     )
 
-    # Райдерский вердикт
     rider_verdict = get_rider_verdict(a["score"])
 
-    # Сборка — дерзкий стиль
     msg = f"""{a['color']} <b>MotoWeather Минск</b> — {date}, {now}
 
 ━━━━━━━━━━━━━━━━━━━━
