@@ -67,7 +67,8 @@ def get_temp_description(t):
 
 
 def get_wind_description(s):
-    if s <= 1: return "штиль"
+    if s < 1: return "штиль"
+    if s <= 3: return "тихий ветер"
     if s <= 6: return "лёгкий ветер"
     if s <= 10: return "умеренный ветер"
     if s <= 14: return "сильный ветер"
@@ -76,7 +77,8 @@ def get_wind_description(s):
 
 
 def get_wind_feeling(s):
-    if s <= 1: return "🌿 безветренно"
+    if s < 1: return "🌿 безветренно"
+    if s <= 3: return "🍃 почти незаметно"
     if s <= 6: return "🍃 комфортно"
     if s <= 10: return "🌬️ ощущается"
     if s <= 14: return "💨 требует внимания"
@@ -397,6 +399,16 @@ def home():
     return "🏍️ MotoWeather Bot is running!", 200
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return "", 204
+
+
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_icon():
+    return "", 204
+
+
 @app.route("/health")
 def health():
     return jsonify({
@@ -408,7 +420,8 @@ def health():
 
 
 def run_flask():
-    app.run(host="0.0.0.0", port=10000, debug=False, use_reloader=False)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 # ============ ЗАПУСК ============
