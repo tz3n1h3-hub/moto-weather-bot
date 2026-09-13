@@ -67,14 +67,22 @@ def analyze_risks(weather, is_forecast=False):
     # РОСА / ТУМАН
     if not is_forecast and dew_point is not None:
         diff = temp - dew_point
+        humidity = weather.get("humidity") or 0
+
         if diff <= 0:
             risks.append("🌫️ Точка росы = температуре! Туман, роса")
             score += 3
             recommendations.append("🐢 Снизьте скорость, дорога мокрая")
         elif diff <= 2:
-            risks.append(f"💧 Высокая влажность (разница {diff}°C)")
-            score += 2
-            recommendations.append("🐢 Осторожно на разметке и в поворотах")
+            # При высокой влажности это уже риск тумана
+            if humidity >= 90:
+                risks.append(f"🌫️ Очень высокая влажность {humidity}% (разница {diff}°C) — риск тумана!")
+                score += 3
+                recommendations.append("🌫️ Возможен туман — противотуманки, снизьте скорость")
+            else:
+                risks.append(f"💧 Высокая влажность (разница {diff}°C)")
+                score += 2
+                recommendations.append("🐢 Осторожно на разметке и в поворотах")
         elif diff <= 4:
             risks.append(f"💧 Повышенная влажность (разница {diff}°C)")
             score += 1
@@ -184,7 +192,6 @@ def get_best_time(sunrise=None, sunset=None):
             except (ValueError, AttributeError):
                 return "🕐 Ночь — только с хорошим светом 🌙"
 
-            # если рассвет уже прошёл — берём завтрашний
             if sr <= now:
                 sr += timedelta(days=1)
 
