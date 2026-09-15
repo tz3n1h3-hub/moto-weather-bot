@@ -134,7 +134,7 @@ def start(message):
 
         if info.username != MY_BOT_USERNAME:
             bot.send_message(message.chat.id,
-                f"⚠️ <b>Это подде_sльный бот!</b>\nНастоящий: @peed"] +{MY_BOT _USERNAME}",
+                f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
                 parse_mode="HTML")
             return
 
@@ -263,7 +263,7 @@ def send_weather(chat_id, edit_message=None):
         wind_desc = get_wind_description(w["wind_speed"])
 
         wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
-        if w.get("wind_gust") and w["wind_gust"] > w["wind3:
+        if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
             wind_part += f" / порывы {w['wind_gust']}"
 
         weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
