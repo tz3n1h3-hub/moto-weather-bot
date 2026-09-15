@@ -11,12 +11,11 @@ from config import (
     MINSK_LAT, MINSK_LON
 )
 
-# Отключаем предупреждения о SSL (у wttr.in истёк сертификат)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # ============ ГЛОБАЛЬНЫЙ КЭШ ============
-_open_meteo_cache = {"data": None, "ts": 0, "source": None}
+_open_meteo_cache = {"data": None, "ts": 0}
 _wttr_cache = {"data": None, "ts": 0}
 
 
@@ -51,7 +50,6 @@ def is_night_time():
 
 
 def get_daylight_info(sunrise, sunset):
-    """Возвращает с эмодзи по времени суток."""
     if not sunrise or not sunset:
         return "—"
     try:
@@ -164,7 +162,6 @@ def parse_weather_phenomena(metar_text):
 
 
 def _fetch_metar_text():
-    """Пробует основной источник METAR, при неудаче — резервный."""
     for url in (METAR_URL, METAR_FALLBACK_URL):
         try:
             print(f"METAR: пробую {url}", flush=True)
@@ -187,7 +184,6 @@ def get_metar_data():
         print(f"METAR OK: {metar_text}", flush=True)
         result = {}
 
-        # Ветер
         wind_match = re.search(r"\b(\d{3})(\d{2,3})(G(\d{2,3}))?(KT|MPS)\b", metar_text)
         if wind_match:
             unit = wind_match.group(5)
@@ -200,22 +196,18 @@ def get_metar_data():
             else:
                 result["wind_gust"] = None
 
-        # Облачность
         emoji, text = parse_clouds(metar_text)
         result["cloud_emoji"] = emoji
         result["cloud_text"] = text
 
-        # Видимость
         result["visibility"] = parse_visibility(metar_text)
 
-        # Осадки
         w_emoji, w_text, is_rain, is_thunder = parse_weather_phenomena(metar_text)
         result["weather_emoji"] = w_emoji
         result["weather_text"] = w_text
         result["is_rain"] = is_rain
         result["is_thunder"] = is_thunder
 
-        # Температура и точка росы
         temp_match = re.search(r"\s(M?\d{2})/(M?\d{2})\s", metar_text)
         if temp_match:
             result["temp"] = int(temp_match.group(1).replace("M", "-"))
@@ -227,9 +219,8 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO С КЭШЕМ ============
+# ============ OPEN-METEO ============
 def _fetch_open_meteo():
-    """Запрашивает Open-Meteo с кэшем на 5 минут."""
     global _open_meteo_cache
 
     if _open_meteo_cache["data"] and (time.time() - _open_meteo_cache["ts"]) < 300:
@@ -264,9 +255,8 @@ def _fetch_open_meteo():
         return None
 
 
-# ============ WTTR.IN FALLBACK (verify=False из-за истёкшего SSL) ============
+# ============ WTTR.IN ============
 def _fetch_wttr():
-    """Fallback: wttr.in (JSON). SSL отключён — у них истёк сертификат."""
     global _wttr_cache
 
     if _wttr_cache["data"] and (time.time() - _wttr_cache["ts"]) < 300:
@@ -291,7 +281,6 @@ def _fetch_wttr():
 
 
 def _wttr_to_hourly(wttr_data):
-    """wttr.in → формат Open-Meteo hourly."""
     if not wttr_data:
         return None
     try:
@@ -327,7 +316,6 @@ def _wttr_to_hourly(wttr_data):
 
 
 def _wttr_to_daily(wttr_data):
-    """wttr.in → формат Open-Meteo daily."""
     if not wttr_data:
         return None
     try:
@@ -383,7 +371,6 @@ def _wttr_to_daily(wttr_data):
 
 
 def _get_forecast_data():
-    """Возвращает (данные, источник). Пробует Open-Meteo → wttr.in."""
     om = _fetch_open_meteo()
     if om and "hourly" in om:
         return om, "Open-Meteo"
@@ -412,7 +399,6 @@ def _get_forecast_data():
 
 # ============ WMO КОДЫ ============
 def _wmo_emoji(code):
-    """WMO weather code → (emoji, description)."""
     if code == 0:
         return "☀️", "Ясно"
     if code in (1, 2):
@@ -588,7 +574,6 @@ def get_forecast_tomorrow():
 
 # ============ КОРОТКИЙ ПРОГНОЗ ============
 def get_short_forecast():
-    """Возвращает {next_hour, morning, source}."""
     try:
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
@@ -602,7 +587,6 @@ def get_short_forecast():
 
         now = datetime.now(MINSK_TZ).replace(tzinfo=None)
 
-        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -611,7 +595,7 @@ def get_short_forecast():
                 t_dt = datetime.fromisoformat(t_str)
                 diff = abs((t_dt - target).total_seconds())
                 if diff < min_diff:
-                    min_diff =тро diff
+                    min_diff = diff
                     next_idx = i
             except Exception:
                 continue
@@ -625,7 +609,6 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # У завтра (6:00–9:00)
         tomorrow_date = (now + timedelta(days=1)).date()
         morning_temps = []
         morning_winds = []
