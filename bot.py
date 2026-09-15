@@ -119,7 +119,7 @@ ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
 💡 <i>Туман на подходе — визор вниз, дистанцию больше</i>
 
-<b>👨‍💻 Разработчик:</b> <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>
+<b>👨‍💻 Разработчик:</b> @Aleksandr_K8V
 
 🏍️ <b>Жми «Сейчас» — увидишь сегодняшний день.</b>"""
 
@@ -229,8 +229,8 @@ def callback(call):
                                      reply_markup=get_main_keyboard())
 
         else:
-            print(f"⚠️ Неизвестный callback: {call.data}", flush=True)
-            bot.answer_callback_query(call.id, "❓ Неизвестная кнопка", cache_time=3)
+            print(f")
+⚠️ Неизвестный callback: {call.data}", flush=True            bot.answer_callback_query(call.id, "❓ Неизвестная кнопка", cache_time=3)
 
     except Exception as e:
         print(f"❌ Ошибка callback: {type(e).__name__}: {e}", flush=True)
@@ -273,7 +273,6 @@ def send_weather(chat_id, edit_message=None):
         humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
         vis_str = format_visibility(w["visibility"])
 
-        # Светлое время — только если есть данные
         if w.get("sunrise") and w.get("sunset"):
             light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
         else:
@@ -294,7 +293,6 @@ def send_weather(chat_id, edit_message=None):
         print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
         morning = short.get("morning", "нет данных")
-        forecast_src = short.get("source", "none")
 
         if next_hour != "нет данных":
             try:
@@ -335,14 +333,9 @@ def send_weather(chat_id, edit_message=None):
         if light_info:
             weather_block += f"\n{light_info}"
 
-        # Источник прогноза
-        forecast_note = ""
-        if forecast_src and forecast_src != "none":
-            forecast_note = f"\n📊 Прогноз: {forecast_src}"
-
         msg = f"""<b>MotoWeather</b>
 📅 {date} · {now} · Минск
-✈️ Текущая: аэропорт Минск{forecast_note}
+✈️ Текущая: аэропорт Минск
 
 {weather_block}
 
@@ -462,5 +455,5 @@ if __name__ == "__main__":
                 time.sleep(20)
             else:
                 print(f"⚠️ Polling упал: {e}", flush=True)
-                print("⏳ Жду 10 секунд перед перезапуском...", flush=True)
+                print("⏳ Жду 10 секунд передэ перезапуском...", flush=True)
                 time.sleep(10)
