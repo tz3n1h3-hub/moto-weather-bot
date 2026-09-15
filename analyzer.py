@@ -157,40 +157,6 @@ def get_rider_verdict(score):
     return "🔴 ГЛУШИ МОТОР — СЕГОДНЯ НЕ ТВОЙ ДЕНЬ"
 
 
-# ============ ЭКИПИРОВКА — СТАРЫЙ ФОРМАТ ============
-def get_detailed_gear(temp, wind_speed, is_night, is_rain, dew_point):
-    gear = []
-
-    if temp >= 25:
-        gear.append("🟢 Лёгкая экипировка с сеткой")
-    elif temp >= 18:
-        gear.append("🟢 Стандартная экипировка")
-    elif temp >= 10:
-        gear.append("🟡 Ветрозащита + тёплая подкладка")
-    elif temp >= 5:
-        gear.append("🟠 Тёплая экипировка")
-        gear.append("🔥 Подогрев ручек")
-    elif temp >= 0:
-        gear.append("🔴 Термобельё + полный подогрев")
-    else:
-        gear.append("❄️ Зимняя экипировка")
-
-    if wind_speed and wind_speed > 10:
-        gear.append("💨 Плотная ветрозащита")
-
-    if is_night:
-        gear.append("💡 Дополнительный свет")
-        gear.append("🪞 Чистый визор")
-
-    if is_rain:
-        gear.append("🌧️ Дождевик / мембрана")
-        gear.append("🧤 Водонепроницаемые перчатки")
-    elif dew_point is not None and temp is not None and temp - dew_point <= 2:
-        gear.append("💧 Антизапотеватель для визора")
-
-    return gear
-
-
 # ============ ЭКИПИРОВКА — НОВЫЙ ФОРМАТ ============
 def get_gear_short(temp, is_rain, is_night, wind_speed):
     """Короткая экипировка для нового шаблона — 1–3 пункта."""
@@ -247,38 +213,3 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
     if wind_speed and wind_speed > 8:
         return "Боковой ветер — руль крепче, обгоны отложи"
     return "Давление в шинах проверь — 5 минут спасут вечер"
-
-
-# ============ ЛУЧШЕЕ ВРЕМЯ ============
-def get_best_time(sunrise=None, sunset=None):
-    hour = get_minsk_hour()
-
-    if 9 <= hour <= 18:
-        return "🕐 Лучшее время для поездки: с 9:00 до 18:00 ☀️"
-    elif 7 <= hour <= 9:
-        return "🕐 Утро (7:00–9:00) — будьте осторожны 🌅"
-    elif 18 <= hour <= 22:
-        if sunset:
-            return f"🕐 Вечер — закат был в {sunset}, включите свет 🌆"
-        return "🕐 Вечер — включите свет 🌆"
-    elif hour >= 22 or hour <= 5:
-        if sunrise:
-            now = datetime.now(MINSK_TZ)
-            sr = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            try:
-                h, m = map(int, sunrise.split(":"))
-                sr = sr.replace(hour=h, minute=m)
-            except (ValueError, AttributeError):
-                return "🕐 Ночь — только с хорошим светом 🌙"
-
-            if sr <= now:
-                sr += timedelta(days=1)
-
-            delta = sr - now
-            total_min = max(0, int(delta.total_seconds() // 60))
-            hours = total_min // 60
-            mins = total_min % 60
-            return f"🕐 Ночь — до рассвета ещё {hours} ч {mins} мин 🌙"
-        return "🕐 Ночь — только с хорошим светом 🌙"
-
-    return "🕐 Раннее утро — будьте внимательны 🌄"
