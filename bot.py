@@ -80,76 +80,45 @@ def format_visibility(v):
 
 
 # ============ ТЕКСТЫ ============
-ABOUT_TEXT = """ℹ️ <b>О ПРОЕКТЕ</b>
+ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
-🏍️ <b>MotoWeather Минск</b>
+Бот для райдеров. Проверяю METAR аэропорта Минск — говорю: ехать или нет.
 
-Погода для тех, кто на двух колёсах. Проверяю аэропорт Минск и говорю прямо: <b>ехать или нет</b>.
-
-<b>Что показывает:</b>
+<b>Показываю:</b>
 • Вердикт — ехать или нет
 • Экипировку и подготовку
 • Прогноз на 3 часа и утро
 
-━━━━━━━━━━━━━━━━━━━━
-🌡️ +22°C | 💨 2 м/с (лёгкий ветер)
-☀️ Ясно | 🌧️ без осадков
-💧 Влажность 45% | 👁️ 10+ км
+<b>Пример плохой погоды:</b>
 
-<b>🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ</b>
+🌡️ +3°C · 💨 12 м/с (сильный ветер) / порывы 18
+🌧️ Дождь · туман
+💧 Влажность 96% · 👁️ 800 м
+🌇 Темно (закат 19:32)
 
-<b>🎯 ЧТО НА ДОРОГЕ:</b>
-• ✅ Дорога чистая
+<b>🔴 НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО</b>
 
-<b>🎽 НА СЕБЯ:</b>
-• 🧢 Вентиляция + перчатки
+<b>🎯 ЧТО НА ДОРОГЕ</b>
+🌪️ Сильный ветер (порывы до 18 м/с)
+🌧️ Дождь (дорога скользкая)
+🌫️ Очень плохая видимость (800 м)
 
-⏱️ <b>ЧЕРЕЗ 3 ЧАСА:</b> +24°C, Ясно
-💡 <i>Погода шепчет — едь</i>
+<b>🎽 НА СЕБЯ</b>
+🧥 Тёплая подкладка + подогрев ручек
+☔ Дождевик / мембрана
+💡 Дополнительный свет (обязательно)
 
-━━━━━━━━━━━━━━━━━━━━
-🌡️ +8°C | 💨 1 м/с | 🌫️ туман
-💧 Влажность 93% — воздух близок к туману
+<b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
+✅ Давление в шинах — на холодную
+✅ Визор — антизапотеватель обязателен
+✅ Противотуманки — включить
 
-<b>🟠 С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ</b>
+💡 <i>Туман на подходе — визор вниз, дистанцию больше</i>
 
-<b>🎯 ЧТО НА ДОРОГЕ:</b>
-• 🌫️ Туман близко
-• ❄️ Холодно
-• 🌙 Темно
+📡 METAR аэропорта Минск + OpenWeatherMap
+👨‍💻 Alexander_K8V
 
-<b>🎽 НА СЕБЯ:</b>
-• 🧥 Тёплая подкладка + подогрев ручек
-
-<b>🔧 ПЕРЕД ВЫЕЗДОМ:</b>
-• Давление в шинах — на холодную
-• Визор — антизапотеватель
-
-💡 <i>Визор вниз, дистанцию больше</i>
-
-━━━━━━━━━━━━━━━━━━━━
-🌡️ +2°C | 💨 18 м/с | ⛈️ гроза
-💨 Порывы до 25 м/с
-
-<b>🔴 ГЛУШИ МОТОР — СЕГОДНЯ НЕ ТВОЙ ДЕНЬ</b>
-
-<b>🎯 ЧТО НА ДОРОГЕ:</b>
-• ⚡ ГРОЗА!
-• 💨 Критический ветер
-• 🧊 Риск обледенения
-
-💡 <i>Гроза — глуши мотор и в укрытие. Молния шуток не понимает</i>
-
-━━━━━━━━━━━━━━━━━━━━
-<b>📡 ИСТОЧНИКИ:</b>
-✈️ METAR (UMMS) — основной
-🌐 OpenWeatherMap — прогнозы
-
-<b>👨‍💻 Автор:</b> Alexander_K8V
-
-🏍️ <i>Ровной дороги!</i>
-
-<b>Жми «Сейчас» — увидишь погоду на сегодня.</b>"""
+🏍️ <b>Жми «Сейчас» — увидишь сегодняшний день.</b>"""
 
 
 # ============ КОМАНДЫ ============
@@ -211,8 +180,25 @@ def callback(call):
             send_weather(call.message.chat.id, edit_message=call.message)
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅ Открываю", cache_time=3)
-            bot.send_message(call.message.chat.id, ABOUT_TEXT,
-                             parse_mode="HTML", reply_markup=get_main_keyboard())
+            # Редактируем то же сообщение, где нажата кнопка
+            try:
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=ABOUT_TEXT,
+                    parse_mode="HTML",
+                    reply_markup=get_main_keyboard()
+                )
+                print(f"✅ About открыт для {call.message.chat.id}")
+            except Exception as e:
+                err = str(e).lower()
+                if "message is not modified" in err:
+                    print("ℹ️ About уже открыт (не изменилось)")
+                else:
+                    print(f"⚠️ Не удалось: {e}. Отправляю новое.")
+                    bot.send_message(call.message.chat.id, ABOUT_TEXT,
+                                     parse_mode="HTML",
+                                     reply_markup=get_main_keyboard())
     except Exception as e:
         print(f"Ошибка callback: {e}")
 
@@ -251,7 +237,7 @@ def send_weather(chat_id, edit_message=None):
 
     # Факторы риска (до 3)
     risk_factors = a["risks"][:3]
-    risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
+    risk_temp_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
     # Экипировка
     gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
@@ -270,7 +256,7 @@ def send_weather(chat_id, edit_message=None):
     # Дельта температуры
     if next_hour != "нет данных":
         try:
-            fc_temp = int(next_hour.split("°C")[0])
+            fc = int(next_hour.split("°C")[0])
             delta = fc_temp - w["temp"]
             if delta >= 2:
                 next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
