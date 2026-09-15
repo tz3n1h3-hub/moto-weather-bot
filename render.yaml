@@ -11,8 +11,6 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: OPENWEATHER_API_KEY
-        sync: false
       - key: ADMIN_ID
         sync: false
       - key: MY_BOT_USERNAME
