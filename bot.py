@@ -24,11 +24,11 @@ from keyboards import get_main_keyboard, get_after_weather_keyboard
 
 # ============ ПРОВЕРКА КОНФИГА ============
 if not BOT_TOKEN:
-    print("❌ BOT_TOKEN не найден!")
+    print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
 if not OPENWEATHER_API_KEY:
-    print("⚠️ OPENWEATHER_API_KEY не найден — прогнозы работать не будут!")
+    print("⚠️ OPENWEATHER_API_KEY не найден — прогнозы работать не будут!", flush=True)
 
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -55,7 +55,7 @@ def save_user(user_id):
             with open(USERS_FILE, "w") as f:
                 json.dump(users, f)
         except Exception as e:
-            print(f"⚠️ Не удалось сохранить пользователя: {e}")
+            print(f"⚠️ Не удалось сохранить пользователя: {e}", flush=True)
 
 
 def get_users_count():
@@ -124,35 +124,55 @@ ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
-    save_user(message.chat.id)
-    info = bot.get_me()
+    try:
+        print(f"📥 /start от {message.chat.id}", flush=True)
+        save_user(message.chat.id)
+        info = bot.get_me()
 
-    if info.username != MY_BOT_USERNAME:
+        if info.username != MY_BOT_USERNAME:
+            bot.send_message(message.chat.id,
+                f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
+                parse_mode="HTML")
+            return
+
         bot.send_message(message.chat.id,
-            f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
-            parse_mode="HTML")
-        return
-
-    bot.send_message(message.chat.id,
-        "🏍️ <b>MotoWeather Минск</b>\n\n"
-        "Погода для тех, кто на двух колёсах.\n"
-        "Проверяю аэропорт Минск и говорю прямо: ехать или нет.\n\n"
-        "<b>Жми «Сейчас» — и вперёд.</b>",
-        parse_mode="HTML", reply_markup=get_main_keyboard())
+            "🏍️ <b>MotoWeather Минск</b>\n\n"
+            "Погода для тех, кто на двух колёсах.\n"
+            "Проверяю аэропорт Минск и говорю прямо: ехать или нет.\n\n"
+            "<b>Жми «Сейчас» — и вперёд.</b>",
+            parse_mode="HTML", reply_markup=get_main_keyboard())
+        print(f"✅ /start отвечен", flush=True)
+    except Exception as e:
+        print(f"❌ /start упал: {e}", flush=True)
 
 
 @bot.message_handler(commands=['weather'])
 def weather_cmd(m):
-    save_user(m.chat.id)
-    bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
-    send_weather(m.chat.id)
+    try:
+        print(f"📥 /weather от {m.chat.id}", flush=True)
+        save_user(m.chat.id)
+        bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
+        print("📤 Отправил приветствие", flush=True)
+        send_weather(m.chat.id)
+        print("✅ send_weather завершён", flush=True)
+    except Exception as e:
+        print(f"❌ weather_cmd упал: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        try:
+            bot.send_message(m.chat.id, f"❌ Ошибка: {e}")
+        except Exception:
+            pass
 
 
 @bot.message_handler(commands=['about'])
 def about_cmd(m):
-    save_user(m.chat.id)
-    bot.send_message(m.chat.id, ABOUT_TEXT,
-                     parse_mode="HTML", reply_markup=get_main_keyboard())
+    try:
+        save_user(m.chat.id)
+        bot.send_message(m.chat.id, ABOUT_TEXT,
+                         parse_mode="HTML", reply_markup=get_main_keyboard())
+    except Exception as e:
+        print(f"❌ /about упал: {e}", flush=True)
 
 
 @bot.message_handler(commands=['stats'])
@@ -170,17 +190,23 @@ def stats_cmd(m):
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     try:
-        save_user(call.message.chat.id)
+        print(f"📩 Callback: {call.data} от {call.message.chat.id}", flush=True)
 
-        if call.data == "weather":
-            bot.answer_callback_query(call.id, "⏳ Смотрю на небо...", cache_time=3)
-            send_weather(call.message.chat.id)
-        elif call.data == "update":
-            bot.answer_callback_query(call.id, "⏳ Обновляю...", cache_time=3)
+        # Сохраняем пользователя, но не падаем если не получилось
+        try:
+            save_user(call.message.chat.id)
+        except Exception as e:
+            print(f"⚠️ save_user failed: {e}", flush=True)
+
+        if call.data in ("weather", "update"):
+            msg_text = "⏳ Смотрю на небо..." if call.data == "weather" else "⏳ Обновляю..."
+            bot.answer_callback_query(call.id, msg_text, cache_time=3)
+            print(f"🔄 Обрабатываю {call.data}", flush=True)
             send_weather(call.message.chat.id, edit_message=call.message)
+            print(f"✅ Callback {call.data} завершён", flush=True)
+
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅ Открываю", cache_time=3)
-            # Редактируем то же сообщение, где нажата кнопка
             try:
                 bot.edit_message_text(
                     chat_id=call.message.chat.id,
@@ -189,106 +215,126 @@ def callback(call):
                     parse_mode="HTML",
                     reply_markup=get_main_keyboard()
                 )
-                print(f"✅ About открыт для {call.message.chat.id}")
+                print(f"✅ About открыт для {call.message.chat.id}", flush=True)
             except Exception as e:
                 err = str(e).lower()
                 if "message is not modified" in err:
-                    print("ℹ️ About уже открыт (не изменилось)")
+                    print("ℹ️ About уже открыт (не изменилось)", flush=True)
                 else:
-                    print(f"⚠️ Не удалось: {e}. Отправляю новое.")
+                    print(f"⚠️ Не удалось: {e}. Отправляю новое.", flush=True)
                     bot.send_message(call.message.chat.id, ABOUT_TEXT,
                                      parse_mode="HTML",
                                      reply_markup=get_main_keyboard())
+
+        else:
+            print(f"⚠️ Неизвестный callback: {call.data}", flush=True)
+            bot.answer_callback_query(call.id, "❓ Неизвестная кнопка", cache_time=3)
+
     except Exception as e:
-        print(f"Ошибка callback: {e}")
+        print(f"❌ Ошибка callback: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 
 # ============ ОТПРАВКА: ПОГОДА СЕЙЧАС ============
 def send_weather(chat_id, edit_message=None):
-    w = get_weather()
-    if not w:
-        bot.send_message(chat_id, "❌ Небо молчит. Попробуй позже.")
-        return
+    try:
+        print(f"🌤️ START send_weather для {chat_id}", flush=True)
+        w = get_weather()
+        print(f"🌤️ get_weather: {type(w).__name__}", flush=True)
 
-    a = analyze_risks(w)
-    now_dt = datetime.now(MINSK_TZ)
-    now = now_dt.strftime("%H:%M")
-    date = now_dt.strftime("%d.%m")
+        if not w:
+            print("❌ w = None, выходим", flush=True)
+            bot.send_message(chat_id, "❌ Небо молчит. Попробуй позже.")
+            return
 
-    feels = a.get("feels_like", w.get("feels_like", 0))
-    wind_desc = get_wind_description(w["wind_speed"])
+        print(f"🌤️ Данные: temp={w.get('temp')}, wind={w.get('wind_speed')}", flush=True)
 
-    # Ветро-строка
-    wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
-    if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
-        wind_part += f" / порывы {w['wind_gust']}"
+        a = analyze_risks(w)
+        print(f"🌤️ analyze_risks: score={a['score']}", flush=True)
 
-    # Осадки
-    weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
-    if not weather_info:
-        weather_info = "без осадков"
+        now_dt = datetime.now(MINSK_TZ)
+        now = now_dt.strftime("%H:%M")
+        date = now_dt.strftime("%d.%m")
 
-    # Влажность + видимость
-    humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
-    vis_str = format_visibility(w["visibility"])
+        feels = a.get("feels_like", w.get("feels_like", 0))
+        wind_desc = get_wind_description(w["wind_speed"])
 
-    # Светлое время
-    light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
+        # Ветро-строка
+        wind_part = f"{w['wind_speed']} м/с ({wind_desc})"
+        if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
+            wind_part += f" / порывы {w['wind_gust']}"
 
-    # Факторы риска (до 3)
-    risk_factors = a["risks"][:3]
-    risk_temp_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
+        # Осадки
+        weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
+        if not weather_info:
+            weather_info = "без осадков"
 
-    # Экипировка
-    gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
-    gear_block = "\n".join(gear)
+        # Влажность + видимость
+        humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
+        vis_str = format_visibility(w["visibility"])
 
-    # Подготовка
-    tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
-                          w.get("humidity"), w.get("dew_point"))
-    tech_block = "\n".join(f"✅ {t}" for t in tech)
+        # Светлое время
+        light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
 
-    # Короткий прогноз
-    short = get_short_forecast()
-    next_hour = short.get("next_hour", "нет данных")
-    morning = short.get("morning", "нет данных")
+        # Факторы риска (до 3)
+        risk_factors = a["risks"][:3]
+        risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
-    # Дельта температуры
-    if next_hour != "нет данных":
-        try:
-            fc = int(next_hour.split("°C")[0])
-            delta = fc_temp - w["temp"]
-            if delta >= 2:
-                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
-            elif delta <= -2:
-                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
-        except (ValueError, IndexError):
-            pass
+        # Экипировка
+        gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
+        gear_block = "\n".join(gear)
 
-    # Прогноз на завтра
-    f = get_forecast_tomorrow()
-    tomorrow_line = "нет данных"
-    if f:
-        fa = analyze_risks(f, is_forecast=True)
-        fa_short = get_short_verdict(fa["score"])
-        cond_low = f["condition"].split(" ", 1)[-1].lower()
-        tomorrow_line = (
-            f"{f['temp_min']}–{f['temp_max']}°C, "
-            f"{cond_low}, "
-            f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
+        # Подготовка
+        tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
+                              w.get("humidity"), w.get("dew_point"))
+        tech_block = "\n".join(f"✅ {t}" for t in tech)
+
+        # Короткий прогноз
+        print("🌤️ Запрашиваю get_short_forecast...", flush=True)
+        short = get_short_forecast()
+        print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
+        next_hour = short.get("next_hour", "нет данных")
+        morning = short.get("morning", "нет данных")
+
+        # Дельта температуры
+        if next_hour != "нет данных":
+            try:
+                fc_temp = int(next_hour.split("°C")[0])
+                delta = fc_temp - w["temp"]
+                if delta >= 2:
+                    next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
+                elif delta <= -2:
+                    next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
+            except (ValueError, IndexError):
+                pass
+
+        # Прогноз на завтра
+        print("🌤️ Запрашиваю get_forecast_tomorrow...", flush=True)
+        f = get_forecast_tomorrow()
+        print(f"🌤️ Tomorrow OK: {type(f).__name__}", flush=True)
+        tomorrow_line = "нет данных"
+        if f:
+            fa = analyze_risks(f, is_forecast=True)
+            fa_short = get_short_verdict(fa["score"])
+            cond_low = f["condition"].split(" ", 1)[-1].lower()
+            tomorrow_line = (
+                f"{f['temp_min']}–{f['temp_max']}°C, "
+                f"{cond_low}, "
+                f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
+            )
+
+        # Совет
+        tip = get_tip(
+            feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
+            w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
         )
 
-    # Совет
-    tip = get_tip(
-        feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
-        w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
-    )
+        # Райдерский вердикт
+        rider_verdict = get_rider_verdict(a["score"])
 
-    # Райдерский вердикт
-    rider_verdict = get_rider_verdict(a["score"])
-
-    # ============ СБОРКА ============
-    msg = f"""<b>MotoWeather</b>
+        # ============ СБОРКА ============
+        msg = f"""<b>MotoWeather</b>
 📅 {date} · {now} · Минск
 ✈️ Данные с аэропорта Минск
 
@@ -321,28 +367,41 @@ def send_weather(chat_id, edit_message=None):
 
 🏍️ <b>Ровной дороги!</b>"""
 
-    # ============ РЕШЕНИЕ A: редактирование при update ============
-    if edit_message:
+        print(f"🌤️ Сообщение собрано, {len(msg)} символов", flush=True)
+
+        # ============ РЕДАКТИРОВАНИЕ ИЛИ ОТПРАВКА ============
+        if edit_message:
+            try:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=edit_message.message_id,
+                    text=msg,
+                    parse_mode="HTML",
+                    reply_markup=get_after_weather_keyboard()
+                )
+                print(f"✅ Сообщение отредактировано для {chat_id}", flush=True)
+            except Exception as e:
+                err = str(e).lower()
+                if "message is not modified" in err:
+                    print("ℹ️ Сообщение не изменилось (данные те же)", flush=True)
+                else:
+                    print(f"⚠️ Не удалось отредактировать: {e}. Отправляю новое.", flush=True)
+                    bot.send_message(chat_id, msg, parse_mode="HTML",
+                                     reply_markup=get_after_weather_keyboard())
+        else:
+            print(f"🌤️ Отправляю новое сообщение в {chat_id}", flush=True)
+            bot.send_message(chat_id, msg, parse_mode="HTML",
+                             reply_markup=get_after_weather_keyboard())
+            print(f"✅ Сообщение отправлено в {chat_id}", flush=True)
+
+    except Exception as e:
+        print(f"❌ ОШИБКА в send_weather: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         try:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=edit_message.message_id,
-                text=msg,
-                parse_mode="HTML",
-                reply_markup=get_after_weather_keyboard()
-            )
-            print(f"✅ Сообщение отредактировано для {chat_id}")
-        except Exception as e:
-            err = str(e).lower()
-            if "message is not modified" in err:
-                print("ℹ️ Сообщение не изменилось (данные те же)")
-            else:
-                print(f"⚠️ Не удалось отредактировать: {e}. Отправляю новое.")
-                bot.send_message(chat_id, msg, parse_mode="HTML",
-                                 reply_markup=get_after_weather_keyboard())
-    else:
-        bot.send_message(chat_id, msg, parse_mode="HTML",
-                         reply_markup=get_after_weather_keyboard())
+            bot.send_message(chat_id, f"❌ Ошибка: {e}")
+        except Exception:
+            pass
 
 
 # ============ FLASK ДЛЯ ПИНГА ============
@@ -378,30 +437,30 @@ def run_flask():
 
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
-    print("🏍️ MotoWeather Бот запущен!")
-    print("✅ METAR + OpenWeatherMap")
-    print("📡 Бот готов к работе")
+    print("🏍️ MotoWeather Бот запущен!", flush=True)
+    print("✅ METAR + OpenWeatherMap", flush=True)
+    print("📡 Бот готов к работе", flush=True)
 
     try:
         bot.remove_webhook()
-        print("✅ Webhook сброшен")
+        print("✅ Webhook сброшен", flush=True)
     except Exception as e:
-        print(f"⚠️ remove_webhook: {e}")
+        print(f"⚠️ remove_webhook: {e}", flush=True)
 
     # Flask в отдельном потоке
     threading.Thread(target=run_flask, daemon=True).start()
 
     # Polling с ретраями — защита от 409 Conflict
-    print("🔄 Запускаю polling...")
+    print("🔄 Запускаю polling...", flush=True)
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             err_str = str(e)
             if "409" in err_str:
-                print("⚠️ 409 Conflict — другой инстанс бота. Жду 20 сек...")
+                print("⚠️ 409 Conflict — другой инстанс бота. Жду 20 сек...", flush=True)
                 time.sleep(20)
             else:
-                print(f"⚠️ Polling упал: {e}")
-                print("⏳ Жду 10 секунд перед перезапуском...")
+                print(f"⚠️ Polling упал: {e}", flush=True)
+                print("⏳ Жду 10 секунд перед перезапуском...", flush=True)
                 time.sleep(10)
