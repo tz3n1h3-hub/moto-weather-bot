@@ -1,5 +1,6 @@
 import re
 import math
+import time
 import requests
 from datetime import datetime, timedelta
 
@@ -8,6 +9,11 @@ from config import (
     METAR_URL, METAR_FALLBACK_URL, OPEN_METEO_URL,
     MINSK_LAT, MINSK_LON
 )
+
+
+# ============ ГЛОБАЛЬНЫЙ КЭШ ============
+_open_meteo_cache = {"data": None, "ts": 0}
+_wttr_cache = {"data": None, "ts": 0}
 
 
 # ============ ВСПОМОГАТЕЛЬНЫЕ ============
@@ -217,9 +223,16 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO: ОБЩИЙ ЗАПРОС ============
+# ============ OPEN-METEO С КЭШЕМ ============
 def _fetch_open_meteo():
-    """Запрашивает у Open-Meteo текущую погоду + прогноз на 24 часа."""
+    """Запрашивает Open-Meteo с кэшем на 5 минут."""
+    global _open_meteo_cache
+
+    # Если данные свежие (<5 мин) — из кэша
+    if _open_meteo_cache["data"] and (time.time() - _open_meteo_cache["ts"]) < 300:
+        print("Open-Meteo: из кэша", flush=True)
+        return _open_meteo_cache["data"]
+
     try:
         url = (
             f"{OPEN_METEO_URL}"
@@ -228,7 +241,7 @@ def _fetch_open_meteo():
             f"relative_humidity_2m,weather_code,visibility"
             f"&hourly=temperature_2m,wind_speed_10m,weather_code,precipitation_probability"
             f"&daily=temperature_2m_max,temperature_2m_min,weather_code,"
-            f"wind_speed_10m_max,precipitation_sum"
+            f"wind_speed_10m_max,precipitation_sum,sunrise,sunset"
             f"&timezone=Europe/Minsk"
             f"&forecast_days=3"
         )
@@ -238,13 +251,204 @@ def _fetch_open_meteo():
         if "error" in data:
             print(f"Open-Meteo: ошибка {data.get('reason')}", flush=True)
             return None
-        print("Open-Meteo: получено", flush=True)
+
+        # Кэшируем
+        _open_meteo_cache["data"] = data
+        _open_meteo_cache["ts"] = time.time()
+        print("Open-Meteo: получено и закэшировано", flush=True)
         return data
     except Exception as e:
         print(f"Open-Meteo: ошибка запроса: {e}", flush=True)
         return None
 
 
+# ============ WTTR.IN FALLBACK ============
+def _fetch_wttr():
+    """Fallback-источник: wttr.in (JSON)."""
+    global _wttr_cache
+
+    if _wttr_cache["data"] and (time.time() - _wttr_cache["ts"]) < 300:
+        print("wttr.in: из кэша", flush=True)
+        return _wttr_cache["data"]
+
+    try:
+        url = f"https://wttr.in/Minsk?format=j1"
+        print("wttr.in: запрашиваю данные...", flush=True)
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            print(f"wttr.in: status={r.status_code}", flush=True)
+            return None
+        data = r.json()
+        _wttr_cache["data"] = data
+        _wttr_cache["ts"] = time.time()
+        print("wttr.in: получено и закэшировано", flush=True)
+        return data
+    except Exception as e:
+        print(f"wttr.in: ошибка: {e}", flush=True)
+        return None
+
+
+def _wttr_to_hourly(wttr_data):
+    """Преобразует wttr.in в формат, похожий на Open-Meteo hourly."""
+    if not wttr_data:
+        return None
+    try:
+        result = {"time": [], "temperature_2m": [], "wind_speed_10m": [], "weather_code": []}
+        # wttr.in даёт weather[] с 3-часовыми интервалами
+        for day in wttr_data.get("weather", [])[:2]:
+            for slot in day.get("hourly", []):
+                # wttr time: "0", "300", "600", ... в минутах от начала дня
+                time_str = slot.get("time", "0").zfill(4)
+                hh = time_str[:-2]
+                mm = time_str[-2:]
+                date = day.get("date", "")
+                dt_str = f"{date}T{hh}:{mm}"
+                result["time"].append(dt_str)
+                result["temperature_2m"].append(float(slot.get("tempC", 0)))
+                result["wind_speed_10m"].append(round(float(slot.get("windspeedKmph", 0)) / 3.6, 1))
+                # Маппинг wttr weatherCode → WMO (приблизительно)
+                wttr_code = slot.get("weatherCode", "113")
+                code_map = {
+                    "113": 0,   # Sunny/Clear
+                    "116": 2,   # Partly cloudy
+                    "119": 3,   # Cloudy
+                    "122": 3,   # Overcast
+                    "143": 45,  # Mist
+                    "248": 45,  # Fog
+                    "260": 45,  # Freezing fog
+                    "200": 95,  # Thundery
+                    "386": 95,  # Thundery
+                    "392": 95,  # Thundery
+                    "176": 61,  # Patchy rain
+                    "263": 51,  # Patchy light drizzle
+                    "266": 51,
+                    "293": 61,
+                    "296": 61,
+                    "299": 63,
+                    "302": 63,
+                    "305": 65,
+                    "308": 65,
+                    "311": 51,
+                    "314": 51,
+                    "353": 80,
+                    "356": 82,
+                    "359": 82,
+                    "227": 73,
+                    "230": 75,
+                    "320": 71,
+                    "323": 71,
+                    "326": 71,
+                    "329": 73,
+                    "332": 73,
+                    "335": 75,
+                    "338": 75,
+                    "368": 71,
+                    "371": 75,
+                    "374": 51,
+                    "377": 51,
+                    "179": 71,
+                    "182": 51,
+                    "185": 51,
+                    "281": 51,
+                    "284": 51,
+                    "350": 51,
+                    "362": 51,
+                    "365": 51,
+                }
+                result["weather_code"].append(code_map.get(wttr_code, 0))
+        return result
+    except Exception as e:
+        print(f"wttr.in: ошибка преобразования: {e}", flush=True)
+        return None
+
+
+def _wttr_to_daily(wttr_data):
+    """Преобразует wttr.in в формат Open-Meteo daily."""
+    if not wttr_data:
+        return None
+    try:
+        result = {
+            "time": [], "temperature_2m_max": [], "temperature_2m_min": [],
+            "weather_code": [], "wind_speed_10m_max": [], "precipitation_sum": [],
+            "sunrise": [], "sunset": [],
+        }
+        for day in wttr_data.get("weather", [])[:3]:
+            result["time"].append(day.get("date"))
+            result["temperature_2m_max"].append(float(day.get("maxtempC", 0)))
+            result["temperature_2m_min"].append(float(day.get("mintempC", 0)))
+            # Астро: sunrise/sunset из astronomy
+            astro = day.get("astronomy", [{}])[0]
+            sunrise = astro.get("sunrise", "06:00")
+            sunset = astro.get("sunset", "19:00")
+            # wttr даёт в формате "06:39 AM" — переведём в 24ч
+            def to_24h(t):
+                try:
+                    dt = datetime.strptime(t.strip(), "%I:%M %p")
+                    return dt.strftime("%H:%M")
+                except Exception:
+                    return t[:5]
+            result["sunrise"].append(to_24h(sunrise))
+            result["sunset"].append(to_24h(sunset))
+
+            # Weather code из первого hourly
+            hourly = day.get("hourly", [{}])
+            code = 0
+            if hourly:
+                wttr_code = hourly[0].get("weatherCode", "113")
+                code_map = {"113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
+                            "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
+                            "176": 61, "296": 61, "299": 63, "302": 63, "305": 65,
+                            "308": 65, "353": 80, "356": 82, "359": 82}
+                code = code_map.get(wttr_code, 0)
+            result["weather_code"].append(code)
+
+            # Max wind
+            max_wind = 0
+            precip = 0
+            for slot in day.get("hourly", []):
+                w = float(slot.get("windspeedKmph", 0)) / 3.6
+                if w > max_wind:
+                    max_wind = w
+                precip += float(slot.get("precipMM", 0))
+            result["wind_speed_10m_max"].append(round(max_wind))
+            result["precipitation_sum"].append(round(precip, 1))
+
+        return result
+    except Exception as e:
+        print(f"wttr.in: ошибка преобразования daily: {e}", flush=True)
+        return None
+
+
+def _get_forecast_data():
+    """Пытается получить прогноз из Open-Meteo, при неудаче — из wttr.in."""
+    om = _fetch_open_meteo()
+    if om and "hourly" in om:
+        return om, "open-meteo"
+
+    # Fallback на wttr.in
+    wttr = _fetch_wttr()
+    if wttr:
+        hourly = _wttr_to_hourly(wttr)
+        daily = _wttr_to_daily(wttr)
+        if hourly and daily:
+            om_style = {
+                "hourly": hourly,
+                "daily": daily,
+                "current": {
+                    "temperature_2m": float(wttr["current_condition"][0]["temp_C"]),
+                    "wind_speed_10m": round(float(wttr["current_condition"][0]["windspeedKmph"]) / 3.6, 1),
+                    "relative_humidity_2m": int(wttr["current_condition"][0]["humidity"]),
+                    "weather_code": 0,
+                    "visibility": int(wttr["current_condition"][0].get("visibility", 10)) * 1000,
+                    "wind_gusts_10m": None,
+                }
+            }
+            return om_style, "wttr.in"
+
+    return None, "none"
+
+
+# ============ WMO КОДЫ ============
 def _wmo_emoji(code):
     """WMO weather code → (emoji, description)."""
     if code == 0:
@@ -274,89 +478,81 @@ def _wmo_emoji(code):
     return "🌤️", "Переменно"
 
 
-# ============ ТЕКУЩАЯ ПОГОДА (METAR + Open-Meteo fallback) ============
+# ============ ТЕКУЩАЯ ПОГОДА ============
 def get_weather():
     try:
         metar = get_metar_data()
-        om = _fetch_open_meteo()
 
-        if not metar and not om:
-            print("Нет данных ни из METAR, ни из Open-Meteo", flush=True)
-            return None
+        # Sunrise/sunset — из прогноза
+        forecast_data, _ = _get_forecast_data()
+        daily = (forecast_data or {}).get("daily", {})
+        sunrise_iso = daily.get("sunrise", [None])[0] if daily.get("sunrise") else None
+        sunset_iso = daily.get("sunset", [None])[0] if daily.get("sunset") else None
 
-        # Если METAR нет — используем Open-Meteo как основной
-        if not metar and om:
-            cur = om.get("current", {})
+        # Конвертируем ISO → HH:MM
+        def to_hm(iso):
+            if not iso:
+                return None
+            if "T" in iso:
+                return iso.split("T")[1][:5]
+            return iso
+
+        sunrise = to_hm(sunrise_iso)
+        sunset = to_hm(sunset_iso)
+
+        if metar:
+            temp = metar.get("temp", 0)
+            wind_speed = metar.get("wind_speed", 0)
+            cloud_emoji = metar.get("cloud_emoji", "⛅")
+            cloud_text = metar.get("cloud_text", "Облачно")
+            visibility = metar.get("visibility", 10000)
+            weather_text = metar.get("weather_text") or ""
+            weather_emoji = metar.get("weather_emoji") or ""
+            dew_point = metar.get("dew_point")
+            is_rain = metar.get("is_rain", False)
+            is_thunder = metar.get("is_thunder", False)
+
+            wind_gust = metar.get("wind_gust")
+            if wind_gust is None:
+                om_cur = (forecast_data or {}).get("current", {})
+                gust_om = om_cur.get("wind_gusts_10m")
+                if gust_om:
+                    wind_gust = round(gust_om)
+            if wind_speed == 0:
+                wind_gust = None
+
+            source = "METAR (аэропорт Минск)"
+        else:
+            # Нет METAR — используем прогноз
+            cur = (forecast_data or {}).get("current", {})
+            if not cur:
+                print("Нет данных ни из METAR, ни из прогноза", flush=True)
+                return None
+
             temp = round(cur.get("temperature_2m", 0))
             wind_speed = round(cur.get("wind_speed_10m", 0))
             wind_gust_val = cur.get("wind_gusts_10m")
             wind_gust = round(wind_gust_val) if wind_gust_val else None
-            humidity = round(cur.get("relative_humidity_2m", 0))
-            visibility = int(cur.get("visibility") or 10000)
             weather_code = cur.get("weather_code", 0)
             emoji, text = _wmo_emoji(weather_code)
 
-            # sunrise/sunset из daily
-            daily = om.get("daily", {})
-            sunrise_iso = daily.get("sunrise", [None])[0] if daily.get("sunrise") else None
-            sunset_iso = daily.get("sunset", [None])[0] if daily.get("sunset") else None
-            sunrise = sunrise_iso.split("T")[1][:5] if sunrise_iso else None
-            sunset = sunset_iso.split("T")[1][:5] if sunset_iso else None
-
-            feels_like = calculate_feels_like(temp, wind_speed)
-
-            return {
-                "temp": temp,
-                "feels_like": feels_like,
-                "cloud_emoji": emoji,
-                "cloud_text": text,
-                "weather_text": text,
-                "weather_emoji": emoji,
-                "dew_point": None,
-                "humidity": humidity,
-                "wind_speed": wind_speed,
-                "wind_gust": wind_gust,
-                "visibility": visibility,
-                "is_rain": weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82),
-                "is_thunder": weather_code in (95, 96, 99),
-                "is_night": is_night_time(),
-                "sunrise": sunrise,
-                "sunset": sunset,
-                "source": "Open-Meteo"
-            }
-
-        # Основной путь — METAR
-        om_cur = (om or {}).get("current", {})
-        # Sunrise/sunset из Open-Meteo daily
-        daily = (om or {}).get("daily", {})
-        sunrise_iso = daily.get("sunrise", [None])[0] if daily.get("sunrise") else None
-        sunset_iso = daily.get("sunset", [None])[0] if daily.get("sunset") else None
-        sunrise = sunrise_iso.split("T")[1][:5] if sunrise_iso else None
-        sunset = sunset_iso.split("T")[1][:5] if sunset_iso else None
-
-        temp = metar.get("temp", round(om_cur.get("temperature_2m", 0)))
-        wind_speed = metar.get("wind_speed", round(om_cur.get("wind_speed_10m", 0)))
-        cloud_emoji = metar.get("cloud_emoji", "⛅")
-        cloud_text = metar.get("cloud_text", "Облачно")
-        visibility = metar.get("visibility", 10000)
-        weather_text = metar.get("weather_text") or ""
-        weather_emoji = metar.get("weather_emoji") or ""
-        dew_point = metar.get("dew_point")
-        is_rain = metar.get("is_rain", False)
-        is_thunder = metar.get("is_thunder", False)
-
-        # Густоты: METAR → Open-Meteo → None
-        wind_gust = metar.get("wind_gust")
-        if wind_gust is None:
-            gust_om = om_cur.get("wind_gusts_10m")
-            wind_gust = round(gust_om) if gust_om else None
-        if wind_speed == 0:
-            wind_gust = None
+            cloud_emoji = emoji
+            cloud_text = text
+            weather_text = text
+            weather_emoji = emoji
+            dew_point = None
+            visibility = int(cur.get("visibility") or 10000)
+            is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
+            is_thunder = weather_code in (95, 96, 99)
+            source = "Прогноз (fallback)"
 
         feels_like = calculate_feels_like(temp, wind_speed)
         humidity = calculate_humidity(temp, dew_point) if dew_point is not None else None
         if humidity is None:
+            om_cur = (forecast_data or {}).get("current", {})
             humidity = round(om_cur.get("relative_humidity_2m", 0)) or None
+
+        print(f"✅ Weather: temp={temp}, humidity={humidity}, source={source}", flush=True)
 
         return {
             "temp": temp,
@@ -375,7 +571,7 @@ def get_weather():
             "is_night": is_night_time(),
             "sunrise": sunrise,
             "sunset": sunset,
-            "source": "METAR (аэропорт Минск)"
+            "source": source
         }
     except Exception as e:
         print(f"❌ Ошибка погоды: {e}", flush=True)
@@ -384,16 +580,17 @@ def get_weather():
         return None
 
 
-# ============ ПРОГНОЗ НА ЗАВТРА (Open-Meteo) ============
+# ============ ПРОГНОЗ НА ЗАВТРА ============
 def get_forecast_tomorrow():
     try:
-        om = _fetch_open_meteo()
-        if not om or "daily" not in om:
+        forecast_data, src = _get_forecast_data()
+        if not forecast_data:
+            print("Прогноз: нет данных", flush=True)
             return None
 
-        daily = om["daily"]
-        # Индекс 1 = завтра (0 = сегодня)
+        daily = forecast_data.get("daily", {})
         if len(daily.get("time", [])) < 2:
+            print("Прогноз: недостаточно данных", flush=True)
             return None
 
         date_iso = daily["time"][1]
@@ -408,7 +605,10 @@ def get_forecast_tomorrow():
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
         is_thunder = weather_code in (95, 96, 99)
 
+        # ISO или YYYY-MM-DD
         date_obj = datetime.strptime(date_iso, "%Y-%m-%d")
+
+        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C", flush=True)
 
         return {
             "date": date_obj.strftime("%d.%m.%Y"),
@@ -427,15 +627,15 @@ def get_forecast_tomorrow():
         return None
 
 
-# ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО (Open-Meteo) ============
+# ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО ============
 def get_short_forecast():
-    """Возвращает {next_hour, morning} из Open-Meteo hourly."""
+    """Возвращает {next_hour, morning}."""
     try:
-        om = _fetch_open_meteo()
-        if not om or "hourly" not in om:
+        forecast_data, src = _get_forecast_data()
+        if not forecast_data or "hourly" not in forecast_data:
             return {"next_hour": "нет данных", "morning": "нет данных"}
 
-        hourly = om["hourly"]
+        hourly = forecast_data["hourly"]
         times = hourly.get("time", [])
         temps = hourly.get("temperature_2m", [])
         winds = hourly.get("wind_speed_10m", [])
@@ -443,7 +643,7 @@ def get_short_forecast():
 
         now = datetime.now(MINSK_TZ).replace(tzinfo=None)
 
-        # Индекс ближайшего часа к "сейчас + 3 часа"
+        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -489,6 +689,7 @@ def get_short_forecast():
         else:
             morning = "нет данных"
 
+        print(f"✅ Short forecast ({src}): {next_hour} | {morning}", flush=True)
         return {"next_hour": next_hour, "morning": morning}
     except Exception as e:
         print(f"Ошибка короткого прогноза: {e}", flush=True)
