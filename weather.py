@@ -264,7 +264,6 @@ def get_weather():
             is_rain = metar.get("is_rain", False)
             is_thunder = metar.get("is_thunder", False)
 
-            # При штиле в METAR игнорируем OWM-порывы — они не согласуются
             if wind_speed == 0:
                 wind_gust = None
             else:
@@ -383,128 +382,6 @@ def _classify_condition(weather_id):
     if weather_id > 800:
         return "☁️ Облачно", False, False
     return "🌤️ Переменная облачность", False, False
-
-
-# ============ ПРОГНОЗ НА НЕДЕЛЮ ============
-def get_weekly_forecast():
-    try:
-        url = (
-            f"{OWM_FORECAST_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
-            f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=40"
-        )
-        data = requests.get(url, timeout=10).json()
-
-        if data.get("cod") != "200":
-            return None
-
-        days = {}
-        today = datetime.now(MINSK_TZ).date()
-
-        for item in data["list"]:
-            dt = datetime.fromtimestamp(item["dt"], tz=MINSK_TZ)
-            key = dt.strftime("%Y-%m-%d")
-
-            if dt.date() == today:
-                continue
-
-            if key not in days:
-                days[key] = {"temps": [], "winds": [], "rain": 0, "conditions": [], "date": dt}
-
-            days[key]["temps"].append(item["main"]["temp"])
-            days[key]["winds"].append(item["wind"]["speed"])
-            if "rain" in item:
-                days[key]["rain"] += item["rain"].get("3h", 0)
-            days[key]["conditions"].append(item["weather"][0]["id"])
-
-        result = []
-        weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-
-        for key, day in sorted(days.items())[:7]:
-            if not day["temps"]:
-                continue
-
-            fc = _build_forecast_result(
-                day["temps"], day["winds"], day["rain"],
-                day["conditions"], day["date"]
-            )
-            fc["weekday"] = weekdays[day["date"].weekday()]
-            fc["date"] = day["date"].strftime("%d.%m")
-            result.append(fc)
-
-        return result
-    except Exception as e:
-        print(f"Ошибка недельного прогноза: {e}")
-        return None
-
-
-# ============ ТРЕНД ЗА 3 ЧАСА ============
-def get_trend():
-    try:
-        cache = int(time.time())
-        url = (
-            f"{OWM_FORECAST_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
-            f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=2&_={cache}"
-        )
-        data = requests.get(url, timeout=10).json()
-
-        if data.get("cod") != "200" or not data.get("list"):
-            return None
-
-        fc_temp = int(data["list"][0]["main"]["temp"])
-        fc_wind = int(data["list"][0]["wind"]["speed"])
-
-        metar = get_metar_data()
-        cur_temp = None
-        cur_wind = None
-
-        if metar:
-            cur_temp = metar.get("temp")
-            cur_wind = metar.get("wind_speed")
-
-        if cur_temp is None or cur_wind is None:
-            owm = requests.get(
-                f"{OWM_WEATHER_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
-                f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru",
-                timeout=10
-            ).json()
-
-            if owm.get("cod") != 200:
-                return None
-
-            if cur_temp is None:
-                cur_temp = int(owm["main"]["temp"])
-            if cur_wind is None:
-                cur_wind = int(owm["wind"]["speed"])
-
-        temp_diff = fc_temp - cur_temp
-        wind_diff = fc_wind - cur_wind
-
-        trend = []
-
-        if abs(temp_diff) >= 2:
-            trend.append(f"🌡️ Потеплеет на +{temp_diff}°C" if temp_diff > 0
-                         else f"🌡️ Похолодает на {temp_diff}°C")
-        else:
-            trend.append("🌡️ Температура стабильна")
-
-        if abs(wind_diff) >= 3:
-            trend.append(f"💨 Ветер усилится на +{wind_diff} м/с" if wind_diff > 0
-                         else f"💨 Ветер ослабнет на {wind_diff} м/с")
-        else:
-            trend.append("💨 Ветер без изменений")
-
-        if "rain" in data["list"][0]:
-            pop = data["list"][0].get("pop", 0)
-            trend.append(f"🌧️ Вероятность дождя {int(pop * 100)}%")
-        elif any("rain" in item for item in data["list"][:2]):
-            trend.append("🌧️ Возможен дождь")
-        else:
-            trend.append("☀️ Осадков не ожидается")
-
-        return trend
-    except Exception as e:
-        print(f"Ошибка тренда: {e}")
-        return None
 
 
 # ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО ============
