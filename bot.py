@@ -8,7 +8,7 @@ import telebot
 from flask import Flask, jsonify
 
 from config import (
-    BOT_TOKEN, OPENWEATHER_API_KEY, MY_BOT_USERNAME,
+    BOT_TOKEN, MY_BOT_USERNAME,
     USERS_FILE, ADMIN_ID, MINSK_TZ,
 )
 from weather import (
@@ -27,8 +27,7 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
-if not OPENWEATHER_API_KEY:
-    print("⚠️ OPENWEATHER_API_KEY не найден — прогнозы работать не будут!", flush=True)
+print("✅ Используем METAR + Open-Meteo (без API-ключа)", flush=True)
 
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -84,7 +83,7 @@ ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
 📡 <b>Источник данных:</b>
 ✈️ METAR аэропорта Минск (UMMS) — реальные метеоданные
-🌐 OpenWeatherMap — прогнозы на 3 часа и утро
+🌐 Open-Meteo — прогнозы на 3 часа и утро
 
 Бот для райдеров. Проверяю аэропорт Минск — говорю: ехать или нет.
 
@@ -426,7 +425,7 @@ def run_flask():
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
-    print("✅ METAR + OpenWeatherMap", flush=True)
+    print("✅ METAR + Open-Meteo", flush=True)
     print("📡 Бот готов к работе", flush=True)
 
     try:
