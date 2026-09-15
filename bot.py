@@ -202,11 +202,11 @@ def start(message):
 @bot.message_handler(commands=['weather'])
 def weather_cmd(m):
     save_user(m.chat.id)
-    bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
-    send_weather(m.chat.id)
+    bot.send_message(m.chat)
 
 
-@bot.message_handler(commands=['about'])
+.id, "⏳ Смотрю на небо...")
+    send_weather(m.chat.id@bot.message_handler(commands=['about'])
 def about_cmd(m):
     save_user(m.chat.id)
     bot.send_message(m.chat.id, ABOUT_TEXT,
@@ -325,31 +325,26 @@ def send_weather(chat_id):
     # Райдерский вердикт
     rider_verdict = get_rider_verdict(a["score"])
 
-    # ============ ФОРМАТ (без иконки в заголовке) ============
-    msg = f"""<b>MotoWeather Минск</b>
-📅 {date}, {now}
+    # ============ ФОРМАТ — без разделителей ============
+    msg = f"""<b>MotoWeather</b>
+📅 {date} · {now} · Минск
+✈️ Данные с аэропорта Минск
 
-━━━━━━━━━━━━━━━━━━━━
 🌡️ {w['temp']}°C · 💨 {wind_part}
 {w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
 💧 Влажность {humidity_str} · 👁️ {vis_str}
 {light_info}
-━━━━━━━━━━━━━━━━━━━━
 
 <b>{rider_verdict}</b>
 
 <b>🎯 ЧТО НА ДОРОГЕ</b>
 {risk_block}
 
-━━━━━━━━━━━━━━━━━━━━
-
 <b>🎽 НА СЕБЯ</b>
 {gear_block}
 
 <b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
 {tech_block}
-
-━━━━━━━━━━━━━━━━━━━━
 
 ⏱️ <b>ЧЕРЕЗ 3 ЧАСА</b>
 {next_hour}
@@ -360,7 +355,6 @@ def send_weather(chat_id):
 📅 <b>ЗАВТРА</b>
 {tomorrow_line}
 
-━━━━━━━━━━━━━━━━━━━━
 💡 <i>{tip}</i>
 
 🏍️ <b>Ровной дороги!</b>"""
