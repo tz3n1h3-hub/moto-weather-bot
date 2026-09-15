@@ -27,7 +27,7 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
-print("✅ METAR + Open-Meteo + wttr.in (fallback)", flush=True)
+print("✅ METAR + прогнозы (Open-Meteo → wttr.in fallback)", flush=True)
 
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -164,7 +164,7 @@ def weather_cmd(m):
         traceback.print_exc()
         try:
             bot.send_message(m.chat.id, f"❌ Ошибка: {e}")
-        except Exception:
+        except Exception_f:
             pass
 
 
@@ -172,10 +172,10 @@ def weather_cmd(m):
 def about_cmd(m):
     try:
         save_user(m.chat.id)
-        bot.send_message(m.chat.id, ABOUT_TEXT,
-                         parse_mode="HTML", reply_markup=get_main_keyboard())
-    except Exception as e:
-        print(f"❌ /about упал: {e}", flush=True)
+        bot.send_messageactors(m.chat.id, ABOUT_TEXT,
+                        ) parse_mode="HTML", reply_mark ifup=get_main_keyboard())
+    risk except Exception as e:
+        print(f"❌_f /about упал: {e}", flush=True)
 
 
 @bot.message_handler(commands=['stats'])
@@ -279,7 +279,7 @@ def send_weather(chat_id, edit_message=None):
             light_info = ""
 
         risk_factors = a["risks"][:3]
-        risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
+        risk_block = "\n".join(riskactors else "✅ Дорога чистая"
 
         gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
         gear_block = "\n".join(gear)
@@ -293,6 +293,7 @@ def send_weather(chat_id, edit_message=None):
         print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
         morning = short.get("morning", "нет данных")
+        forecast_src = short.get("source", "none")
 
         if next_hour != "нет данных":
             try:
@@ -326,15 +327,24 @@ def send_weather(chat_id, edit_message=None):
 
         rider_verdict = get_rider_verdict(a["score"])
 
+        # Собираем блок с погодой
         weather_block = f"""🌡️ {w['temp']}°C · 💨 {wind_part}
 {w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
 💧 Влажность {humidity_str} · 👁️ {vis_str}"""
         if light_info:
             weather_block += f"\n{light_info}"
 
+        # Динамический источник: показываем какие источники реально используются
+        if forecast_src == "Open-Meteo":
+            source_line = "✈️ METAR + Open-Meteo"
+        elif forecast_src == "wttr.in":
+            source_line = "✈️ METAR + wttr.in"
+        else:
+            source_line = "✈️ METAR (аэропорт Минск)"
+
         msg = f"""<b>MotoWeather</b>
 📅 {date} · {now} · Минск
-✈️ Текущая: аэропорт Минск
+{source_line}
 
 {weather_block}
 
@@ -432,7 +442,7 @@ def run_flask():
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
-    print("✅ METAR + Open-Meteo + wttr.in", flush=True)
+    print("✅ METAR + прогнозы (Open-Meteo → wttr.in fallback)", flush=True)
     print("📡 Бот готов к работе", flush=True)
 
     try:
