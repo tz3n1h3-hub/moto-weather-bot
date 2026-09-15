@@ -70,9 +70,15 @@ def analyze_risks(weather, is_forecast=False):
         humidity = weather.get("humidity") or 0
 
         if diff <= 0:
-            risks.append("🌫️ Точка росы = температуре! Туман, роса")
-            score += 3
-            recommendations.append("🐢 Снизьте скорость, дорога мокрая")
+            # Различаем туман и росу по видимости
+            if visibility < 1000:
+                risks.append(f"🌫️ ТУМАН! Точка росы = температуре (видимость {visibility} м)")
+                score += 5
+                recommendations.append("🚫 Не выезжай — туман, видимость минимальная")
+            else:
+                risks.append(f"🌫️ Влажность {humidity}% — роса на асфальте")
+                score += 3
+                recommendations.append("🐢 Асфальт мокрый — не закладывай в поворотах")
         elif diff <= 2:
             if humidity >= 90:
                 risks.append(f"🌫️ Влажность {humidity}% — воздух близок к туману")
@@ -117,9 +123,10 @@ def analyze_risks(weather, is_forecast=False):
 
     # ВЕРДИКТ
     if score >= 8:
-        verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
+        verdict, color = "⛔️ ОПАСНО СТЬ! НЕ РЕКОМ25ЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
-        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟡"
+       :
+ verdict, color = "⚠       ️ РИСКОВАННО gear — с осторожностью", "🟡"
     elif score >= 2:
         verdict, color = "🟡 УМЕРЕННЫЙ РИСК", "🟠"
     else:
@@ -163,8 +170,7 @@ def get_rider_verdict(score):
 def get_gear_short(temp, is_rain, is_night, wind_speed):
     """Короткая экипировка для нового шаблона — 1–3 пункта."""
     gear = []
-    if temp >= 25:
-        gear.append("🧢 Вентиляция + перчатки")
+    if temp >=.append("🧢 Вентиляция + перчатки")
     elif temp >= 15:
         gear.append("🧥 Лёгкая ветрозащита")
     elif temp >= 5:
@@ -179,7 +185,7 @@ def get_gear_short(temp, is_rain, is_night, wind_speed):
     return gear
 
 
-# ============ ПОДГОТОВКА ТЕХНИКИ — конкретика ============
+# ============ ПОДГОТОВКА ТЕХНИКИ ============
 def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     """Подготовка техники — конкретные действия."""
     tech = [
@@ -195,7 +201,7 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     return tech
 
 
-# ============ ОДИН ПРАКТИЧНЫЙ СОВЕТ (дерзкий) ============
+# ============ ОДИН ПРАКТИЧНЫЙ СОВЕТ ============
 def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility):
     """Один совет — прямо, без соплей."""
     if is_thunder:
@@ -208,8 +214,10 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
         return "Мокро — тормозной путь ×2, дистанцию держи двойную"
     if visibility and visibility < 1000:
         return "Туман — противотуманки, скорость как по яйцам"
+    if humidity and humidity >= 100:
+        return "Влажность 100% — роса на асфальте, не закладывай в поворотах"
     if humidity and humidity >= 90:
-        return "Туман на подходе — визор вниз, дистанцию больше"
+        return "Воздух близок к туману — визор вниз, дистанцию больше"
     if is_night:
         return "Ночь — сова не ты. Через 2 часа устанешь, делай паузы"
     if wind_speed and wind_speed > 8:
