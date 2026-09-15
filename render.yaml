@@ -7,7 +7,7 @@ services:
     autoDeploy: true
     healthCheckPath: /health
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python -u bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
@@ -17,3 +17,5 @@ services:
         sync: false
       - key: MY_BOT_USERNAME
         sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
