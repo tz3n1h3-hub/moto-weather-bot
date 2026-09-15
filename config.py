@@ -7,7 +7,7 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 # ============ КОНСТАНТЫ ============
 MY_BOT_USERNAME = os.getenv("MY_BOT_USERNAME", "MotoWeatherMinskBot")
-MINSK_TZ = timezone(timedelta(hours=3))  # Беларусь всегда UTC+3, без перехода на летнее время
+MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8930836312"))
 
