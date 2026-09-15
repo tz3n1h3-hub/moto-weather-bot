@@ -328,14 +328,14 @@ def send_weather(chat_id, edit_message=None):
 
         rider_verdict = get_rider_verdict(a["score"])
 
-        # Собираем блок с погодой (без лишней пустой строки)
+        # Собираем блок с погодой
         weather_block = f"""🌡️ {w['temp']}°C · 💨 {wind_part}
 {w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
 💧 Влажность {humidity_str} · 👁️ {vis_str}"""
         if light_info:
             weather_block += f"\n{light_info}"
 
-        # Строка источника прогноза (если прогноз получен)
+        # Источник прогноза
         forecast_note = ""
         if forecast_src and forecast_src != "none":
             forecast_note = f"\n📊 Прогноз: {forecast_src}"
