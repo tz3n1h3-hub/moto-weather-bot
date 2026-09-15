@@ -255,7 +255,7 @@ def _fetch_open_meteo():
         return None
 
 
-# ============ WTTR.IN ============
+# ============ WTTR.IN FALLBACK ============
 def _fetch_wttr():
     global _wttr_cache
 
@@ -297,7 +297,8 @@ def _wttr_to_hourly(wttr_data):
             "179": 71, "182": 51, "185": 51, "281": 51, "284": 51,
             "350": 51, "362": 51, "365": 51,
         }
-        for day in wttr_data.get("weather", [])[:2]:
+        # wttr.in даёт 3 дня: сегодня, завтра, послезавтра
+        for day in wttr_data.get("weather", [])[:3]:
             for slot in day.get("hourly", []):
                 time_str = slot.get("time", "0").zfill(4)
                 hh = time_str[:-2].zfill(2)
