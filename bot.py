@@ -138,12 +138,15 @@ def start(message):
                 parse_mode="HTML")
             return
 
-        bot.send_message(message.chat.id,
+        bot.send_message(
+            message.chat.id,
             "🏍️ <b>MotoWeather Минск</b>\n\n"
             "Погода для тех, кто на двух колёсах.\n"
             "Проверяю аэропорт Минск и говорю прямо: ехать или нет.\n\n"
             "<b>Жми «Сейчас» — и вперёд.</b>",
-            parse_mode="HTML", reply_markup=get_main_keyboard())
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
         print("✅ /start отвечен", flush=True)
     except Exception as e:
         print(f"❌ /start упал: {e}", flush=True)
@@ -164,7 +167,7 @@ def weather_cmd(m):
         traceback.print_exc()
         try:
             bot.send_message(m.chat.id, f"❌ Ошибка: {e}")
-        except Exception_f:
+        except Exception:
             pass
 
 
@@ -172,10 +175,14 @@ def weather_cmd(m):
 def about_cmd(m):
     try:
         save_user(m.chat.id)
-        bot.send_messageactors(m.chat.id, ABOUT_TEXT,
-                        ) parse_mode="HTML", reply_mark ifup=get_main_keyboard())
-    risk except Exception as e:
-        print(f"❌_f /about упал: {e}", flush=True)
+        bot.send_message(
+            m.chat.id,
+            ABOUT_TEXT,
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
+    except Exception as e:
+        print(f"❌ /about упал: {e}", flush=True)
 
 
 @bot.message_handler(commands=['stats'])
@@ -183,10 +190,12 @@ def stats_cmd(m):
     if m.chat.id != ADMIN_ID:
         bot.reply_to(m, "❌ Нет прав.")
         return
-    bot.reply_to(m,
+    bot.reply_to(
+        m,
         f"📊 <b>Статистика</b>\n👥 {get_users_count()} пользователей\n"
         f"📅 {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
-        parse_mode="HTML")
+        parse_mode="HTML"
+    )
 
 
 # ============ CALLBACK ============
@@ -224,9 +233,12 @@ def callback(call):
                     print("ℹ️ About уже открыт (не изменилось)", flush=True)
                 else:
                     print(f"⚠️ Не удалось: {e}. Отправляю новое.", flush=True)
-                    bot.send_message(call.message.chat.id, ABOUT_TEXT,
-                                     parse_mode="HTML",
-                                     reply_markup=get_main_keyboard())
+                    bot.send_message(
+                        call.message.chat.id,
+                        ABOUT_TEXT,
+                        parse_mode="HTML",
+                        reply_markup=get_main_keyboard()
+                    )
 
         else:
             print(f"⚠️ Неизвестный callback: {call.data}", flush=True)
@@ -279,7 +291,7 @@ def send_weather(chat_id, edit_message=None):
             light_info = ""
 
         risk_factors = a["risks"][:3]
-        risk_block = "\n".join(riskactors else "✅ Дорога чистая"
+        risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
         gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
         gear_block = "\n".join(gear)
@@ -390,12 +402,20 @@ def send_weather(chat_id, edit_message=None):
                     print("ℹ️ Сообщение не изменилось (данные те же)", flush=True)
                 else:
                     print(f"⚠️ Не удалось отредактировать: {e}. Отправляю новое.", flush=True)
-                    bot.send_message(chat_id, msg, parse_mode="HTML",
-                                     reply_markup=get_after_weather_keyboard())
+                    bot.send_message(
+                        chat_id,
+                        msg,
+                        parse_mode="HTML",
+                        reply_markup=get_after_weather_keyboard()
+                    )
         else:
             print(f"🌤️ Отправляю новое сообщение в {chat_id}", flush=True)
-            bot.send_message(chat_id, msg, parse_mode="HTML",
-                             reply_markup=get_after_weather_keyboard())
+            bot.send_message(
+                chat_id,
+                msg,
+                parse_mode="HTML",
+                reply_markup=get_after_weather_keyboard()
+            )
             print(f"✅ Сообщение отправлено в {chat_id}", flush=True)
 
     except Exception as e:
