@@ -27,7 +27,7 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
-print("✅ Используем METAR + Open-Meteo (без API-ключа)", flush=True)
+print("✅ METAR + Open-Meteo + wttr.in (fallback)", flush=True)
 
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -82,8 +82,9 @@ def format_visibility(v):
 ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
 📡 <b>Источник данных:</b>
-✈️ METAR аэропорта Минск (UMMS) — реальные метеоданные
-🌐 Open-Meteo — прогнозы на 3 часа и утро
+✈️ METAR аэропорта Минск (UMMS) — текущая погода
+🌐 Open-Meteo — прогнозы (основной)
+🌐 wttr.in — прогнозы (резервный)
 
 Бот для райдеров. Проверяю аэропорт Минск — говорю: ехать или нет.
 
@@ -272,7 +273,11 @@ def send_weather(chat_id, edit_message=None):
         humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
         vis_str = format_visibility(w["visibility"])
 
-        light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
+        # Светлое время — только если есть данные
+        if w.get("sunrise") and w.get("sunset"):
+            light_info = get_daylight_info(w.get("sunrise"), w.get("sunset"))
+        else:
+            light_info = ""
 
         risk_factors = a["risks"][:3]
         risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
@@ -289,6 +294,7 @@ def send_weather(chat_id, edit_message=None):
         print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
         morning = short.get("morning", "нет данных")
+        forecast_src = short.get("source", "none")
 
         if next_hour != "нет данных":
             try:
@@ -322,14 +328,23 @@ def send_weather(chat_id, edit_message=None):
 
         rider_verdict = get_rider_verdict(a["score"])
 
+        # Собираем блок с погодой (без лишней пустой строки)
+        weather_block = f"""🌡️ {w['temp']}°C · 💨 {wind_part}
+{w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
+💧 Влажность {humidity_str} · 👁️ {vis_str}"""
+        if light_info:
+            weather_block += f"\n{light_info}"
+
+        # Строка источника прогноза (если прогноз получен)
+        forecast_note = ""
+        if forecast_src and forecast_src != "none":
+            forecast_note = f"\n📊 Прогноз: {forecast_src}"
+
         msg = f"""<b>MotoWeather</b>
 📅 {date} · {now} · Минск
-✈️ Данные с аэропорта Минск
+✈️ Текущая: аэропорт Минск{forecast_note}
 
-🌡️ {w['temp']}°C · 💨 {wind_part}
-{w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
-💧 Влажность {humidity_str} · 👁️ {vis_str}
-{light_info}
+{weather_block}
 
 <b>{rider_verdict}</b>
 
@@ -425,7 +440,7 @@ def run_flask():
 # ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
-    print("✅ METAR + Open-Meteo", flush=True)
+    print("✅ METAR + Open-Meteo + wttr.in", flush=True)
     print("📡 Бот готов к работе", flush=True)
 
     try:
