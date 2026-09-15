@@ -70,7 +70,6 @@ def analyze_risks(weather, is_forecast=False):
         humidity = weather.get("humidity") or 0
 
         if diff <= 0:
-            # Различаем туман и росу по видимости
             if visibility < 1000:
                 risks.append(f"🌫️ ТУМАН! Точка росы = температуре (видимость {visibility} м)")
                 score += 5
@@ -123,10 +122,9 @@ def analyze_risks(weather, is_forecast=False):
 
     # ВЕРДИКТ
     if score >= 8:
-        verdict, color = "⛔️ ОПАСНО СТЬ! НЕ РЕКОМ25ЕНДУЕТСЯ!", "🔴"
+        verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
-       :
- verdict, color = "⚠       ️ РИСКОВАННО gear — с осторожностью", "🟡"
+        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟡"
     elif score >= 2:
         verdict, color = "🟡 УМЕРЕННЫЙ РИСК", "🟠"
     else:
@@ -170,7 +168,8 @@ def get_rider_verdict(score):
 def get_gear_short(temp, is_rain, is_night, wind_speed):
     """Короткая экипировка для нового шаблона — 1–3 пункта."""
     gear = []
-    if temp >=.append("🧢 Вентиляция + перчатки")
+    if temp >= 25:
+        gear.append("🧢 Вентиляция + перчатки")
     elif temp >= 15:
         gear.append("🧥 Лёгкая ветрозащита")
     elif temp >= 5:
