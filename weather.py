@@ -2,6 +2,7 @@ import re
 import math
 import time
 import requests
+import urllib3
 from datetime import datetime, timedelta
 
 from config import (
@@ -10,9 +11,12 @@ from config import (
     MINSK_LAT, MINSK_LON
 )
 
+# Отключаем предупреждения о SSL (у wttr.in истёк сертификат)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 # ============ ГЛОБАЛЬНЫЙ КЭШ ============
-_open_meteo_cache = {"data": None, "ts": 0}
+_open_meteo_cache = {"data": None, "ts": 0, "source": None}
 _wttr_cache = {"data": None, "ts": 0}
 
 
@@ -228,7 +232,6 @@ def _fetch_open_meteo():
     """Запрашивает Open-Meteo с кэшем на 5 минут."""
     global _open_meteo_cache
 
-    # Если данные свежие (<5 мин) — из кэша
     if _open_meteo_cache["data"] and (time.time() - _open_meteo_cache["ts"]) < 300:
         print("Open-Meteo: из кэша", flush=True)
         return _open_meteo_cache["data"]
@@ -252,7 +255,6 @@ def _fetch_open_meteo():
             print(f"Open-Meteo: ошибка {data.get('reason')}", flush=True)
             return None
 
-        # Кэшируем
         _open_meteo_cache["data"] = data
         _open_meteo_cache["ts"] = time.time()
         print("Open-Meteo: получено и закэшировано", flush=True)
@@ -262,9 +264,9 @@ def _fetch_open_meteo():
         return None
 
 
-# ============ WTTR.IN FALLBACK ============
+# ============ WTTR.IN FALLBACK (verify=False из-за истёкшего SSL) ============
 def _fetch_wttr():
-    """Fallback-источник: wttr.in (JSON)."""
+    """Fallback: wttr.in (JSON). SSL отключён — у них истёк сертификат."""
     global _wttr_cache
 
     if _wttr_cache["data"] and (time.time() - _wttr_cache["ts"]) < 300:
@@ -272,9 +274,9 @@ def _fetch_wttr():
         return _wttr_cache["data"]
 
     try:
-        url = f"https://wttr.in/Minsk?format=j1"
+        url = "https://wttr.in/Minsk?format=j1"
         print("wttr.in: запрашиваю данные...", flush=True)
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, timeout=10, verify=False)
         if r.status_code != 200:
             print(f"wttr.in: status={r.status_code}", flush=True)
             return None
@@ -289,81 +291,43 @@ def _fetch_wttr():
 
 
 def _wttr_to_hourly(wttr_data):
-    """Преобразует wttr.in в формат, похожий на Open-Meteo hourly."""
+    """wttr.in → формат Open-Meteo hourly."""
     if not wttr_data:
         return None
     try:
         result = {"time": [], "temperature_2m": [], "wind_speed_10m": [], "weather_code": []}
-        # wttr.in даёт weather[] с 3-часовыми интервалами
+        code_map = {
+            "113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
+            "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
+            "176": 61, "263": 51, "266": 51, "293": 61, "296": 61,
+            "299": 63, "302": 63, "305": 65, "308": 65, "311": 51,
+            "314": 51, "353": 80, "356": 82, "359": 82,
+            "227": 73, "230": 75, "320": 71, "323": 71, "326": 71,
+            "329": 73, "332": 73, "335": 75, "338": 75,
+            "368": 71, "371": 75, "374": 51, "377": 51,
+            "179": 71, "182": 51, "185": 51, "281": 51, "284": 51,
+            "350": 51, "362": 51, "365": 51,
+        }
         for day in wttr_data.get("weather", [])[:2]:
             for slot in day.get("hourly", []):
-                # wttr time: "0", "300", "600", ... в минутах от начала дня
                 time_str = slot.get("time", "0").zfill(4)
-                hh = time_str[:-2]
+                hh = time_str[:-2].zfill(2)
                 mm = time_str[-2:]
                 date = day.get("date", "")
                 dt_str = f"{date}T{hh}:{mm}"
                 result["time"].append(dt_str)
                 result["temperature_2m"].append(float(slot.get("tempC", 0)))
                 result["wind_speed_10m"].append(round(float(slot.get("windspeedKmph", 0)) / 3.6, 1))
-                # Маппинг wttr weatherCode → WMO (приблизительно)
                 wttr_code = slot.get("weatherCode", "113")
-                code_map = {
-                    "113": 0,   # Sunny/Clear
-                    "116": 2,   # Partly cloudy
-                    "119": 3,   # Cloudy
-                    "122": 3,   # Overcast
-                    "143": 45,  # Mist
-                    "248": 45,  # Fog
-                    "260": 45,  # Freezing fog
-                    "200": 95,  # Thundery
-                    "386": 95,  # Thundery
-                    "392": 95,  # Thundery
-                    "176": 61,  # Patchy rain
-                    "263": 51,  # Patchy light drizzle
-                    "266": 51,
-                    "293": 61,
-                    "296": 61,
-                    "299": 63,
-                    "302": 63,
-                    "305": 65,
-                    "308": 65,
-                    "311": 51,
-                    "314": 51,
-                    "353": 80,
-                    "356": 82,
-                    "359": 82,
-                    "227": 73,
-                    "230": 75,
-                    "320": 71,
-                    "323": 71,
-                    "326": 71,
-                    "329": 73,
-                    "332": 73,
-                    "335": 75,
-                    "338": 75,
-                    "368": 71,
-                    "371": 75,
-                    "374": 51,
-                    "377": 51,
-                    "179": 71,
-                    "182": 51,
-                    "185": 51,
-                    "281": 51,
-                    "284": 51,
-                    "350": 51,
-                    "362": 51,
-                    "365": 51,
-                }
                 result["weather_code"].append(code_map.get(wttr_code, 0))
         return result
     except Exception as e:
-        print(f"wttr.in: ошибка преобразования: {e}", flush=True)
+        print(f"wttr.in: ошибка hourly: {e}", flush=True)
         return None
 
 
 def _wttr_to_daily(wttr_data):
-    """Преобразует wttr.in в формат Open-Meteo daily."""
+    """wttr.in → формат Open-Meteo daily."""
     if not wttr_data:
         return None
     try:
@@ -372,37 +336,36 @@ def _wttr_to_daily(wttr_data):
             "weather_code": [], "wind_speed_10m_max": [], "precipitation_sum": [],
             "sunrise": [], "sunset": [],
         }
+        code_map = {"113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
+                    "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
+                    "176": 61, "296": 61, "299": 63, "302": 63, "305": 65,
+                    "308": 65, "353": 80, "356": 82, "359": 82}
+
+        def to_24h(t):
+            try:
+                dt = datetime.strptime(t.strip(), "%I:%M %p")
+                return dt.strftime("%H:%M")
+            except Exception:
+                return t[:5]
+
         for day in wttr_data.get("weather", [])[:3]:
             result["time"].append(day.get("date"))
             result["temperature_2m_max"].append(float(day.get("maxtempC", 0)))
             result["temperature_2m_min"].append(float(day.get("mintempC", 0)))
-            # Астро: sunrise/sunset из astronomy
+
             astro = day.get("astronomy", [{}])[0]
             sunrise = astro.get("sunrise", "06:00")
             sunset = astro.get("sunset", "19:00")
-            # wttr даёт в формате "06:39 AM" — переведём в 24ч
-            def to_24h(t):
-                try:
-                    dt = datetime.strptime(t.strip(), "%I:%M %p")
-                    return dt.strftime("%H:%M")
-                except Exception:
-                    return t[:5]
             result["sunrise"].append(to_24h(sunrise))
             result["sunset"].append(to_24h(sunset))
 
-            # Weather code из первого hourly
             hourly = day.get("hourly", [{}])
             code = 0
             if hourly:
                 wttr_code = hourly[0].get("weatherCode", "113")
-                code_map = {"113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
-                            "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
-                            "176": 61, "296": 61, "299": 63, "302": 63, "305": 65,
-                            "308": 65, "353": 80, "356": 82, "359": 82}
                 code = code_map.get(wttr_code, 0)
             result["weather_code"].append(code)
 
-            # Max wind
             max_wind = 0
             precip = 0
             for slot in day.get("hourly", []):
@@ -415,17 +378,16 @@ def _wttr_to_daily(wttr_data):
 
         return result
     except Exception as e:
-        print(f"wttr.in: ошибка преобразования daily: {e}", flush=True)
+        print(f"wttr.in: ошибка daily: {e}", flush=True)
         return None
 
 
 def _get_forecast_data():
-    """Пытается получить прогноз из Open-Meteo, при неудаче — из wttr.in."""
+    """Возвращает (данные, источник). Пробует Open-Meteo → wttr.in."""
     om = _fetch_open_meteo()
     if om and "hourly" in om:
-        return om, "open-meteo"
+        return om, "Open-Meteo"
 
-    # Fallback на wttr.in
     wttr = _fetch_wttr()
     if wttr:
         hourly = _wttr_to_hourly(wttr)
@@ -482,14 +444,12 @@ def _wmo_emoji(code):
 def get_weather():
     try:
         metar = get_metar_data()
+        forecast_data, forecast_src = _get_forecast_data()
 
-        # Sunrise/sunset — из прогноза
-        forecast_data, _ = _get_forecast_data()
         daily = (forecast_data or {}).get("daily", {})
         sunrise_iso = daily.get("sunrise", [None])[0] if daily.get("sunrise") else None
         sunset_iso = daily.get("sunset", [None])[0] if daily.get("sunset") else None
 
-        # Конвертируем ISO → HH:MM
         def to_hm(iso):
             if not iso:
                 return None
@@ -523,7 +483,6 @@ def get_weather():
 
             source = "METAR (аэропорт Минск)"
         else:
-            # Нет METAR — используем прогноз
             cur = (forecast_data or {}).get("current", {})
             if not cur:
                 print("Нет данных ни из METAR, ни из прогноза", flush=True)
@@ -544,7 +503,7 @@ def get_weather():
             visibility = int(cur.get("visibility") or 10000)
             is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
             is_thunder = weather_code in (95, 96, 99)
-            source = "Прогноз (fallback)"
+            source = f"Прогноз ({forecast_src})"
 
         feels_like = calculate_feels_like(temp, wind_speed)
         humidity = calculate_humidity(temp, dew_point) if dew_point is not None else None
@@ -571,7 +530,8 @@ def get_weather():
             "is_night": is_night_time(),
             "sunrise": sunrise,
             "sunset": sunset,
-            "source": source
+            "source": source,
+            "forecast_source": forecast_src
         }
     except Exception as e:
         print(f"❌ Ошибка погоды: {e}", flush=True)
@@ -605,7 +565,6 @@ def get_forecast_tomorrow():
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
         is_thunder = weather_code in (95, 96, 99)
 
-        # ISO или YYYY-MM-DD
         date_obj = datetime.strptime(date_iso, "%Y-%m-%d")
 
         print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C", flush=True)
@@ -627,13 +586,13 @@ def get_forecast_tomorrow():
         return None
 
 
-# ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО ============
+# ============ КОРОТКИЙ ПРОГНОЗ ============
 def get_short_forecast():
-    """Возвращает {next_hour, morning}."""
+    """Возвращает {next_hour, morning, source}."""
     try:
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
-            return {"next_hour": "нет данных", "morning": "нет данных"}
+            return {"next_hour": "нет данных", "morning": "нет данных", "source": "none"}
 
         hourly = forecast_data["hourly"]
         times = hourly.get("time", [])
@@ -652,7 +611,7 @@ def get_short_forecast():
                 t_dt = datetime.fromisoformat(t_str)
                 diff = abs((t_dt - target).total_seconds())
                 if diff < min_diff:
-                    min_diff = diff
+                    min_diff =тро diff
                     next_idx = i
             except Exception:
                 continue
@@ -666,7 +625,7 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # Утро завтра (6:00–9:00)
+        # У завтра (6:00–9:00)
         tomorrow_date = (now + timedelta(days=1)).date()
         morning_temps = []
         morning_winds = []
@@ -690,7 +649,7 @@ def get_short_forecast():
             morning = "нет данных"
 
         print(f"✅ Short forecast ({src}): {next_hour} | {morning}", flush=True)
-        return {"next_hour": next_hour, "morning": morning}
+        return {"next_hour": next_hour, "morning": morning, "source": src}
     except Exception as e:
         print(f"Ошибка короткого прогноза: {e}", flush=True)
-        return {"next_hour": "нет данных", "morning": "нет данных"}
+        return {"next_hour": "нет данных", "morning": "нет данных", "source": "none"}
