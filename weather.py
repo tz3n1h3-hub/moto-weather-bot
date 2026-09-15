@@ -330,4 +330,112 @@ def get_forecast_tomorrow():
         )
         print("OWM: запрашиваю прогноз на завтра...", flush=True)
         data = requests.get(url, timeout=10).json()
-        print(f"OWM forecast: cod={data.get('cod')}", flush=True
+        print(f"OWM forecast: cod={data.get('cod')}", flush=True)
+
+        if data.get("cod") != "200":
+            return None
+
+        tomorrow = datetime.now(MINSK_TZ) + timedelta(days=1)
+        key = tomorrow.strftime("%Y-%m-%d")
+
+        temps, winds, conditions = [], [], []
+        rain = 0
+
+        for item in data["list"]:
+            dt = datetime.fromtimestamp(item["dt"], tz=MINSK_TZ)
+            if dt.strftime("%Y-%m-%d") == key:
+                temps.append(item["main"]["temp"])
+                winds.append(item["wind"]["speed"])
+                if "rain" in item:
+                    rain += item["rain"].get("3h", 0)
+                conditions.append(item["weather"][0]["id"])
+
+        if not temps:
+            print("OWM forecast: нет данных на завтра", flush=True)
+            return None
+
+        return _build_forecast_result(temps, winds, rain, conditions, tomorrow)
+    except Exception as e:
+        print(f"❌ Ошибка прогноза: {e}", flush=True)
+        return None
+
+
+def _build_forecast_result(temps, winds, rain, conditions, date_obj):
+    avg_temp = int(sum(temps) / len(temps))
+    max_temp, min_temp = int(max(temps)), int(min(temps))
+    avg_wind = int(sum(winds) / len(winds))
+    wind_gust = int(max(winds) * 1.3)
+    most_common = max(set(conditions), key=conditions.count) if conditions else 800
+
+    condition, is_rain, is_thunder = _classify_condition(most_common)
+
+    return {
+        "date": date_obj.strftime("%d.%m.%Y"),
+        "temp_avg": avg_temp,
+        "temp_max": max_temp,
+        "temp_min": min_temp,
+        "wind_speed": avg_wind,
+        "wind_gust": wind_gust,
+        "rain_total": round(rain, 1),
+        "condition": condition,
+        "is_rain": is_rain,
+        "is_thunder": is_thunder
+    }
+
+
+def _classify_condition(weather_id):
+    if 200 <= weather_id < 300:
+        return "⛈️ Гроза", True, True
+    if 500 <= weather_id < 600:
+        return ("🌧️ Сильный дождь" if weather_id >= 502 else "🌧️ Дождь"), True, False
+    if 600 <= weather_id < 700:
+        return "❄️ Снег", False, False
+    if weather_id == 800:
+        return "☀️ Ясно", False, False
+    if weather_id > 800:
+        return "☁️ Облачно", False, False
+    return "🌤️ Переменная облачность", False, False
+
+
+# ============ КОРОТКИЙ ПРОГНОЗ: БЛИЖАЙШИЙ ЧАС + УТРО ============
+def get_short_forecast():
+    """Возвращает {next_hour, morning} — короткие прогнозы."""
+    try:
+        url = (
+            f"{OWM_FORECAST_URL}?lat={MINSK_LAT}&lon={MINSK_LON}"
+            f"&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru&cnt=8"
+        )
+        print("OWM: короткий прогноз...", flush=True)
+        data = requests.get(url, timeout=10).json()
+        print(f"OWM short: cod={data.get('cod')}, list={len(data.get('list', []))}", flush=True)
+
+        if data.get("cod") != "200" or not data.get("list"):
+            return {"next_hour": "нет данных", "morning": "нет данных"}
+
+        # Ближайший час (первый слот)
+        item = data["list"][0]
+        t = round(item["main"]["temp"])
+        w = round(item["wind"]["speed"])
+        cond = item["weather"][0]["description"].capitalize()
+        next_hour = f"{t}°C, {cond}, {w} м/с"
+
+        # Утро завтра (6:00–9:00)
+        tomorrow = (datetime.now(MINSK_TZ) + timedelta(days=1)).date()
+        morning_items = []
+        for it in data["list"]:
+            dt = datetime.fromtimestamp(it["dt"], tz=MINSK_TZ)
+            if dt.date() == tomorrow and 6 <= dt.hour <= 9:
+                morning_items.append(it)
+
+        if morning_items:
+            avg_t = round(sum(i["main"]["temp"] for i in morning_items) / len(morning_items))
+            avg_w = round(sum(i["wind"]["speed"] for i in morning_items) / len(morning_items))
+            cond = morning_items[0]["weather"][0]["description"].capitalize()
+            morning = f"{avg_t}°C, {cond}, {avg_w} м/с"
+        else:
+            morning = "нет данных"
+
+        return {"next_hour": next_hour, "morning": morning}
+    except Exception as e:
+        print(f"❌ Ошибка короткого прогноза: {e}", flush=True)
+        return {"next_hour": "нет данных", "morning": "нет данных"}
