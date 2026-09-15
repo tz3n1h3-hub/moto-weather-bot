@@ -82,7 +82,7 @@ def format_visibility(v):
 ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
 📡 <b>Источник данных:</b>
-✈️ METAR аэропорта Минск (UMMS) — текущая погода
+✈️ METAR аэропорта Минск — текущая погода
 🌐 Open-Meteo — прогнозы (основной)
 🌐 wttr.in — прогнозы (резервный)
 
@@ -144,7 +144,7 @@ def start(message):
             "Проверяю аэропорт Минск и говорю прямо: ехать или нет.\n\n"
             "<b>Жми «Сейчас» — и вперёд.</b>",
             parse_mode="HTML", reply_markup=get_main_keyboard())
-        print(f"✅ /start отвечен", flush=True)
+        print("✅ /start отвечен", flush=True)
     except Exception as e:
         print(f"❌ /start упал: {e}", flush=True)
 
@@ -229,8 +229,8 @@ def callback(call):
                                      reply_markup=get_main_keyboard())
 
         else:
-            print(f")
-⚠️ Неизвестный callback: {call.data}", flush=True            bot.answer_callback_query(call.id, "❓ Неизвестная кнопка", cache_time=3)
+            print(f"⚠️ Неизвестный callback: {call.data}", flush=True)
+            bot.answer_callback_query(call.id, "❓ Неизвестная кнопка", cache_time=3)
 
     except Exception as e:
         print(f"❌ Ошибка callback: {type(e).__name__}: {e}", flush=True)
@@ -326,7 +326,6 @@ def send_weather(chat_id, edit_message=None):
 
         rider_verdict = get_rider_verdict(a["score"])
 
-        # Собираем блок с погодой
         weather_block = f"""🌡️ {w['temp']}°C · 💨 {wind_part}
 {w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
 💧 Влажность {humidity_str} · 👁️ {vis_str}"""
@@ -455,5 +454,5 @@ if __name__ == "__main__":
                 time.sleep(20)
             else:
                 print(f"⚠️ Polling упал: {e}", flush=True)
-                print("⏳ Жду 10 секунд передэ перезапуском...", flush=True)
+                print("⏳ Жду 10 секунд перед перезапуском...", flush=True)
                 time.sleep(10)
