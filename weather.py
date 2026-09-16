@@ -598,7 +598,8 @@ def get_short_forecast():
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
             return {"next_hour": "нет данных", "next_period": "нет данных",
-                    "next_period_label": "—", "source": "none", "current_temp": None,
+                    "next_period_label": "—", "next_period_title": "—",
+                    "source": "none", "current_temp": None,
                     "show_next_hour": False}
 
         hourly = forecast_data["hourly"]
@@ -611,30 +612,34 @@ def get_short_forecast():
         current_hour = now.hour
         today = now.date()
 
+        # Определяем следующий период суток
+        # Утро: 6-12, День: 12-18, Вечер: 18-24, Ночь: 0-6
         if 6 <= current_hour <= 11:
             next_period = "day"
             target_start, target_end = 12, 18
             target_date = today
             next_label = "ДЕНЬ"
+            next_title = "☀️ Сегодня днём"
         elif 12 <= current_hour <= 17:
             next_period = "evening"
-            target_start, target_end = 18, 23
+            target_start, target_end = 18, 24
             target_date = today
             next_label = "ВЕЧЕР"
-        elif 18 <= current_hour <= 22:
+            next_title = "🌆 Сегодня вечером"
+        elif 18 <= current_hour <= 23:
             next_period = "night"
-            target_start, target_end = 23, 30
-            target_date = today
+            target_start, target_end = 0, 6
+            target_date = today + timedelta(days=1)
             next_label = "НОЧЬ"
+            next_title = "🌙 Сегодня ночью"
         else:
             next_period = "morning"
             target_start, target_end = 6, 12
-            if current_hour <= 5:
-                target_date = today
-            else:
-                target_date = today + timedelta(days=1)
+            target_date = today
             next_label = "УТРО"
+            next_title = "🌅 Сегодня утром"
 
+        # Текущий час из прогноза (для дельты)
         current_idx = 0
         min_diff_cur = float("inf")
         for i, t_str in enumerate(times):
@@ -648,6 +653,7 @@ def get_short_forecast():
                 continue
         current_temp = round(temps[current_idx]) if current_idx < len(temps) else None
 
+        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -670,37 +676,29 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
+        # Проверяем: "через 3 часа" попадает в тот же период?
         target_hour = (current_hour + 3) % 24
         show_next_hour = True
         if next_period == "day" and 12 <= target_hour < 18:
             show_next_hour = False
-        elif next_period == "evening" and 18 <= target_hour < 23:
+        elif next_period == "evening" and 18 <= target_hour < 24:
             show_next_hour = False
-        elif next_period == "night" and (target_hour >= 23 or target_hour <= 5):
+        elif next_period == "night" and 0 <= target_hour < 6:
             show_next_hour = False
         elif next_period == "morning" and 6 <= target_hour < 12:
             show_next_hour = False
 
+        # Собираем следующий период
         period_temps = []
         period_winds = []
         period_codes = []
         for i, t_str in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t_str)
-                if next_period == "night":
-                    if t_dt.date() == target_date and t_dt.hour >= 23:
-                        period_temps.append(temps[i])
-                        period_winds.append(winds[i])
-                        period_codes.append(codes[i])
-                    elif t_dt.date() == target_date + timedelta(days=1) and t_dt.hour <= 5:
-                        period_temps.append(temps[i])
-                        period_winds.append(winds[i])
-                        period_codes.append(codes[i])
-                else:
-                    if t_dt.date() == target_date and target_start <= t_dt.hour < target_end:
-                        period_temps.append(temps[i])
-                        period_winds.append(winds[i])
-                        period_codes.append(codes[i])
+                if t_dt.date() == target_date and target_start <= t_dt.hour < target_end:
+                    period_temps.append(temps[i])
+                    period_winds.append(winds[i])
+                    period_codes.append(codes[i])
             except Exception:
                 continue
 
@@ -712,10 +710,12 @@ def get_short_forecast():
         else:
             next_period_value = "нет данных"
 
+        print(f"✅ Short ({src}): {next_hour} | {next_title}: {next_period_value}", flush=True)
         return {
             "next_hour": next_hour,
             "next_period": next_period_value,
             "next_period_label": next_label,
+            "next_period_title": next_title,
             "source": src,
             "current_temp": current_temp,
             "show_next_hour": show_next_hour
@@ -723,5 +723,6 @@ def get_short_forecast():
     except Exception as e:
         print(f"Ошибка short: {e}", flush=True)
         return {"next_hour": "нет данных", "next_period": "нет данных",
-                "next_period_label": "—", "source": "none", "current_temp": None,
+                "next_period_label": "—", "next_period_title": "—",
+                "source": "none", "current_temp": None,
                 "show_next_hour": False}
