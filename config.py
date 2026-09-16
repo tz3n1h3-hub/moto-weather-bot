@@ -8,6 +8,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 MY_BOT_USERNAME = os.getenv("MY_BOT_USERNAME", "MotoWeatherMinskBot")
 MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
+SUBSCRIBERS_FILE = "subscribers.json"
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8930836312"))
 
 # ============ API URLs ============
