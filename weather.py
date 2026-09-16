@@ -570,9 +570,17 @@ def get_forecast_tomorrow():
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
         is_thunder = weather_code in (95, 96, 99)
 
+        # Если осадков ожидается много, но код показывает "пасмурно" — это дождь
+        if precip_sum and precip_sum > 1 and not is_rain:
+            is_rain = True
+            if precip_sum > 5:
+                emoji, text = "🌧️", "Сильный дождь"
+            else:
+                emoji, text = "🌧️", "Дождь"
+
         date_obj = datetime.strptime(date_iso, "%Y-%m-%d")
 
-        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C, ветер {wind_speed_avg} м/с (макс {wind_speed_max})", flush=True)
+        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C, ветер {wind_speed_avg} м/с (макс {wind_speed_max}), {text}, осадки {precip_sum}мм", flush=True)
 
         return {
             "date": date_obj.strftime("%d.%m.%Y"),
@@ -610,27 +618,22 @@ def get_short_forecast():
         today = now.date()
 
         # Определяем следующий период суток
-        # УТРО: 6-11, ДЕНЬ: 12-17, ВЕЧЕР: 18-22, НОЧЬ: 23-5
         if 6 <= current_hour <= 11:
-            # Сейчас утро → показываем день
             next_period = "day"
             target_start, target_end = 12, 18
             target_date = today
             next_label = "ДЕНЬ"
         elif 12 <= current_hour <= 17:
-            # Сейчас день → показываем вечер
             next_period = "evening"
             target_start, target_end = 18, 23
             target_date = today
             next_label = "ВЕЧЕР"
         elif 18 <= current_hour <= 22:
-            # Сейчас вечер → показываем ночь
             next_period = "night"
             target_start, target_end = 23, 30
             target_date = today
             next_label = "НОЧЬ"
         else:
-            # Сейчас ночь (23-5) → показываем утро
             next_period = "morning"
             target_start, target_end = 6, 12
             if current_hour <= 5:
@@ -684,7 +687,6 @@ def get_short_forecast():
             try:
                 t_dt = datetime.fromisoformat(t_str)
                 if next_period == "night":
-                    # Ночь: 23:00 сегодня + 00:00-05:00 завтра
                     if t_dt.date() == target_date and t_dt.hour >= 23:
                         period_temps.append(temps[i])
                         period_winds.append(winds[i])
