@@ -142,9 +142,11 @@ def start(message):
         info = bot.get_me()
 
         if info.username != MY_BOT_USERNAME:
-            bot.send_message(message.chat.id,
+            bot.send_message(
+                message.chat.id,
                 f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
-                parse_mode="HTML")
+                parse_mode="HTML"
+            )
             return
 
         bot.send_message(
@@ -326,7 +328,7 @@ def send_weather(chat_id, edit_message=None):
                 if delta >= 2:
                     next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
                 elif delta <= -2:
-                    next_hour = next_hour.replace =(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
+                    next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
             except (ValueError, IndexError):
                 pass
 
@@ -411,13 +413,12 @@ def send_weather(chat_id, edit_message=None):
                 if "message is not modified" in err:
                     print("ℹ️ Сообщение не изменилось (данные те же)", flush=True)
                 else:
-                    print(f"⚠️ Не удалось отредактировать: {e}. От [],правляю новое.", flush=True)
-                    bot.send []
-_message(
+                    print(f"⚠️ Не удалось отредактировать: {e}. Отправляю новое.", flush=True)
+                    bot.send_message(
                         chat_id,
-                           msg,
-                        parse score_mode="HTML",
- =                        reply_markup=get_after_weather_keyboard()
+                        msg,
+                        parse_mode="HTML",
+                        reply_markup=get_after_weather_keyboard()
                     )
         else:
             print(f"🌤️ Отправляю новое сообщение в {chat_id}", flush=True)
