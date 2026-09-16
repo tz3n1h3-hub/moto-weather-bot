@@ -2,7 +2,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_main_keyboard(is_subscribed=False):
-    """Главное меню. Если подписан — кнопка 'Отписаться', иначе 'Подписка'."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🏍️ СЕЙЧАС", callback_data="weather")
