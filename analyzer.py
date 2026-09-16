@@ -6,8 +6,7 @@ from weather import get_minsk_hour
 
 # ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
-    risks, recommendations = [], []
-    score = 0
+    risks, recommendations 0
 
     wind_gust = weather.get("wind_gust") or 0
     wind_speed = weather.get("wind_speed") or 0
@@ -120,13 +119,13 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💡 Включите свет")
 
-    # ВЕРДИКТ
+    # ВЕРДИКТ — согласованные цвета
     if score >= 8:
         verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
-        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟡"
+        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟠"
     elif score >= 2:
-        verdict, color = "🟡 УМЕРЕННЫЙ РИСК", "🟠"
+        verdict, color = "🟡 ОСТОРОЖНО — есть нюансы", "🟡"
     else:
         verdict, color = "✅ БЕЗОПАСНО — отличная погода!", "🟢"
 
@@ -142,17 +141,17 @@ def analyze_risks(weather, is_forecast=False):
 
 # ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
-    """Возвращает сокращённый вердикт для нового формата."""
-    if score <= 2:
+    if score <= 1:
         return "БЕЗОПАСНО"
-    if score <= 5:
+    if score <= 4:
         return "ОСТОРОЖНО"
-    return "РИСКОВАННО"
+    if score <= 7:
+        return "РИСКОВАННО"
+    return "ОПАСНО"
 
 
 # ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
 def get_rider_verdict(score):
-    """Райдерский вердикт — дерзкий, сразу понятно ехать или нет."""
     if score <= 2:
         return "🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 5:
@@ -164,9 +163,8 @@ def get_rider_verdict(score):
     return "⛔ НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
 
 
-# ============ ЭКИПИРОВКА — НОВЫЙ ФОРМАТ ============
+# ============ ЭКИПИРОВКА ============
 def get_gear_short(temp, is_rain, is_night, wind_speed):
-    """Короткая экипировка для нового шаблона — 1–3 пункта."""
     gear = []
     if temp >= 25:
         gear.append("🧢 Вентиляция + перчатки")
@@ -186,7 +184,6 @@ def get_gear_short(temp, is_rain, is_night, wind_speed):
 
 # ============ ПОДГОТОВКА ТЕХНИКИ ============
 def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
-    """Подготовка техники — конкретные действия."""
     tech = [
         "Давление в шинах — на холодную",
         "Свет: ближний + стоп + поворотники",
@@ -200,9 +197,8 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     return tech
 
 
-# ============ ОДИН ПРАКТИЧНЫЙ СОВЕТ ============
+# ============ ОДИН СОВЕТ ============
 def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility):
-    """Один совет — прямо, без соплей."""
     if is_thunder:
         return "Гроза — глуши мотор и в укрытие. Молния шуток не понимает"
     if temp < 5 and humidity and humidity > 85:
@@ -222,3 +218,38 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
     if wind_speed and wind_speed > 8:
         return "Боковой ветер — руль крепче, обгоны отложи"
     return "Давление в шинах проверь — 5 минут спасут вечер"
+
+
+# ============ ЛУЧШЕЕ ВРЕМЯ ============
+def get_best_time(sunrise=None, sunset=None):
+    hour = get_minsk_hour()
+
+    if 9 <= hour <= 18:
+        return "🕐 Лучшее время для поездки: с 9:00 до 18:00 ☀️"
+    elif 7 <= hour <= 9:
+        return "🕐 Утро (7:00–9:00) — будьте осторожны 🌅"
+    elif 18 <= hour <= 22:
+        if sunset:
+            return f"🕐 Вечер — закат был в {sunset}, включите свет 🌆"
+        return "🕐 Вечер — включите свет 🌆"
+    elif hour >= 22 or hour <= 5:
+        if sunrise:
+            now = datetime.now(MINSK_TZ)
+            sr = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            try:
+                h, m = map(int, sunrise.split(":"))
+                sr = sr.replace(hour=h, minute=m)
+            except (ValueError, AttributeError):
+                return "🕐 Ночь — только с хорошим светом 🌙"
+
+            if sr <= now:
+                sr += timedelta(days=1)
+
+            delta = sr - now
+            total_min = max(0, int(delta.total_seconds() // 60))
+            hours = total_min // 60
+            mins = total_min % 60
+            return f"🕐 Ночь — до рассвета ещё {hours} ч {mins} мин 🌙"
+        return "🕐 Ночь — только с хорошим светом 🌙"
+
+    return "🕐 Раннее утро — будьте внимательны 🌄"
