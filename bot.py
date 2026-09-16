@@ -83,10 +83,10 @@ def format_visibility(v):
 # ============ НЕВИДИМЫЕ ПРОБЕЛЫ ДЛЯ РАЗРЫВА ССЫЛОК ============
 Z = "\u200b"  # zero-width space
 
-# Разрываем @username: @\u200bAleksandr_K8V
+# @\u200bAleksandr_K8V — Telegram не сделает ссылку
 DEV_USERNAME = f"@{Z}Aleksandr_K8V"
 
-# Разрываем домен: wttr\u200b.in
+# wttr\u200b.in — Telegram не сделает ссылку
 WTTR_NAME = f"wttr{Z}.in"
 
 
@@ -103,7 +103,7 @@ ABOUT_TEXT = f"""ℹ️ <b>MotoWeather Минск</b>
 <b>Показываю:</b>
 • Вердикт — ехать или нет
 • Экипировку и подготовку
-• Прогноз на 3 часа и утро
+• Прогноз на 3 часа и день
 
 <b>Пример плохой погоды:</b>
 
@@ -121,8 +121,7 @@ ABOUT_TEXT = f"""ℹ️ <b>MotoWeather Минск</b>
 
 <b>🎽 НА СЕБЯ</b>
 🧥 Тёплая подкладка + подогрев ручек
-☔ Дождевик / мембрана
-💡 Дополнительный свет (обязательно)
+☔ Дождевик / мембрана💡 Дополнительный свет (обязательно)
 
 <b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
 ✅ Давление в шинах — на холодную
@@ -316,7 +315,7 @@ def send_weather(chat_id, edit_message=None):
         short = get_short_forecast()
         print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
-        morning = short.get("morning", "нет данных")
+        day = short.get("day", "нет данных")
         forecast_src = short.get("source", "none")
 
         if next_hour != "нет данных":
@@ -357,7 +356,7 @@ def send_weather(chat_id, edit_message=None):
         if light_info:
             weather_block += f"\n{light_info}"
 
-        # Динамический источник — с невидимыми пробелами против ссылок
+        # Динамический источник — БЕЗ доменов (невидимые пробелы)
         if forecast_src == "Open-Meteo":
             source_line = "✈️ METAR + Open-Meteo"
         elif forecast_src == "wttr.in":
@@ -385,8 +384,8 @@ def send_weather(chat_id, edit_message=None):
 ⏱️ <b>ЧЕРЕЗ 3 ЧАСА</b>
 {next_hour}
 
-🌅 <b>УТРОМ</b>
-{morning}
+🌤 <b>ДНЁМ</b>
+{day}
 
 📅 <b>ЗАВТРА</b>
 {tomorrow_line}
