@@ -18,7 +18,6 @@ def analyze_risks(weather, is_forecast=False):
     visibility = weather.get("visibility") or 10000
     dew_point = weather.get("dew_point")
 
-    # ВЕТЕР
     if wind_gust > 20:
         risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
         score += 5
@@ -31,7 +30,6 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
         score += 1
 
-    # ОСАДКИ
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -49,7 +47,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию")
 
-    # ВИДИМОСТЬ
     if not is_forecast:
         if visibility < 500:
             risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({visibility} м)!")
@@ -64,7 +61,6 @@ def analyze_risks(weather, is_forecast=False):
             score += 2
             recommendations.append("💡 Включите ближний свет")
 
-    # РОСА / ТУМАН
     if not is_forecast and dew_point is not None:
         diff = temp - dew_point
         humidity = weather.get("humidity") or 0
@@ -92,7 +88,6 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append(f"💧 Повышенная влажность {humidity}%")
                 score += 1
 
-    # ТЕМПЕРАТУРА
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -115,13 +110,11 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду")
 
-    # НОЧЬ
     if not is_forecast and weather.get("is_night", False):
         risks.append("🌙 Темно — плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет")
 
-    # ВЕРДИКТ
     if score >= 8:
         verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
@@ -157,7 +150,7 @@ def get_rider_verdict(score):
     if score <= 2:
         return "🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 5:
-        return "🟡 ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
+        return "🟡 ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
     if score <= 7:
         return "🟠 С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 9:
