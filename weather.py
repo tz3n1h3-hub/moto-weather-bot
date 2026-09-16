@@ -596,7 +596,8 @@ def get_short_forecast():
     try:
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
-            return {"next_hour": "нет данных", "day": "нет данных", "source": "none"}
+            return {"next_hour": "нет данных", "day": "нет данных",
+                    "source": "none", "current_temp": None}
 
         hourly = forecast_data["hourly"]
         times = hourly.get("time", [])
@@ -606,7 +607,21 @@ def get_short_forecast():
 
         now = datetime.now(MINSK_TZ).replace(tzinfo=None)
 
-        # Ближайший час к "сейчас + 3 часа"
+        # Текущий час (для дельты)
+        current_idx = 0
+        min_diff_cur = float("inf")
+        for i, t_str in enumerate(times):
+            try:
+                t_dt = datetime.fromisoformat(t_str)
+                diff = abs((t_dt - now).total_seconds())
+                if diff < min_diff_cur:
+                    min_diff_cur = diff
+                    current_idx = i
+            except Exception:
+                continue
+        current_temp = round(temps[current_idx]) if current_idx < len(temps) else None
+
+        # Через 3 часа — ближайший слот
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -629,9 +644,10 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # "Днём": если сейчас 12-18 — сегодня. Иначе — завтра.
+        # "День" = 12:00-18:00.
+        # Если сейчас до 18:00 — сегодня. Иначе — завтра.
         current_hour = now.hour
-        if 12 <= current_hour <= 18:
+        if current_hour < 18:
             target_day_date = now.date()
         else:
             target_day_date = (now + timedelta(days=1)).date()
@@ -657,8 +673,14 @@ def get_short_forecast():
         else:
             day = "нет данных"
 
-        print(f"✅ Short forecast ({src}): {next_hour} | день: {day}", flush=True)
-        return {"next_hour": next_hour, "day": day, "source": src}
+        print(f"✅ Short forecast ({src}): {next_hour} | день: {day} | прогноз сейчас: {current_temp}°C", flush=True)
+        return {
+            "next_hour": next_hour,
+            "day": day,
+            "source": src,
+            "current_temp": current_temp
+        }
     except Exception as e:
         print(f"Ошибка короткого прогноза: {e}", flush=True)
-        return {"next_hour": "нет данных", "day": "нет данных", "source": "none"}
+        return {"next_hour": "нет данных", "day": "нет данных",
+                "source": "none", "current_temp": None}
