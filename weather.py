@@ -238,6 +238,7 @@ def _fetch_open_meteo():
             f"wind_speed_10m_max,precipitation_sum,sunrise,sunset"
             f"&timezone=Europe/Minsk"
             f"&forecast_days=3"
+            f"&wind_speed_unit=ms"
         )
         print("Open-Meteo: запрашиваю данные...", flush=True)
         r = requests.get(url, timeout=10)
@@ -297,7 +298,6 @@ def _wttr_to_hourly(wttr_data):
             "179": 71, "182": 51, "185": 51, "281": 51, "284": 51,
             "350": 51, "362": 51, "365": 51,
         }
-        # wttr.in даёт 3 дня: сегодня, завтра, послезавтра
         for day in wttr_data.get("weather", [])[:3]:
             for slot in day.get("hourly", []):
                 time_str = slot.get("time", "0").zfill(4)
@@ -536,6 +536,7 @@ def get_forecast_tomorrow():
             return None
 
         daily = forecast_data.get("daily", {})
+        hourly = forecast_data.get("hourly", {})
         if len(daily.get("time", [])) < 2:
             print("Прогноз: недостаточно данных", flush=True)
             return None
@@ -545,8 +546,26 @@ def get_forecast_tomorrow():
         temp_min = round(daily["temperature_2m_min"][1])
         temp_avg = round((temp_max + temp_min) / 2)
         weather_code = daily["weather_code"][1]
-        wind_speed_max = round(daily["wind_speed_10m_max"][1])
         precip_sum = daily.get("precipitation_sum", [0, 0])[1]
+
+        # Средний ветер из hourly за завтрашний день
+        hourly_times = hourly.get("time", [])
+        hourly_winds = hourly.get("wind_speed_10m", [])
+        tomorrow_winds = []
+        for i, t_str in enumerate(hourly_times):
+            try:
+                t_dt = datetime.fromisoformat(t_str)
+                if t_dt.strftime("%Y-%m-%d") == date_iso:
+                    tomorrow_winds.append(hourly_winds[i])
+            except Exception:
+                continue
+
+        if tomorrow_winds:
+            wind_speed_avg = round(sum(tomorrow_winds) / len(tomorrow_winds))
+            wind_speed_max = round(max(tomorrow_winds))
+        else:
+            wind_speed_avg = round(daily["wind_speed_10m_max"][1])
+            wind_speed_max = round(daily["wind_speed_10m_max"][1])
 
         emoji, text = _wmo_emoji(weather_code)
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
@@ -554,15 +573,15 @@ def get_forecast_tomorrow():
 
         date_obj = datetime.strptime(date_iso, "%Y-%m-%d")
 
-        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C", flush=True)
+        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C, ветер {wind_speed_avg} м/с (макс {wind_speed_max})", flush=True)
 
         return {
             "date": date_obj.strftime("%d.%m.%Y"),
             "temp_avg": temp_avg,
             "temp_max": temp_max,
             "temp_min": temp_min,
-            "wind_speed": wind_speed_max,
-            "wind_gust": round(wind_speed_max * 1.3),
+            "wind_speed": wind_speed_avg,
+            "wind_gust": wind_speed_max,
             "rain_total": round(precip_sum, 1) if precip_sum else 0,
             "condition": f"{emoji} {text}",
             "is_rain": is_rain,
@@ -610,14 +629,20 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        tomorrow_date = (now + timedelta(days=1)).date()
+        # Если сейчас утро (6-9) — берём сегодняшнее утро. Иначе — завтра.
+        current_hour = now.hour
+        if 6 <= current_hour <= 9:
+            target_morning_date = now.date()
+        else:
+            target_morning_date = (now + timedelta(days=1)).date()
+
         morning_temps = []
         morning_winds = []
         morning_codes = []
         for i, t_str in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t_str)
-                if t_dt.date() == tomorrow_date and 6 <= t_dt.hour <= 9:
+                if t_dt.date() == target_morning_date and 6 <= t_dt.hour <= 9:
                     morning_temps.append(temps[i])
                     morning_winds.append(winds[i])
                     morning_codes.append(codes[i])
