@@ -39,7 +39,13 @@ bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 
-# ============ ЦИТАТЫ ДЛЯ УТРЕННЕЙ РАССЫЛКИ ============
+# ============ НЕВИДИМЫЕ ПРОБЕЛЫ ============
+Z = "\u200b"
+DEV_USERNAME = f"@{Z}Aleksandr_K8V"
+WTTR_NAME = f"wttr{Z}.in"
+
+
+# ============ ЦИТАТЫ ============
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
     "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
@@ -131,142 +137,6 @@ def is_subscribed(user_id):
     return user_id in load_subscribers()
 
 
-# ============ УТРЕННЯЯ РАССЫЛКА ============
-_last_morning_sent = {"date": None}
-
-
-def morning_broadcast_loop():
-    """Фоновый поток: проверяет каждую минуту, не 7:00 ли. В 7:00 — рассылка."""
-    global _last_morning_sent
-    print("⏰ Поток утренней рассылки запущен", flush=True)
-
-    while True:
-        try:
-            now = datetime.now(MINSK_TZ)
-            today_str = now.strftime("%Y-%m-%d")
-
-            if now.hour == 7 and now.minute < 5 and _last_morning_sent["date"] != today_str:
-                print(f"🌅 Начинаю утреннюю рассылку ({today_str})", flush=True)
-
-                subs = load_subscribers()
-                if not subs:
-                    print("⚠️ Нет подписчиков", flush=True)
-                    _last_morning_sent["date"] = today_str
-                    continue
-
-                w = get_weather()
-                if not w:
-                    print("❌ Не удалось получить погоду", flush=True)
-                    _last_morning_sent["date"] = today_str
-                    continue
-
-                a = analyze_risks(w)
-                f = get_forecast_tomorrow()
-                short = get_short_forecast()
-
-                next_period = short.get("next_period", "нет данных")
-                next_period_label = short.get("next_period_label", "ДЕНЬ")
-                forecast_src = short.get("source", "none")
-
-                verdict = get_rider_verdict(a["score"])
-                tip = get_tip(
-                    a.get("feels_like", w.get("temp", 0)),
-                    w.get("humidity"), w.get("is_rain", False),
-                    False,
-                    w.get("wind_speed"), w.get("is_thunder", False),
-                    w.get("visibility")
-                )
-
-                wind_desc = get_wind_description(w["wind_speed"])
-                weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip() or "без осадков"
-                humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
-                vis_str = format_visibility(w["visibility"])
-
-                tomorrow_line = "нет данных"
-                if f:
-                    fa = analyze_risks(f, is_forecast=True)
-                    fa_short = get_short_verdict(fa["score"])
-                    cond_low = f["condition"].split(" ", 1)[-1].lower()
-                    tomorrow_line = (
-                        f"{f['temp_min']}–{f['temp_max']}°C, "
-                        f"{cond_low}, "
-                        f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
-                    )
-
-                source_line = "✈️ METAR + Open-Meteo"
-                if forecast_src == "wttr.in":
-                    source_line = f"✈️ METAR + wttr{Z}.in"
-
-                quote = get_random_quote()
-
-                risk_text = "\n".join(a['risks'][:3]) if a['risks'] else "✅ Дорога чистая"
-                gear_text = "\n".join(get_gear_short(
-                    a.get('feels_like', w['temp']), w.get('is_rain', False),
-                    False, w['wind_speed']
-                ))
-                tech_text = "\n".join(
-                    "✅ " + t for t in get_tech_check(
-                        a.get('feels_like', w['temp']), False,
-                        w.get('is_rain', False), w.get('humidity'), w.get('dew_point')
-                    )
-                )
-
-                msg = f"""🌅 <b>Доброе утро, райдер!</b>
-📅 {now.strftime('%d.%m')} · {now.strftime('%H:%M')} · Минск
-{source_line}
-
-🌡️ {w['temp']}°C · 💨 {w['wind_speed']} м/с ({wind_desc})
-{w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
-💧 Влажность {humidity_str} · 👁️ {vis_str}
-
-<b>{verdict}</b>
-
-<b>🎯 ЧТО НА ДОРОГЕ</b>
-{risk_text}
-
-<b>🎽 НА СЕБЯ</b>
-{gear_text}
-
-<b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
-{tech_text}
-
-🌤 <b>{next_period_label} (средняя)</b>
-{next_period}
-
-📅 <b>ЗАВТРА</b>
-{tomorrow_line}
-
-💡 <i>{tip}</i>
-
-💬 <i>{quote}</i>
-
-🏍️ <b>Ровной дороги!</b>"""
-
-                sent = 0
-                failed = []
-                for uid in subs:
-                    try:
-                        bot.send_message(uid, msg, parse_mode="HTML",
-                                         reply_markup=get_after_weather_keyboard())
-                        sent += 1
-                        time.sleep(0.05)
-                    except Exception as e:
-                        print(f"⚠️ Не отправил {uid}: {e}", flush=True)
-                        failed.append(uid)
-
-                print(f"✅ Утренняя рассылка: {sent} отправлено, {len(failed)} ошибок", flush=True)
-
-                for uid in failed:
-                    remove_subscriber(uid)
-
-                _last_morning_sent["date"] = today_str
-
-        except Exception as e:
-            print(f"❌ Ошибка в рассылке: {e}", flush=True)
-
-        time.sleep(60)
-
-
 # ============ ФОРМАТИРОВАНИЕ ============
 def get_wind_description(s):
     if s < 1: return "штиль"
@@ -282,12 +152,6 @@ def format_visibility(v):
     if v >= 10000: return "10+ км"
     if v >= 1000: return f"{v / 1000:.1f} км"
     return f"{v} м"
-
-
-# ============ НЕВИДИМЫЕ ПРОБЕЛЫ ============
-Z = "\u200b"
-DEV_USERNAME = f"@{Z}Aleksandr_K8V"
-WTTR_NAME = f"wttr{Z}.in"
 
 
 # ============ ТЕКСТЫ ============
@@ -360,15 +224,172 @@ SUBSCRIBE_CONFIRMED = """✅ <b>Подписка активирована!</b>
 
 SUBSCRIBE_CANCELED = """❌ <b>Подписка отменена</b>
 
-Если передумаешь — жми «🌅 Подписка на утро» в меню."""
+Если передумаешь — жми «🌅 Подписка на утро»."""
 
 UNSUBSCRIBED = """❌ <b>Ты отписан от утренней рассылки</b>
 
 Если снова захочешь — жми «🌅 Подписка на утро»."""
 
-ALREADY_SUBSCRIBED = """ℹ️ Ты уже подписан на утренний прогноз.
+ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b> на утренний прогноз.
 
 Отписаться — /unsubscribe"""
+
+
+# ============ ХЕЛПЕР ============
+def edit_or_send(chat_id, message_id, text, reply_markup):
+    try:
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
+        return True
+    except Exception as e:
+        err = str(e).lower()
+        if "message is not modified" in err:
+            return True
+        try:
+            bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
+        except Exception as e2:
+            print(f"⚠️ edit_or_send fallback failed: {e2}", flush=True)
+        return False
+
+
+# ============ УТРЕННЯЯ РАССЫЛКА ============
+_last_morning_sent = {"date": None}
+
+
+def morning_broadcast_loop():
+    global _last_morning_sent
+    print("⏰ Поток утренней рассылки запущен", flush=True)
+
+    while True:
+        try:
+            now = datetime.now(MINSK_TZ)
+            today_str = now.strftime("%Y-%m-%d")
+
+            if now.hour == 7 and now.minute < 5 and _last_morning_sent["date"] != today_str:
+                print(f"🌅 Начинаю утреннюю рассылку ({today_str})", flush=True)
+
+                subs = load_subscribers()
+                if not subs:
+                    print("⚠️ Нет подписчиков", flush=True)
+                    _last_morning_sent["date"] = today_str
+                    continue
+
+                w = get_weather()
+                if not w:
+                    print("❌ Не удалось получить погоду", flush=True)
+                    _last_morning_sent["date"] = today_str
+                    continue
+
+                a = analyze_risks(w)
+                f = get_forecast_tomorrow()
+                short = get_short_forecast()
+
+                next_period = short.get("next_period", "нет данных")
+                next_period_label = short.get("next_period_label", "ДЕНЬ")
+                forecast_src = short.get("source", "none")
+
+                verdict = get_rider_verdict(a["score"])
+                tip = get_tip(
+                    a.get("feels_like", w.get("temp", 0)),
+                    w.get("humidity"), w.get("is_rain", False),
+                    False,
+                    w.get("wind_speed"), w.get("is_thunder", False),
+                    w.get("visibility")
+                )
+
+                wind_desc = get_wind_description(w["wind_speed"])
+                weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip() or "без осадков"
+                humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
+                vis_str = format_visibility(w["visibility"])
+
+                tomorrow_line = "нет данных"
+                if f:
+                    fa = analyze_risks(f, is_forecast=True)
+                    fa_short = get_short_verdict(fa["score"])
+                    cond_low = f["condition"].split(" ", 1)[-1].lower()
+                    tomorrow_line = (
+                        f"{f['temp_min']}–{f['temp_max']}°C, "
+                        f"{cond_low}, "
+                        f"{f['wind_speed']} м/с — {fa['color']} {fa_short}"
+                    )
+
+                source_line = "✈️ METAR + Open-Meteo"
+                if forecast_src == "wttr.in":
+                    source_line = f"✈️ METAR + {WTTR_NAME}"
+
+                quote = get_random_quote()
+
+                risk_text = "\n".join(a['risks'][:3]) if a['risks'] else "✅ Дорога чистая"
+                gear_text = "\n".join(get_gear_short(
+                    a.get('feels_like', w['temp']), w.get('is_rain', False),
+                    False, w['wind_speed']
+                ))
+                tech_text = "\n".join(
+                    "✅ " + t for t in get_tech_check(
+                        a.get('feels_like', w['temp']), False,
+                        w.get('is_rain', False), w.get('humidity'), w.get('dew_point')
+                    )
+                )
+
+                msg = f"""🌅 <b>Доброе утро, райдер!</b>
+📅 {now.strftime('%d.%m')} · {now.strftime('%H:%M')} · Минск
+{source_line}
+
+🌡️ {w['temp']}°C · 💨 {w['wind_speed']} м/с ({wind_desc})
+{w.get('cloud_emoji', '')} {w.get('cloud_text', '—')} · {weather_info.lower()}
+💧 Влажность {humidity_str} · 👁️ {vis_str}
+
+<b>{verdict}</b>
+
+<b>🎯 ЧТО НА ДОРОГЕ</b>
+{risk_text}
+
+<b>🎽 НА СЕБЯ</b>
+{gear_text}
+
+<b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
+{tech_text}
+
+🌤 <b>{next_period_label} (средняя)</b>
+{next_period}
+
+📅 <b>ЗАВТРА</b>
+{tomorrow_line}
+
+💡 <i>{tip}</i>
+
+💬 <i>{quote}</i>
+
+🏍️ <b>Ровной дороги!</b>"""
+
+                sent = 0
+                failed = []
+                for uid in subs:
+                    try:
+                        bot.send_message(uid, msg, parse_mode="HTML",
+                                         reply_markup=get_after_weather_keyboard())
+                        sent += 1
+                        time.sleep(0.05)
+                    except Exception as e:
+                        print(f"⚠️ Не отправил {uid}: {e}", flush=True)
+                        failed.append(uid)
+
+                print(f"✅ Утренняя рассылка: {sent} отправлено, {len(failed)} ошибок", flush=True)
+
+                for uid in failed:
+                    remove_subscriber(uid)
+
+                _last_morning_sent["date"] = today_str
+
+        except Exception as e:
+            print(f"❌ Ошибка в рассылке: {e}", flush=True)
+
+        time.sleep(60)
 
 
 # ============ КОМАНДЫ ============
@@ -396,7 +417,6 @@ def start(message):
             parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
-        print("✅ /start отвечен", flush=True)
     except Exception as e:
         print(f"❌ /start упал: {e}", flush=True)
 
@@ -404,18 +424,11 @@ def start(message):
 @bot.message_handler(commands=['weather'])
 def weather_cmd(m):
     try:
-        print(f"📥 /weather от {m.chat.id}", flush=True)
         save_user(m.chat.id)
         bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
         send_weather(m.chat.id)
     except Exception as e:
-        print(f"❌ weather_cmd упал: {type(e).__name__}: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        try:
-            bot.send_message(m.chat.id, f"❌ Ошибка: {e}")
-        except Exception:
-            pass
+        print(f"❌ weather_cmd упал: {e}", flush=True)
 
 
 @bot.message_handler(commands=['about'])
@@ -437,7 +450,9 @@ def subscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if is_subscribed(m.chat.id):
-            bot.send_message(m.chat.id, ALREADY_SUBSCRIBED, parse_mode="HTML")
+            bot.send_message(m.chat.id, ALREADY_SUBSCRIBED,
+                             parse_mode="HTML",
+                             reply_markup=get_main_keyboard())
             return
         bot.send_message(
             m.chat.id,
@@ -480,64 +495,39 @@ def stats_cmd(m):
 def callback(call):
     try:
         print(f"📩 Callback: {call.data} от {call.message.chat.id}", flush=True)
-
         try:
             save_user(call.message.chat.id)
         except Exception as e:
             print(f"⚠️ save_user failed: {e}", flush=True)
 
+        chat_id = call.message.chat.id
+        msg_id = call.message.message_id
+
         if call.data in ("weather", "update"):
             msg_text = "⏳ Смотрю на небо..." if call.data == "weather" else "⏳ Обновляю..."
             bot.answer_callback_query(call.id, msg_text, cache_time=3)
-            send_weather(call.message.chat.id, edit_message=call.message)
+            send_weather(chat_id, edit_message=call.message)
 
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅ Открываю", cache_time=3)
-            try:
-                bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    message_id=call.message.message_id,
-                    text=ABOUT_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=get_about_keyboard()
-                )
-            except Exception as e:
-                err = str(e).lower()
-                if "message is not modified" in err:
-                    pass
-                else:
-                    bot.send_message(
-                        call.message.chat.id,
-                        ABOUT_TEXT,
-                        parse_mode="HTML",
-                        reply_markup=get_about_keyboard()
-                    )
+            edit_or_send(chat_id, msg_id, ABOUT_TEXT, get_about_keyboard())
 
         elif call.data == "subscribe":
-            bot.answer_callback_query(call.id, "🌅 Подписка", cache_time=3)
-            if is_subscribed(call.message.chat.id):
-                bot.send_message(call.message.chat.id, ALREADY_SUBSCRIBED,
-                                 parse_mode="HTML")
+            if is_subscribed(chat_id):
+                bot.answer_callback_query(call.id, "ℹ️ Уже подписан", cache_time=3)
+                edit_or_send(chat_id, msg_id, ALREADY_SUBSCRIBED, get_main_keyboard())
             else:
-                bot.send_message(
-                    call.message.chat.id,
-                    SUBSCRIBE_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=get_subscribe_keyboard()
-                )
+                bot.answer_callback_query(call.id, "🌅 Подписка", cache_time=3)
+                edit_or_send(chat_id, msg_id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
 
         elif call.data == "subscribe_confirm":
+            save_subscriber(chat_id)
             bot.answer_callback_query(call.id, "✅ Подписка активирована", cache_time=3)
-            save_subscriber(call.message.chat.id)
-            bot.send_message(call.message.chat.id, SUBSCRIBE_CONFIRMED,
-                             parse_mode="HTML",
-                             reply_markup=get_main_keyboard())
+            edit_or_send(chat_id, msg_id, SUBSCRIBE_CONFIRMED, get_main_keyboard())
 
         elif call.data == "subscribe_cancel":
             bot.answer_callback_query(call.id, "❌ Отменено", cache_time=3)
-            bot.send_message(call.message.chat.id, SUBSCRIBE_CANCELED,
-                             parse_mode="HTML",
-                             reply_markup=get_main_keyboard())
+            edit_or_send(chat_id, msg_id, SUBSCRIBE_CANCELED, get_main_keyboard())
 
         else:
             print(f"⚠️ Неизвестный callback: {call.data}", flush=True)
@@ -549,23 +539,15 @@ def callback(call):
         traceback.print_exc()
 
 
-# ============ ОТПРАВКА: ПОГОДА СЕЙЧАС ============
+# ============ ОТПРАВКА: ПОГОДА ============
 def send_weather(chat_id, edit_message=None):
     try:
-        print(f"🌤️ START send_weather для {chat_id}", flush=True)
         w = get_weather()
-        print(f"🌤️ get_weather: {type(w).__name__}", flush=True)
-
         if not w:
-            print("❌ w = None, выходим", flush=True)
             bot.send_message(chat_id, "❌ Небо молчит. Попробуй позже.")
             return
 
-        print(f"🌤️ Данные: temp={w.get('temp')}, wind={w.get('wind_speed')}", flush=True)
-
         a = analyze_risks(w)
-        print(f"🌤️ analyze_risks: score={a['score']}", flush=True)
-
         now_dt = datetime.now(MINSK_TZ)
         now = now_dt.strftime("%H:%M")
         date = now_dt.strftime("%d.%m")
@@ -599,9 +581,7 @@ def send_weather(chat_id, edit_message=None):
                               w.get("humidity"), w.get("dew_point"))
         tech_block = "\n".join(f"✅ {t}" for t in tech)
 
-        print("🌤️ Запрашиваю get_short_forecast...", flush=True)
         short = get_short_forecast()
-        print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
         next_period = short.get("next_period", "нет данных")
         next_period_label = short.get("next_period_label", "—")
@@ -621,9 +601,7 @@ def send_weather(chat_id, edit_message=None):
             except (ValueError, IndexError):
                 pass
 
-        print("🌤️ Запрашиваю get_forecast_tomorrow...", flush=True)
         f = get_forecast_tomorrow()
-        print(f"🌤️ Tomorrow OK: {type(f).__name__}", flush=True)
         tomorrow_line = "нет данных"
         if f:
             fa = analyze_risks(f, is_forecast=True)
@@ -655,7 +633,6 @@ def send_weather(chat_id, edit_message=None):
         else:
             source_line = "✈️ METAR (аэропорт Минск)"
 
-        # Собираем блок "ЧЕРЕЗ 3 ЧАСА" только если нужно
         next_hour_block = ""
         if show_next_hour and next_hour != "нет данных":
             next_hour_block = f"""
@@ -690,42 +667,19 @@ def send_weather(chat_id, edit_message=None):
 
 🏍️ <b>Ровной дороги!</b>"""
 
-        print(f"🌤️ Сообщение собрано, {len(msg)} символов", flush=True)
-
         if edit_message:
-            try:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=edit_message.message_id,
-                    text=msg,
-                    parse_mode="HTML",
-                    reply_markup=get_after_weather_keyboard()
-                )
-                print(f"✅ Сообщение отредактировано для {chat_id}", flush=True)
-            except Exception as e:
-                err = str(e).lower()
-                if "message is not modified" in err:
-                    print("ℹ️ Сообщение не изменилось", flush=True)
-                else:
-                    print(f"⚠️ Не удалось отредактировать: {e}", flush=True)
-                    bot.send_message(chat_id, msg, parse_mode="HTML",
-                                     reply_markup=get_after_weather_keyboard())
+            edit_or_send(chat_id, edit_message.message_id, msg, get_after_weather_keyboard())
         else:
             bot.send_message(chat_id, msg, parse_mode="HTML",
                              reply_markup=get_after_weather_keyboard())
-            print(f"✅ Сообщение отправлено в {chat_id}", flush=True)
 
     except Exception as e:
         print(f"❌ ОШИБКА в send_weather: {type(e).__name__}: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        try:
-            bot.send_message(chat_id, f"❌ Ошибка: {e}")
-        except Exception:
-            pass
 
 
-# ============ FLASK ДЛЯ ПИНГА ============
+# ============ FLASK ============
 @app.route("/")
 def home():
     return "🏍️ MotoWeather Bot is running!", 200
@@ -769,10 +723,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"⚠️ remove_webhook: {e}", flush=True)
 
-    # Flask в отдельном потоке
     threading.Thread(target=run_flask, daemon=True).start()
-
-    # Поток утренней рассылки
     threading.Thread(target=morning_broadcast_loop, daemon=True).start()
 
     print("🔄 Запускаю polling...", flush=True)
@@ -782,9 +733,8 @@ if __name__ == "__main__":
         except Exception as e:
             err_str = str(e)
             if "409" in err_str:
-                print("⚠️ 409 Conflict — другой инстанс бота. Жду 20 сек...", flush=True)
+                print("⚠️ 409 Conflict. Жду 20 сек...", flush=True)
                 time.sleep(20)
             else:
                 print(f"⚠️ Polling упал: {e}", flush=True)
-                print("⏳ Жду 10 секунд перед перезапуском...", flush=True)
                 time.sleep(10)
