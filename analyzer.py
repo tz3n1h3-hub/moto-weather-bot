@@ -88,8 +88,9 @@ def analyze_risks(weather, is_forecast=False):
                 score += 2
                 recommendations.append("🐢 Осторожно на разметке и в поворотах")
         elif diff <= 4:
-            risks.append(f"💧 Повышенная влажность {humidity}%")
-            score += 1
+            if humidity >= 80:
+                risks.append(f"💧 Повышенная влажность {humidity}%")
+                score += 1
 
     # ТЕМПЕРАТУРА
     if is_forecast:
@@ -191,7 +192,7 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     ]
     if is_night:
         tech.append("Визор — протри и обработай")
-    elif is_rain or (humidity and humidity >= 85):
+    elif is_rain or (humidity and humidity >= 80):
         tech.append("Визор — антизапотеватель обязателен")
     else:
         tech.append("Зеркала — под себя")
