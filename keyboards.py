@@ -17,3 +17,14 @@ def get_after_weather_keyboard():
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
+
+
+def get_about_keyboard():
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("🏍️ Сейчас", callback_data="weather")
+    )
+    markup.row(
+        InlineKeyboardButton("✉️ Написать разработчику", url="https://t.me/Aleksandr_K8V")
+    )
+    return markup
