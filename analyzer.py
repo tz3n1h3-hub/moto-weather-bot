@@ -6,7 +6,8 @@ from weather import get_minsk_hour
 
 # ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
-    risks, recommendations 0
+    risks, recommendations = [], []
+    score = 0
 
     wind_gust = weather.get("wind_gust") or 0
     wind_speed = weather.get("wind_speed") or 0
@@ -119,7 +120,7 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💡 Включите свет")
 
-    # ВЕРДИКТ — согласованные цвета
+    # ВЕРДИКТ
     if score >= 8:
         verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
