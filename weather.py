@@ -548,7 +548,6 @@ def get_forecast_tomorrow():
         weather_code = daily["weather_code"][1]
         precip_sum = daily.get("precipitation_sum", [0, 0])[1]
 
-        # Средний ветер из hourly за завтрашний день
         hourly_times = hourly.get("time", [])
         hourly_winds = hourly.get("wind_speed_10m", [])
         tomorrow_winds = []
@@ -597,7 +596,7 @@ def get_short_forecast():
     try:
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
-            return {"next_hour": "нет данных", "morning": "нет данных", "source": "none"}
+            return {"next_hour": "нет данных", "day": "нет данных", "source": "none"}
 
         hourly = forecast_data["hourly"]
         times = hourly.get("time", [])
@@ -607,6 +606,7 @@ def get_short_forecast():
 
         now = datetime.now(MINSK_TZ).replace(tzinfo=None)
 
+        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -629,36 +629,17 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # Если сейчас утро (6-9) — берём сегодняшнее утро. Иначе — завтра.
+        # "Днём": если сейчас 12-18 — сегодня. Иначе — завтра.
         current_hour = now.hour
-        if 6 <= current_hour <= 9:
-            target_morning_date = now.date()
+        if 12 <= current_hour <= 18:
+            target_day_date = now.date()
         else:
-            target_morning_date = (now + timedelta(days=1)).date()
+            target_day_date = (now + timedelta(days=1)).date()
 
-        morning_temps = []
-        morning_winds = []
-        morning_codes = []
+        day_temps = []
+        day_winds = []
+        day_codes = []
         for i, t_str in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t_str)
-                if t_dt.date() == target_morning_date and 6 <= t_dt.hour <= 9:
-                    morning_temps.append(temps[i])
-                    morning_winds.append(winds[i])
-                    morning_codes.append(codes[i])
-            except Exception:
-                continue
-
-        if morning_temps:
-            avg_t = round(sum(morning_temps) / len(morning_temps))
-            avg_w = round(sum(morning_winds) / len(morning_winds))
-            _, cond = _wmo_emoji(morning_codes[0])
-            morning = f"{avg_t}°C, {cond}, {avg_w} м/с"
-        else:
-            morning = "нет данных"
-
-        print(f"✅ Short forecast ({src}): {next_hour} | {morning}", flush=True)
-        return {"next_hour": next_hour, "morning": morning, "source": src}
-    except Exception as e:
-        print(f"Ошибка короткого прогноза: {e}", flush=True)
-        return {"next_hour": "нет данных", "morning": "нет данных", "source": "none"}
+                if t_dt.date() == target_day_date and 12 <= t_dt
