@@ -164,11 +164,11 @@ def parse_weather_phenomena(metar_text):
 def _fetch_metar_text():
     for url in (METAR_URL, METAR_FALLBACK_URL):
         try:
-            print(f"METAR: пробую {url}", flush=True)
+            print(f"METAR: {url}", flush=True)
             response = requests.get(url, timeout=10)
             if response.status_code == 200 and "UMMS" in response.text:
                 return response.text.strip()
-            print(f"METAR: {url} вернул status={response.status_code}", flush=True)
+            print(f"METAR: {url} → {response.status_code}", flush=True)
         except Exception as e:
             print(f"METAR: ошибка {url}: {e}", flush=True)
     return None
@@ -178,7 +178,7 @@ def get_metar_data():
     try:
         metar_text = _fetch_metar_text()
         if not metar_text:
-            print("METAR: пусто, возвращаю None", flush=True)
+            print("METAR: пусто", flush=True)
             return None
 
         print(f"METAR OK: {metar_text}", flush=True)
@@ -240,19 +240,19 @@ def _fetch_open_meteo():
             f"&forecast_days=3"
             f"&wind_speed_unit=ms"
         )
-        print("Open-Meteo: запрашиваю данные...", flush=True)
+        print("Open-Meteo: запрос...", flush=True)
         r = requests.get(url, timeout=10)
         data = r.json()
         if "error" in data:
-            print(f"Open-Meteo: ошибка {data.get('reason')}", flush=True)
+            print(f"Open-Meteo: {data.get('reason')}", flush=True)
             return None
 
         _open_meteo_cache["data"] = data
         _open_meteo_cache["ts"] = time.time()
-        print("Open-Meteo: получено и закэшировано", flush=True)
+        print("Open-Meteo: кэшировано", flush=True)
         return data
     except Exception as e:
-        print(f"Open-Meteo: ошибка запроса: {e}", flush=True)
+        print(f"Open-Meteo: ошибка {e}", flush=True)
         return None
 
 
@@ -266,18 +266,18 @@ def _fetch_wttr():
 
     try:
         url = "https://wttr.in/Minsk?format=j1"
-        print("wttr.in: запрашиваю данные...", flush=True)
+        print("wttr.in: запрос...", flush=True)
         r = requests.get(url, timeout=10, verify=False)
         if r.status_code != 200:
-            print(f"wttr.in: status={r.status_code}", flush=True)
+            print(f"wttr.in: {r.status_code}", flush=True)
             return None
         data = r.json()
         _wttr_cache["data"] = data
         _wttr_cache["ts"] = time.time()
-        print("wttr.in: получено и закэшировано", flush=True)
+        print("wttr.in: кэшировано", flush=True)
         return data
     except Exception as e:
-        print(f"wttr.in: ошибка: {e}", flush=True)
+        print(f"wttr.in: ошибка {e}", flush=True)
         return None
 
 
@@ -312,7 +312,7 @@ def _wttr_to_hourly(wttr_data):
                 result["weather_code"].append(code_map.get(wttr_code, 0))
         return result
     except Exception as e:
-        print(f"wttr.in: ошибка hourly: {e}", flush=True)
+        print(f"wttr.in: ошибка hourly {e}", flush=True)
         return None
 
 
@@ -367,7 +367,7 @@ def _wttr_to_daily(wttr_data):
 
         return result
     except Exception as e:
-        print(f"wttr.in: ошибка daily: {e}", flush=True)
+        print(f"wttr.in: ошибка daily {e}", flush=True)
         return None
 
 
@@ -472,7 +472,7 @@ def get_weather():
         else:
             cur = (forecast_data or {}).get("current", {})
             if not cur:
-                print("Нет данных ни из METAR, ни из прогноза", flush=True)
+                print("Нет данных", flush=True)
                 return None
 
             temp = round(cur.get("temperature_2m", 0))
@@ -498,7 +498,7 @@ def get_weather():
             om_cur = (forecast_data or {}).get("current", {})
             humidity = round(om_cur.get("relative_humidity_2m", 0)) or None
 
-        print(f"✅ Weather: temp={temp}, humidity={humidity}, source={source}", flush=True)
+        print(f"✅ Weather: {temp}°C, влажность {humidity}%, {source}", flush=True)
 
         return {
             "temp": temp,
@@ -522,8 +522,6 @@ def get_weather():
         }
     except Exception as e:
         print(f"❌ Ошибка погоды: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
         return None
 
 
@@ -532,13 +530,11 @@ def get_forecast_tomorrow():
     try:
         forecast_data, src = _get_forecast_data()
         if not forecast_data:
-            print("Прогноз: нет данных", flush=True)
             return None
 
         daily = forecast_data.get("daily", {})
         hourly = forecast_data.get("hourly", {})
         if len(daily.get("time", [])) < 2:
-            print("Прогноз: недостаточно данных", flush=True)
             return None
 
         date_iso = daily["time"][1]
@@ -579,8 +575,6 @@ def get_forecast_tomorrow():
 
         date_obj = datetime.strptime(date_iso, "%Y-%m-%d")
 
-        print(f"✅ Прогноз завтра ({src}): {temp_min}–{temp_max}°C, ветер {wind_speed_avg} м/с (макс {wind_speed_max}), {text}, осадки {precip_sum}мм", flush=True)
-
         return {
             "date": date_obj.strftime("%d.%m.%Y"),
             "temp_avg": temp_avg,
@@ -594,7 +588,7 @@ def get_forecast_tomorrow():
             "is_thunder": is_thunder
         }
     except Exception as e:
-        print(f"Ошибка прогноза на завтра: {e}", flush=True)
+        print(f"Ошибка завтра: {e}", flush=True)
         return None
 
 
@@ -641,7 +635,6 @@ def get_short_forecast():
                 target_date = today + timedelta(days=1)
             next_label = "УТРО"
 
-        # Текущий час из прогноза (для дельты)
         current_idx = 0
         min_diff_cur = float("inf")
         for i, t_str in enumerate(times):
@@ -655,7 +648,6 @@ def get_short_forecast():
                 continue
         current_temp = round(temps[current_idx]) if current_idx < len(temps) else None
 
-        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -678,7 +670,6 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # Проверяем: "через 3 часа" попадает в тот же период, что next_period?
         target_hour = (current_hour + 3) % 24
         show_next_hour = True
         if next_period == "day" and 12 <= target_hour < 18:
@@ -690,7 +681,6 @@ def get_short_forecast():
         elif next_period == "morning" and 6 <= target_hour < 12:
             show_next_hour = False
 
-        # Собираем следующий период
         period_temps = []
         period_winds = []
         period_codes = []
@@ -722,7 +712,6 @@ def get_short_forecast():
         else:
             next_period_value = "нет данных"
 
-        print(f"✅ Short forecast ({src}): {next_hour} | {next_label}: {next_period_value} | show_next_hour={show_next_hour}", flush=True)
         return {
             "next_hour": next_hour,
             "next_period": next_period_value,
@@ -732,7 +721,7 @@ def get_short_forecast():
             "show_next_hour": show_next_hour
         }
     except Exception as e:
-        print(f"Ошибка короткого прогноза: {e}", flush=True)
+        print(f"Ошибка short: {e}", flush=True)
         return {"next_hour": "нет данных", "next_period": "нет данных",
                 "next_period_label": "—", "source": "none", "current_temp": None,
                 "show_next_hour": False}
