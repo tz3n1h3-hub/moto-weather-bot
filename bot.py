@@ -80,13 +80,23 @@ def format_visibility(v):
     return f"{v} м"
 
 
+# ============ НЕВИДИМЫЕ ПРОБЕЛЫ ДЛЯ РАЗРЫВА ССЫЛОК ============
+Z = "\u200b"  # zero-width space
+
+# Разрываем @username: @\u200bAleksandr_K8V
+DEV_USERNAME = f"@{Z}Aleksandr_K8V"
+
+# Разрываем домен: wttr\u200b.in
+WTTR_NAME = f"wttr{Z}.in"
+
+
 # ============ ТЕКСТЫ ============
-ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
+ABOUT_TEXT = f"""ℹ️ <b>MotoWeather Минск</b>
 
 📡 <b>Источник данных:</b>
 ✈️ METAR аэропорта Минск — текущая погода
 🌐 Open-Meteo — прогнозы (основной)
-🌐 wttr.in — прогнозы (резервный)
+🌐 {WTTR_NAME} — прогнозы (резервный)
 
 Бот для райдеров. Проверяю аэропорт Минск — говорю: ехать или нет.
 
@@ -121,7 +131,7 @@ ABOUT_TEXT = """ℹ️ <b>MotoWeather Минск</b>
 
 💡 <i>Туман на подходе — визор вниз, дистанцию больше</i>
 
-<b>👨‍💻 Разработчик:</b> @Aleksandr_K8V
+<b>👨‍💻 Разработчик:</b> {DEV_USERNAME}
 
 🏍️ <b>Жми «Сейчас» — увидишь сегодняшний день.</b>"""
 
@@ -347,10 +357,11 @@ def send_weather(chat_id, edit_message=None):
         if light_info:
             weather_block += f"\n{light_info}"
 
+        # Динамический источник — с невидимыми пробелами против ссылок
         if forecast_src == "Open-Meteo":
             source_line = "✈️ METAR + Open-Meteo"
         elif forecast_src == "wttr.in":
-            source_line = "✈️ METAR + wttr.in"
+            source_line = f"✈️ METAR + {WTTR_NAME}"
         else:
             source_line = "✈️ METAR (аэропорт Минск)"
 
