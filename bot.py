@@ -100,7 +100,7 @@ ABOUT_TEXT = f"""ℹ️ <b>MotoWeather Минск</b>
 <b>Показываю:</b>
 • Вердикт — ехать или нет
 • Экипировку и подготовку
-• Прогноз на 3 часа и день
+• Прогноз на 3 часа и следующий период
 
 <b>Пример плохой погоды:</b>
 
@@ -315,14 +315,14 @@ def send_weather(chat_id, edit_message=None):
         short = get_short_forecast()
         print(f"🌤️ Short OK: {short.get('next_hour')}", flush=True)
         next_hour = short.get("next_hour", "нет данных")
-        day = short.get("day", "нет данных")
+        next_period = short.get("next_period", "нет данных")
+        next_period_label = short.get("next_period_label", "—")
         forecast_src = short.get("source", "none")
         forecast_now_temp = short.get("current_temp")
 
         if next_hour != "нет данных":
             try:
                 fc_temp = int(next_hour.split("°C")[0])
-                # Дельта от прогноза на текущий час (не от METAR — разные точки)
                 base_temp = forecast_now_temp if forecast_now_temp is not None else w["temp"]
                 delta = fc_temp - base_temp
                 if delta >= 2:
@@ -386,8 +386,8 @@ def send_weather(chat_id, edit_message=None):
 ⏱️ <b>ЧЕРЕЗ 3 ЧАСА</b>
 {next_hour}
 
-🌤 <b>ДЕНЬ (средняя)</b>
-{day}
+🌤 <b>{next_period_label} (средняя)</b>
+{next_period}
 
 📅 <b>ЗАВТРА</b>
 {tomorrow_line}
