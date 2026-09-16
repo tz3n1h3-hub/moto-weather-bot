@@ -570,7 +570,6 @@ def get_forecast_tomorrow():
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
         is_thunder = weather_code in (95, 96, 99)
 
-        # Если осадков ожидается много, но код показывает "пасмурно" — это дождь
         if precip_sum and precip_sum > 1 and not is_rain:
             is_rain = True
             if precip_sum > 5:
@@ -605,7 +604,8 @@ def get_short_forecast():
         forecast_data, src = _get_forecast_data()
         if not forecast_data or "hourly" not in forecast_data:
             return {"next_hour": "нет данных", "next_period": "нет данных",
-                    "next_period_label": "—", "source": "none", "current_temp": None}
+                    "next_period_label": "—", "source": "none", "current_temp": None,
+                    "show_next_hour": False}
 
         hourly = forecast_data["hourly"]
         times = hourly.get("time", [])
@@ -617,7 +617,6 @@ def get_short_forecast():
         current_hour = now.hour
         today = now.date()
 
-        # Определяем следующий период суток
         if 6 <= current_hour <= 11:
             next_period = "day"
             target_start, target_end = 12, 18
@@ -679,6 +678,18 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
+        # Проверяем: "через 3 часа" попадает в тот же период, что next_period?
+        target_hour = (current_hour + 3) % 24
+        show_next_hour = True
+        if next_period == "day" and 12 <= target_hour < 18:
+            show_next_hour = False
+        elif next_period == "evening" and 18 <= target_hour < 23:
+            show_next_hour = False
+        elif next_period == "night" and (target_hour >= 23 or target_hour <= 5):
+            show_next_hour = False
+        elif next_period == "morning" and 6 <= target_hour < 12:
+            show_next_hour = False
+
         # Собираем следующий период
         period_temps = []
         period_winds = []
@@ -711,15 +722,17 @@ def get_short_forecast():
         else:
             next_period_value = "нет данных"
 
-        print(f"✅ Short forecast ({src}): {next_hour} | {next_label}: {next_period_value} | прогноз сейчас: {current_temp}°C", flush=True)
+        print(f"✅ Short forecast ({src}): {next_hour} | {next_label}: {next_period_value} | show_next_hour={show_next_hour}", flush=True)
         return {
             "next_hour": next_hour,
             "next_period": next_period_value,
             "next_period_label": next_label,
             "source": src,
-            "current_temp": current_temp
+            "current_temp": current_temp,
+            "show_next_hour": show_next_hour
         }
     except Exception as e:
         print(f"Ошибка короткого прогноза: {e}", flush=True)
         return {"next_hour": "нет данных", "next_period": "нет данных",
-                "next_period_label": "—", "source": "none", "current_temp": None}
+                "next_period_label": "—", "source": "none", "current_temp": None,
+                "show_next_hour": False}
