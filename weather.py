@@ -642,4 +642,23 @@ def get_short_forecast():
         for i, t_str in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t_str)
-                if t_dt.date() == target_day_date and 12 <= t_dt
+                if t_dt.date() == target_day_date and 12 <= t_dt.hour <= 18:
+                    day_temps.append(temps[i])
+                    day_winds.append(winds[i])
+                    day_codes.append(codes[i])
+            except Exception:
+                continue
+
+        if day_temps:
+            avg_t = round(sum(day_temps) / len(day_temps))
+            avg_w = round(sum(day_winds) / len(day_winds))
+            _, cond = _wmo_emoji(day_codes[0])
+            day = f"{avg_t}°C, {cond}, {avg_w} м/с"
+        else:
+            day = "нет данных"
+
+        print(f"✅ Short forecast ({src}): {next_hour} | день: {day}", flush=True)
+        return {"next_hour": next_hour, "day": day, "source": src}
+    except Exception as e:
+        print(f"Ошибка короткого прогноза: {e}", flush=True)
+        return {"next_hour": "нет данных", "day": "нет данных", "source": "none"}
