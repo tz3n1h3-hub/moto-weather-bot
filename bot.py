@@ -81,12 +81,9 @@ def format_visibility(v):
 
 
 # ============ НЕВИДИМЫЕ ПРОБЕЛЫ ДЛЯ РАЗРЫВА ССЫЛОК ============
-Z = "\u200b"  # zero-width space
+Z = "\u200b"
 
-# @\u200bAleksandr_K8V — Telegram не сделает ссылку
 DEV_USERNAME = f"@{Z}Aleksandr_K8V"
-
-# wttr\u200b.in — Telegram не сделает ссылку
 WTTR_NAME = f"wttr{Z}.in"
 
 
@@ -121,7 +118,8 @@ ABOUT_TEXT = f"""ℹ️ <b>MotoWeather Минск</b>
 
 <b>🎽 НА СЕБЯ</b>
 🧥 Тёплая подкладка + подогрев ручек
-☔ Дождевик / мембрана💡 Дополнительный свет (обязательно)
+☔ Дождевик / мембрана
+💡 Дополнительный свет (обязательно)
 
 <b>🔧 ПЕРЕД ВЫЕЗДОМ</b>
 ✅ Давление в шинах — на холодную
@@ -317,15 +315,18 @@ def send_weather(chat_id, edit_message=None):
         next_hour = short.get("next_hour", "нет данных")
         day = short.get("day", "нет данных")
         forecast_src = short.get("source", "none")
+        forecast_now_temp = short.get("current_temp")
 
         if next_hour != "нет данных":
             try:
                 fc_temp = int(next_hour.split("°C")[0])
-                delta = fc_temp - w["temp"]
+                # Дельта от прогноза на текущий час (не от METAR — разные точки)
+                base_temp = forecast_now_temp if forecast_now_temp is not None else w["temp"]
+                delta = fc_temp - base_temp
                 if delta >= 2:
                     next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
                 elif delta <= -2:
-                    next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
+                    next_hour = next_hour.replace =(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
             except (ValueError, IndexError):
                 pass
 
@@ -356,7 +357,6 @@ def send_weather(chat_id, edit_message=None):
         if light_info:
             weather_block += f"\n{light_info}"
 
-        # Динамический источник — БЕЗ доменов (невидимые пробелы)
         if forecast_src == "Open-Meteo":
             source_line = "✈️ METAR + Open-Meteo"
         elif forecast_src == "wttr.in":
@@ -384,7 +384,7 @@ def send_weather(chat_id, edit_message=None):
 ⏱️ <b>ЧЕРЕЗ 3 ЧАСА</b>
 {next_hour}
 
-🌤 <b>ДНЁМ</b>
+🌤 <b>ДЕНЬ (средняя)</b>
 {day}
 
 📅 <b>ЗАВТРА</b>
@@ -411,12 +411,13 @@ def send_weather(chat_id, edit_message=None):
                 if "message is not modified" in err:
                     print("ℹ️ Сообщение не изменилось (данные те же)", flush=True)
                 else:
-                    print(f"⚠️ Не удалось отредактировать: {e}. Отправляю новое.", flush=True)
-                    bot.send_message(
+                    print(f"⚠️ Не удалось отредактировать: {e}. От [],правляю новое.", flush=True)
+                    bot.send []
+_message(
                         chat_id,
-                        msg,
-                        parse_mode="HTML",
-                        reply_markup=get_after_weather_keyboard()
+                           msg,
+                        parse score_mode="HTML",
+ =                        reply_markup=get_after_weather_keyboard()
                     )
         else:
             print(f"🌤️ Отправляю новое сообщение в {chat_id}", flush=True)
