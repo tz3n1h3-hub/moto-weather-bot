@@ -169,12 +169,6 @@ def format_visibility(v):
     return f"{v} м"
 
 
-def risk_bar(score):
-    filled = min(score, 10)
-    empty = 10 - filled
-    return "━" * filled + "░" * empty
-
-
 def shorten_cond(cond):
     cond = cond.lower()
     replacements = {
@@ -206,17 +200,17 @@ def shorten_forecast(txt):
 ABOUT_TEXT = f"""🏍️ <b>MOTOWEATHER МИНСК</b>
 погода для райдеров
 
-<b>▪ Источники данных</b>
+<b>Источники данных</b>
 METAR аэропорта Минск — текущая погода
 Open-Meteo — прогнозы (основной)
 {WTTR_NAME} — прогнозы (резервный)
 
-<b>▪ Показываю</b>
+<b>Показываю</b>
 Вердикт — ехать или нет
 Экипировку и подготовку
 Прогноз на 3ч, ночь, завтра
 
-<b>▪ Подписка на утро</b>
+<b>Подписка на утро</b>
 Прогноз в 7:00 каждый день
 
 <b>▼▼▼ ПРИМЕР ПЛОХОЙ ПОГОДЫ ▼▼▼</b>
@@ -227,19 +221,19 @@ Open-Meteo — прогнозы (основной)
 💧 96% · 👁️ 800 м · 🌇 темно
 
 🔴 НЕ САДИСЬ ЗА РУЛЬ
-━━━━━━━━━░ 9/10
+Риск 9/10
 
-▪ 🌧️ Дождь — скользко
-▪ 🌫️ Туман — видимость 800 м
-▪ 🌪️ Ветер 12 м/с
+🌧️ Дождь — скользко
+🌫️ Туман — видимость 800 м
+🌪️ Ветер 12 м/с
 
-▪ 🧥 Тёплое
-▪ ☔ Дождевик
-▪ 💡 Доп. свет
+🧥 Тёплое
+☔ Дождевик
+💡 Доп. свет
 
-▪ ✅ Шины + свет
-▪ ✅ Визор
-▪ ✅ Противотуманки
+✅ Шины + свет
+✅ Визор
+✅ Противотуманки
 
 💡 Туман — противотуманки, скорость минимальная.
 
@@ -256,11 +250,11 @@ Open-Meteo — прогнозы (основной)
 SUBSCRIBE_TEXT = """🌅 <b>Подписка на утро</b>
 
 Каждый день в <b>7:00</b>:
-▪ Погода в Минске
-▪ Вердикт
-▪ Экипировка
-▪ Прогноз
-▪ Цитата
+Погода в Минске
+Вердикт
+Экипировка
+Прогноз
+Цитата
 
 Подписаться?"""
 
@@ -319,7 +313,6 @@ def build_weather_message(w, a, short, f, is_morning=False):
     now = now_dt.strftime("%H:%M")
 
     feels = a.get("feels_like", w.get("feels_like", 0))
-    wind_desc = get_wind_description(w["wind_speed"])
 
     cloud = shorten_cond(w.get('cloud_text', '—'))
     weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
@@ -353,21 +346,21 @@ def build_weather_message(w, a, short, f, is_morning=False):
         info_line += f" · 🌇 {light_short}"
 
     rider_verdict = get_rider_verdict(a["score"])
-    bar = risk_bar(a["score"])
 
     risk_factors = a["risks"][:3]
-    risk_block = "\n".join(f"▪ {r}" for r in risk_factors) if risk_factors else "▪ ✅ Дорога чистая"
+    risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
     gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
-    gear_block = "\n".join(f"▪ {g}" for g in gear)
+    gear_block = "\n".join(gear)
 
     tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
                           w.get("humidity"), w.get("dew_point"))
-    tech_block = "\n".join(f"▪ ✅ {t}" for t in tech)
+    tech_block = "\n".join(f"✅ {t}" for t in tech)
 
     next_hour = short.get("next_hour", "нет данных")
     next_period = short.get("next_period", "нет данных")
     next_period_label = short.get("next_period_label", "—")
+    next_period_title = short.get("next_period_title", "—")
     forecast_now_temp = short.get("current_temp")
     show_next_hour = short.get("show_next_hour", True)
 
@@ -418,21 +411,19 @@ def build_weather_message(w, a, short, f, is_morning=False):
 {info_line}
 
 <b>{rider_verdict}</b>
-━━━━━━━━━━{bar} {a['score']}/10
+Риск {a['score']}/10
 
-<b>▪ ЧТО НА ДОРОГЕ</b>
+<b>ЧТО НА ДОРОГЕ</b>
 {risk_block}
 
-<b>▪ НА СЕБЯ</b>
+<b>НА СЕБЯ</b>
 {gear_block}
 
-<b>▪ ПЕРЕД ВЫЕЗДОМ</b>
+<b>ПЕРЕД ВЫЕЗДОМ</b>
 {tech_block}
 
-━━━━━━━━━━━━━━━━━━━━
-{next_hour_block}🌙 {next_period_label.lower()}: {next_period_short}
+{next_hour_block}{next_period_title}: {next_period_short}
 📅 Завтра: {tomorrow_line}
-━━━━━━━━━━━━━━━━━━━━
 
 💡 <i>{tip}</i>"""
 
@@ -482,7 +473,6 @@ def morning_broadcast_loop():
                 failed = []
                 for uid in subs:
                     try:
-                        # Для подписчиков — клавиатура с "Отписаться"
                         bot.send_message(uid, msg, parse_mode="HTML",
                                          reply_markup=get_after_weather_keyboard(is_subscribed=True))
                         sent += 1
