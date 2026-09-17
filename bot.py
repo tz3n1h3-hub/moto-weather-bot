@@ -8,6 +8,7 @@ from datetime import datetime
 import requests
 import telebot
 from flask import Flask, jsonify
+from telebot.apihelper import ApiTelegramException
 
 from config import (
     BOT_TOKEN, MY_BOT_USERNAME,
@@ -184,6 +185,21 @@ def get_subscribers_count():
     return len(load_subscribers())
 
 
+# ============ УТРЕННИЙ СТАТУС (в Redis, чтобы не дублировать при рестарте) ============
+def get_last_morning_date():
+    """Возвращает дату последней рассылки (YYYY-MM-DD) или None."""
+    if UPSTASH_ENABLED:
+        result = _redis("get", "last_morning_date")
+        return result if result else None
+    return None
+
+
+def set_last_morning_date(date_str):
+    """Сохраняет дату последней рассылки."""
+    if UPSTASH_ENABLED:
+        _redis("set", "last_morning_date", date_str)
+
+
 # ============ ЦИТАТЫ ============
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
@@ -229,16 +245,6 @@ def get_alcohol_warning():
 
 
 # ============ ФОРМАТИРОВАНИЕ ============
-def get_wind_description(s):
-    if s < 1: return "штиль"
-    if s <= 3: return "тихий"
-    if s <= 6: return "лёгкий"
-    if s <= 10: return "умеренный"
-    if s <= 14: return "сильный"
-    if s <= 19: return "очень сильный"
-    return "штормовой ⚠️"
-
-
 def format_visibility(v):
     if v >= 10000: return "10+ км"
     if v >= 1000: return f"{v / 1000:.1f} км"
@@ -461,7 +467,6 @@ def build_weather_message(w, a, short, f, is_morning=False):
         fa_short = get_short_verdict(fa["score"])
         cond_low = shorten_cond(f["condition"].split(" ", 1)[-1].lower())
         emoji_short = f["condition"].split(" ", 1)[0]
-        # 🔴 ФИКС: расшифровка цвета в строке "Завтра" (вариант C)
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}°C, {cond_low} · "
             f"{f['wind_speed']} м/с {emoji_short} {fa['color']} {fa_short} ({fa['score']}/10)"
@@ -515,11 +520,7 @@ def build_weather_message(w, a, short, f, is_morning=False):
 
 
 # ============ УТРЕННЯЯ РАССЫЛКА ============
-_last_morning_sent = {"date": None}
-
-
 def morning_broadcast_loop():
-    global _last_morning_sent
     print("⏰ Поток утренней рассылки запущен", flush=True)
 
     while True:
@@ -527,17 +528,23 @@ def morning_broadcast_loop():
             now = datetime.now(MINSK_TZ)
             today_str = now.strftime("%Y-%m-%d")
 
-            if now.hour == 7 and now.minute < 5 and _last_morning_sent["date"] != today_str:
+            if now.hour == 7 and now.minute < 5:
+                # 🔴 ФИКС: проверяем через Redis, чтобы не дублировать при рестарте
+                last_sent = get_last_morning_date()
+                if last_sent == today_str:
+                    time.sleep(60)
+                    continue
+
                 print(f"🌅 Утренняя рассылка ({today_str})", flush=True)
 
                 subs = load_subscribers()
                 if not subs:
-                    _last_morning_sent["date"] = today_str
+                    set_last_morning_date(today_str)
                     continue
 
                 w = get_weather()
                 if not w:
-                    _last_morning_sent["date"] = today_str
+                    set_last_morning_date(today_str)
                     continue
 
                 a = analyze_risks(w)
@@ -547,22 +554,38 @@ def morning_broadcast_loop():
                 msg = build_weather_message(w, a, short, f, is_morning=True)
 
                 sent = 0
-                failed = []
+                failed_403 = []   # blocked/deactivated — удаляем
+                failed_other = [] # временные — оставляем
+
                 for uid in subs:
                     try:
                         bot.send_message(uid, msg, parse_mode="HTML",
                                          reply_markup=get_after_weather_keyboard(is_subscribed=True))
                         sent += 1
                         time.sleep(0.05)
+                    except ApiTelegramException as e:
+                        # 🔴 ФИКС: различаем 403 (blocked) и остальные
+                        if e.error_code == 403:
+                            print(f"🚫 {uid} заблокировал бота — удаляю", flush=True)
+                            failed_403.append(uid)
+                        elif e.error_code == 429:
+                            print(f"⏳ {uid}: rate limit (429) — оставляю", flush=True)
+                            failed_other.append(uid)
+                        else:
+                            print(f"⚠️ {uid}: {e.error_code} {e.description}", flush=True)
+                            failed_other.append(uid)
                     except Exception as e:
                         print(f"⚠️ Не отправил {uid}: {e}", flush=True)
-                        failed.append(uid)
+                        failed_other.append(uid)
 
-                print(f"✅ Рассылка: {sent} ок, {len(failed)} ошибок", flush=True)
-                for uid in failed:
+                print(f"✅ Рассылка: {sent} ок, {len(failed_403)} удалено, {len(failed_other)} отложено", flush=True)
+
+                # 🔴 ФИКС: удаляем только тех, кто реально заблокировал
+                for uid in failed_403:
                     remove_subscriber(uid)
 
-                _last_morning_sent["date"] = today_str
+                # Отмечаем рассылку как отправленную (даже если часть упала)
+                set_last_morning_date(today_str)
 
         except Exception as e:
             print(f"❌ Ошибка рассылки: {e}", flush=True)
