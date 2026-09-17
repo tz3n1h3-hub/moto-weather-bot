@@ -88,6 +88,18 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append(f"💧 Повышенная влажность {humidity}%")
                 score += 1
 
+    # 🔴 ФИКС C: для прогноза — учитываем туман/морось через weather_code
+    if is_forecast:
+        weather_code = weather.get("weather_code")
+        if weather_code in (45, 48):
+            risks.append("🌫️ Туман")
+            score += 3
+            recommendations.append("🌫️ Противотуманки, снизьте скорость")
+        elif weather_code in (51, 53, 55, 56, 57):
+            risks.append("🌦️ Морось")
+            score += 1
+            recommendations.append("🐢 Скользко — увеличивайте дистанцию")
+
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -116,7 +128,6 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите свет")
 
     # 🔴 ФИКС: единая шкала риска (0-2 / 3-4 / 5-6 / 7-8 / 9-10)
-    # Согласована с get_short_verdict и get_rider_verdict
     if score >= 9:
         verdict, color = "⛔️ КРИТИЧНО! НЕ ВЫЕЗЖАЙ!", "⛔"
     elif score >= 7:
@@ -140,7 +151,6 @@ def analyze_risks(weather, is_forecast=False):
 
 # ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
-    # 🔴 ФИКС: единая шкала с analyze_risks и get_rider_verdict
     if score <= 2:
         return "БЕЗОПАСНО"
     if score <= 4:
@@ -154,7 +164,6 @@ def get_short_verdict(score):
 
 # ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
 def get_rider_verdict(score):
-    # 🔴 ФИКС: единая шкала с analyze_risks и get_short_verdict
     if score <= 2:
         return "🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 4:
