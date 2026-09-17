@@ -1,18 +1,20 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
+def _subscribe_button(is_subscribed):
+    """Универсальная кнопка подписки/отписки."""
+    if is_subscribed:
+        return InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe_prompt")
+    return InlineKeyboardButton("🌅 Подписка", callback_data="subscribe")
+
+
 def get_main_keyboard(is_subscribed=False):
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🏍️ СЕЙЧАС", callback_data="weather")
     )
-    sub_btn = (
-        InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe_prompt")
-        if is_subscribed
-        else InlineKeyboardButton("🌅 Подписка", callback_data="subscribe")
-    )
     markup.row(
-        sub_btn,
+        _subscribe_button(is_subscribed),
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
@@ -23,13 +25,8 @@ def get_after_weather_keyboard(is_subscribed=False):
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
     )
-    sub_btn = (
-        InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe_prompt")
-        if is_subscribed
-        else InlineKeyboardButton("🌅 Подписка", callback_data="subscribe")
-    )
     markup.row(
-        sub_btn,
+        _subscribe_button(is_subscribed),
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
@@ -40,13 +37,8 @@ def get_about_keyboard(is_subscribed=False):
     markup.row(
         InlineKeyboardButton("🏍️ СЕЙЧАС", callback_data="weather")
     )
-    sub_btn = (
-        InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe_prompt")
-        if is_subscribed
-        else InlineKeyboardButton("🌅 Подписка", callback_data="subscribe")
-    )
     markup.row(
-        sub_btn,
+        _subscribe_button(is_subscribed),
         InlineKeyboardButton("✉️ Разработчику", url="https://t.me/Aleksandr_K8V")
     )
     return markup
