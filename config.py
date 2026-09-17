@@ -10,8 +10,7 @@ MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
 SUBSCRIBERS_FILE = "subscribers.json"
 
-# 🔴 ФИКС: без хардкода личного ID. Если ADMIN_ID не задан на Render —
-# админки не будет ни у кого (0).
+# ADMIN_ID: если env var не задан — 0 (никто не админ)
 ADMIN_ID = int(os.getenv("ADMIN_ID") or 0)
 
 # ============ API URLs ============
