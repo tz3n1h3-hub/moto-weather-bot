@@ -9,7 +9,10 @@ MY_BOT_USERNAME = os.getenv("MY_BOT_USERNAME", "MotoWeatherMinskBot")
 MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
 SUBSCRIBERS_FILE = "subscribers.json"
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8930836312"))
+
+# 🔴 ФИКС: без хардкода личного ID. Если ADMIN_ID не задан на Render —
+# админки не будет ни у кого (0).
+ADMIN_ID = int(os.getenv("ADMIN_ID") or 0)
 
 # ============ API URLs ============
 METAR_URL = "https://metar.vatsim.net/UMMS"
