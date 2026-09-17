@@ -185,7 +185,7 @@ def get_subscribers_count():
     return len(load_subscribers())
 
 
-# ============ УТРЕННИЙ СТАТУС (в Redis, чтобы не дублировать при рестарте) ============
+# ============ УТРЕННИЙ СТАТУС (в Redis) ============
 def get_last_morning_date():
     """Возвращает дату последней рассылки (YYYY-MM-DD) или None."""
     if UPSTASH_ENABLED:
@@ -297,12 +297,13 @@ Open-Meteo — прогнозы (основной)
 
 <b>▼▼▼ ПРИМЕР ПЛОХОЙ ПОГОДЫ ▼▼▼</b>
 
-🌧️ <b>MotoWeather Минск</b> · 06:00
+🌧️ MOTOWEATHER МИНСК
+ЧТ · 17 сентября · 06:00
 
 +3°C, дождь · 12 м/с, порывы 18
 💧 96% · 👁️ 800 м · 🌇 темно
 
-🔴 НЕ САДИСЬ ЗА РУЛЬ
+🔴 НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО
 Риск 9/10
 
 🌧️ Дождь — скользко
@@ -477,11 +478,28 @@ def build_weather_message(w, a, short, f, is_morning=False):
         w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
     )
 
+    # 🔴 ФИКС: новая шапка — две строки, капс + день недели + дата
+    WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+    MONTHS_RU = [
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря"
+    ]
+
+    weekday = WEEKDAYS_RU[now_dt.weekday()]
+    date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
+    time_str = now_dt.strftime("%H:%M")
+
+    # 🔴 ФИКС C: ночью ясно → 🌙, иначе эмодзи из METAR
     header_icon = w.get('weather_emoji') or "🌤"
+    if w.get("is_night") and header_icon in ("☀️", "🌤️", ""):
+        header_icon = "🌙"
+
     if is_morning:
-        header_text = "🌅 <b>MotoWeather Минск</b> · утро"
-    else:
-        header_text = f"{header_icon} <b>MotoWeather Минск</b> · {now}"
+        header_icon = "🌅"
+
+    header_line1 = f"{header_icon} <b>MOTOWEATHER МИНСК</b>"
+    header_line2 = f"{weekday} · {date_str} · {time_str}"
+    header_text = f"{header_line1}\n{header_line2}"
 
     next_hour_block = ""
     if show_next_hour and next_hour != "нет данных":
