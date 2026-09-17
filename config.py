@@ -9,9 +9,11 @@ MY_BOT_USERNAME = os.getenv("MY_BOT_USERNAME", "MotoWeatherMinskBot")
 MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
 SUBSCRIBERS_FILE = "subscribers.json"
-
-# ADMIN_ID: если env var не задан — 0 (никто не админ)
 ADMIN_ID = int(os.getenv("ADMIN_ID") or 0)
+
+# ============ UPSTASH REDIS ============
+UPSTASH_URL = os.getenv("UPSTASH_REDIS_REST_URL")
+UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
 
 # ============ API URLs ============
 METAR_URL = "https://metar.vatsim.net/UMMS"
