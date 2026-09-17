@@ -17,14 +17,14 @@ from config import (
 )
 from weather import (
     get_weather, get_forecast_tomorrow,
-    get_short_forecast, get_daylight_info,
+    get_short_forecast, get_daylight_info, hpa_to_mmhg,
 )
 from analyzer import (
     analyze_risks, get_short_verdict, get_rider_verdict,
     get_gear_short, get_tech_check, get_tip,
 )
 from keyboards import (
-    get_main_keyboard, get_after_weather_keyboard,
+    get_main_keyboard, get_after_weather_keyboard, get_morning_keyboard,
     get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard
 )
 
@@ -50,7 +50,6 @@ app = Flask(__name__)
 # ============ НЕВИДИМЫЕ ПРОБЕЛЫ ============
 Z = "\u200b"
 DEV_USERNAME = f"@{Z}Aleksandr_K8V"
-WTTR_NAME = f"wttr{Z}.in"
 
 
 # ============ UPSTASH REDIS ============
@@ -58,7 +57,6 @@ UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
 
 def _redis(cmd, *args):
-    """Универсальный вызов Upstash REST API. Возвращает result или None."""
     if not UPSTASH_ENABLED:
         return None
     try:
@@ -71,7 +69,7 @@ def _redis(cmd, *args):
             timeout=5
         )
         if r.status_code != 200:
-            print(f"⚠️ Redis {cmd} → {r.status_code}: {r.text[:200]}", flush=True)
+            print(f"⚠️ Redis {cmd} → {r.status_code}", flush=True)
             return None
         return r.json().get("result")
     except Exception as e:
@@ -103,7 +101,6 @@ def save_user(user_id):
     if UPSTASH_ENABLED:
         _redis("sadd", "users", user_id)
         return
-
     users = load_users()
     if user_id not in users:
         users.append(user_id)
@@ -145,7 +142,6 @@ def save_subscriber(user_id):
     if UPSTASH_ENABLED:
         _redis("sadd", "subscribers", user_id)
         return
-
     subs = load_subscribers()
     if user_id not in subs:
         subs.append(user_id)
@@ -160,7 +156,6 @@ def remove_subscriber(user_id):
     if UPSTASH_ENABLED:
         _redis("srem", "subscribers", user_id)
         return
-
     subs = load_subscribers()
     if user_id in subs:
         subs.remove(user_id)
@@ -185,9 +180,8 @@ def get_subscribers_count():
     return len(load_subscribers())
 
 
-# ============ УТРЕННИЙ СТАТУС (в Redis) ============
+# ============ УТРЕННИЙ СТАТУС ============
 def get_last_morning_date():
-    """Возвращает дату последней рассылки (YYYY-MM-DD) или None."""
     if UPSTASH_ENABLED:
         result = _redis("get", "last_morning_date")
         return result if result else None
@@ -195,7 +189,6 @@ def get_last_morning_date():
 
 
 def set_last_morning_date(date_str):
-    """Сохраняет дату последней рассылки."""
     if UPSTASH_ENABLED:
         _redis("set", "last_morning_date", date_str)
 
@@ -229,7 +222,6 @@ def get_random_quote():
     return random.choice(RIDER_QUOTES)
 
 
-# ============ АЛКОГОЛЬ ============
 def get_alcohol_warning():
     now = datetime.now(MINSK_TZ)
     weekday = now.weekday()
@@ -245,14 +237,30 @@ def get_alcohol_warning():
 
 
 # ============ ФОРМАТИРОВАНИЕ ============
+WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+MONTHS_RU = [
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря"
+]
+
+
 def format_visibility(v):
-    if v >= 10000: return "10+ км"
-    if v >= 1000: return f"{v / 1000:.1f} км"
-    return f"{v} м"
+    if v is None:
+        return "—"
+    if v >= 10000:
+        return "10+км"
+    if v >= 1000:
+        km = v / 1000
+        if km == int(km):
+            return f"{int(km)}км"
+        return f"{km:.1f}км"
+    return f"{v}м"
 
 
 def shorten_cond(cond):
-    cond = cond.lower()
+    if not cond:
+        return "—"
+    cond_lower = cond.lower()
     replacements = {
         "преимущественно ясно": "ясно",
         "переменная облачность": "переменно",
@@ -261,71 +269,89 @@ def shorten_cond(cond):
         "преимущественно облачно": "облачно",
     }
     for k, v in replacements.items():
-        if k in cond:
+        if k in cond_lower:
             return v
-    return cond
+    return cond_lower
 
 
-def shorten_forecast(txt):
-    if txt == "нет данных":
-        return txt
-    parts = txt.split(", ")
-    if len(parts) >= 3:
-        t = parts[0]
-        c = shorten_cond(parts[1])
-        w_ = parts[2]
-        return f"{t}, {c} · {w_}"
-    return txt
+def avg(a, b):
+    """Среднее двух чисел с округлением до 1 знака. Пропускает None."""
+    if a is None and b is None:
+        return None
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return round((a + b) / 2, 1)
+
+
+def fmt_num(v):
+    """Форматирует число: 11.0 → 11, 11.5 → 11.5"""
+    if v is None:
+        return "—"
+    if isinstance(v, float) and v == int(v):
+        return str(int(v))
+    return str(v)
+
+
+def build_risk_bar(score):
+    """Строит бар риска из 10 квадратов."""
+    score = max(0, min(10, score))
+    if score >= 9:
+        color = "🟪"
+    elif score >= 7:
+        color = "🟥"
+    elif score >= 5:
+        color = "🟧"
+    elif score >= 3:
+        color = "🟨"
+    else:
+        color = "🟩"
+    filled = color * score
+    empty = "⬜️" * (10 - score)
+    return f"{filled}{empty}"
+
+
+def fmt_field(name, m_val, om_val, unit="", m_key="M", om_key="OM"):
+    """
+    Формат: 🌡️ Температура: 11.5°C (M11|OM12)
+    """
+    if m_val is None and om_val is None:
+        return f"{name}: —"
+
+    avg_val = avg(m_val, om_val)
+
+    # Основное значение
+    if unit:
+        main = f"{fmt_num(avg_val)}{unit}"
+    else:
+        main = fmt_num(avg_val)
+
+    # Источники в скобках
+    m_str = fmt_num(m_val) if m_val is not None else "—"
+    om_str = fmt_num(om_val) if om_val is not None else "—"
+
+    return f"{name}: {main} ({m_key}{m_str}|{om_key}{om_str})"
 
 
 # ============ ТЕКСТЫ ============
-ABOUT_TEXT = f"""🏍️ <b>MOTOWEATHER МИНСК</b>
-погода для райдеров
+ABOUT_TEXT = f"""🏍️ <b>MOTOWEATHER · МИНСК</b>
 
-<b>Источники данных</b>
-METAR аэропорта Минск — текущая погода
-Open-Meteo — прогнозы (основной)
-{WTTR_NAME} — прогнозы (резервный)
+<b>Источники:</b>
+M  — METAR (аэропорт Минск, UMMS)
+OM — Open-Meteo (Минск)
+W  — wttr.in (Минск)
 
-<b>Показываю</b>
-Вердикт — ехать или нет
-Экипировку и подготовку
-Прогноз на 3ч, ночь, завтра
+<b>Что показывает:</b>
+• Погода сейчас (усреднение M+OM)
+• Риск 0-10 для райдера
+• Экипировка и подготовка
+• Прогноз на ночь и завтра
 
-<b>Подписка на утро</b>
-Прогноз в 7:00 каждый день
+<b>Подписка на утро:</b>
+Прогноз каждый день в 7:00
 
-<b>▼▼▼ ПРИМЕР ПЛОХОЙ ПОГОДЫ ▼▼▼</b>
-
-🌧️ MOTOWEATHER МИНСК
-ЧТ · 17 сентября · 06:00
-
-+3°C, дождь · 12 м/с, порывы 18
-💧 96% · 👁️ 800 м · 🌇 темно
-
-🔴 НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО
-Риск 9/10
-
-🌧️ Дождь — скользко
-🌫️ Туман — видимость 800 м
-🌪️ Ветер 12 м/с
-
-🧥 Тёплое
-☔ Дождевик
-💡 Доп. свет
-
-✅ Шины + свет
-✅ Визор
-✅ Противотуманки
-
-💡 Туман — противотуманки, скорость минимальная.
-
-🏍️ Ровной дороги!
-
-<b>▲▲▲ КОНЕЦ ПРИМЕРА ▲▲▲</b>
-
-<b>🚫 За рулём — только трезвый</b>
-Алкоголь = реакция ×3 хуже.
+<b>Отписка:</b> /unsubscribe
 
 <b>👨‍💻 Разработчик:</b> {DEV_USERNAME}"""
 
@@ -345,7 +371,7 @@ SUBSCRIBE_CONFIRMED = """✅ <b>Подписка активирована</b>
 
 Прогноз в 7:00 каждый день.
 
-Отписаться — кнопкой ниже."""
+Отписаться: /unsubscribe"""
 
 SUBSCRIBE_CANCELED = """❌ <b>Подписка отменена</b>
 
@@ -365,11 +391,12 @@ UNSUBSCRIBE_CANCELED = """✅ <b>Остаёмся!</b>
 
 ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 
-Отписаться — кнопкой ниже."""
+Отписаться: /unsubscribe"""
 
 
 # ============ ХЕЛПЕР ============
 def edit_or_send(chat_id, message_id, text, reply_markup):
+    """Для /start, /about, подписки — редактирование."""
     try:
         bot.edit_message_text(
             chat_id=chat_id,
@@ -390,474 +417,13 @@ def edit_or_send(chat_id, message_id, text, reply_markup):
         return False
 
 
-# ============ СБОРКА СООБЩЕНИЯ ============
-def build_weather_message(w, a, short, f, is_morning=False):
-    now_dt = datetime.now(MINSK_TZ)
-    now = now_dt.strftime("%H:%M")
-
-    feels = a.get("feels_like", w.get("feels_like", 0))
-
-    cloud = shorten_cond(w.get('cloud_text', '—'))
-    weather_info = f"{w.get('weather_emoji') or ''} {w.get('weather_text') or ''}".strip()
-    if not weather_info:
-        weather_info = "без осадков"
-    else:
-        weather_info = shorten_cond(weather_info)
-
-    weather_line = f"{w['temp']}°C, {cloud}"
-    if weather_info and weather_info != "без осадков":
-        weather_line += f", {weather_info}"
-    weather_line += f" · {w['wind_speed']} м/с"
-
-    wind_extra = ""
-    if w.get("wind_gust") and w["wind_gust"] > w["wind_speed"] + 3:
-        wind_extra = f", порывы {w['wind_gust']}"
-
-    humidity_str = f"{w['humidity']}%" if w.get("humidity") else "—"
-    vis_str = format_visibility(w["visibility"])
-
-    light_short = ""
-    if w.get("sunrise") and w.get("sunset"):
-        light_full = get_daylight_info(w.get("sunrise"), w.get("sunset"))
-        if "Темно" in light_full:
-            light_short = "темно"
-        elif "Светло" in light_full:
-            light_short = "светло"
-
-    info_line = f"💧 {humidity_str} · 👁️ {vis_str}"
-    if light_short:
-        info_line += f" · 🌇 {light_short}"
-
-    rider_verdict = get_rider_verdict(a["score"])
-
-    risk_factors = a["risks"][:3]
-    risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
-
-    gear = get_gear_short(feels, w.get("is_rain", False), w.get("is_night", False), w["wind_speed"])
-    gear_block = "\n".join(gear)
-
-    tech = get_tech_check(feels, w.get("is_night", False), w.get("is_rain", False),
-                          w.get("humidity"), w.get("dew_point"))
-    tech_block = "\n".join(f"✅ {t}" for t in tech)
-
-    next_hour = short.get("next_hour", "нет данных")
-    next_period = short.get("next_period", "нет данных")
-    next_period_label = short.get("next_period_label", "—")
-    next_period_title = short.get("next_period_title", "—")
-    forecast_now_temp = short.get("current_temp")
-    show_next_hour = short.get("show_next_hour", True)
-
-    if next_hour != "нет данных":
-        try:
-            fc_temp = int(next_hour.split("°C")[0])
-            base_temp = forecast_now_temp if forecast_now_temp is not None else w["temp"]
-            delta = fc_temp - base_temp
-            if delta >= 2:
-                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C (+{delta}°C)", 1)
-            elif delta <= -2:
-                next_hour = next_hour.replace(f"{fc_temp}°C", f"{fc_temp}°C ({delta}°C)", 1)
-        except (ValueError, IndexError):
-            pass
-
-    next_hour_short = shorten_forecast(next_hour)
-    next_period_short = shorten_forecast(next_period)
-
-    tomorrow_line = "нет данных"
-    if f:
-        fa = analyze_risks(f, is_forecast=True)
-        fa_short = get_short_verdict(fa["score"])
-        cond_low = shorten_cond(f["condition"].split(" ", 1)[-1].lower())
-        emoji_short = f["condition"].split(" ", 1)[0]
-        tomorrow_line = (
-            f"{f['temp_min']}–{f['temp_max']}°C, {cond_low} · "
-            f"{f['wind_speed']} м/с {emoji_short} {fa['color']} {fa_short} ({fa['score']}/10)"
-        )
-
-    tip = get_tip(
-        feels, w.get("humidity"), w.get("is_rain", False), w.get("is_night", False),
-        w["wind_speed"], w.get("is_thunder", False), w.get("visibility")
-    )
-
-    # 🔴 ФИКС: новая шапка — две строки, капс + день недели + дата
-    WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
-    MONTHS_RU = [
-        "января", "февраля", "марта", "апреля", "мая", "июня",
-        "июля", "августа", "сентября", "октября", "ноября", "декабря"
-    ]
-
-    weekday = WEEKDAYS_RU[now_dt.weekday()]
-    date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
-    time_str = now_dt.strftime("%H:%M")
-
-    # 🔴 ФИКС C: ночью ясно → 🌙, иначе эмодзи из METAR
-    header_icon = w.get('weather_emoji') or "🌤"
-    if w.get("is_night") and header_icon in ("☀️", "🌤️", ""):
-        header_icon = "🌙"
-
-    if is_morning:
-        header_icon = "🌅"
-
-    header_line1 = f"{header_icon} <b>MOTOWEATHER МИНСК</b>"
-    header_line2 = f"{weekday} · {date_str} · {time_str}"
-    header_text = f"{header_line1}\n{header_line2}"
-
-    next_hour_block = ""
-    if show_next_hour and next_hour != "нет данных":
-        next_hour_block = f"⏱️ +3ч: {next_hour_short}\n"
-
-    msg = f"""{header_text}
-
-{weather_line}{wind_extra}
-{info_line}
-
-<b>{rider_verdict}</b>
-Риск {a['score']}/10
-
-<b>ЧТО НА ДОРОГЕ</b>
-{risk_block}
-
-<b>НА СЕБЯ</b>
-{gear_block}
-
-<b>ПЕРЕД ВЫЕЗДОМ</b>
-{tech_block}
-
-{next_hour_block}{next_period_title}: {next_period_short}
-📅 Завтра: {tomorrow_line}
-
-💡 <i>{tip}</i>"""
-
-    if is_morning:
-        alcohol = get_alcohol_warning()
-        quote = get_random_quote()
-        msg += f"\n\n{alcohol}\n\n💬 <i>{quote}</i>"
-
-    msg += "\n\n🏍️ <b>Ровной дороги!</b>"
-
-    return msg
-
-
-# ============ УТРЕННЯЯ РАССЫЛКА ============
-def morning_broadcast_loop():
-    print("⏰ Поток утренней рассылки запущен", flush=True)
-
-    while True:
-        try:
-            now = datetime.now(MINSK_TZ)
-            today_str = now.strftime("%Y-%m-%d")
-
-            if now.hour == 7 and now.minute < 5:
-                # 🔴 ФИКС: проверяем через Redis, чтобы не дублировать при рестарте
-                last_sent = get_last_morning_date()
-                if last_sent == today_str:
-                    time.sleep(60)
-                    continue
-
-                print(f"🌅 Утренняя рассылка ({today_str})", flush=True)
-
-                subs = load_subscribers()
-                if not subs:
-                    set_last_morning_date(today_str)
-                    continue
-
-                w = get_weather()
-                if not w:
-                    set_last_morning_date(today_str)
-                    continue
-
-                a = analyze_risks(w)
-                short = get_short_forecast()
-                f = get_forecast_tomorrow()
-
-                msg = build_weather_message(w, a, short, f, is_morning=True)
-
-                sent = 0
-                failed_403 = []   # blocked/deactivated — удаляем
-                failed_other = [] # временные — оставляем
-
-                for uid in subs:
-                    try:
-                        bot.send_message(uid, msg, parse_mode="HTML",
-                                         reply_markup=get_after_weather_keyboard(is_subscribed=True))
-                        sent += 1
-                        time.sleep(0.05)
-                    except ApiTelegramException as e:
-                        # 🔴 ФИКС: различаем 403 (blocked) и остальные
-                        if e.error_code == 403:
-                            print(f"🚫 {uid} заблокировал бота — удаляю", flush=True)
-                            failed_403.append(uid)
-                        elif e.error_code == 429:
-                            print(f"⏳ {uid}: rate limit (429) — оставляю", flush=True)
-                            failed_other.append(uid)
-                        else:
-                            print(f"⚠️ {uid}: {e.error_code} {e.description}", flush=True)
-                            failed_other.append(uid)
-                    except Exception as e:
-                        print(f"⚠️ Не отправил {uid}: {e}", flush=True)
-                        failed_other.append(uid)
-
-                print(f"✅ Рассылка: {sent} ок, {len(failed_403)} удалено, {len(failed_other)} отложено", flush=True)
-
-                # 🔴 ФИКС: удаляем только тех, кто реально заблокировал
-                for uid in failed_403:
-                    remove_subscriber(uid)
-
-                # Отмечаем рассылку как отправленную (даже если часть упала)
-                set_last_morning_date(today_str)
-
-        except Exception as e:
-            print(f"❌ Ошибка рассылки: {e}", flush=True)
-
-        time.sleep(60)
-
-
-# ============ КОМАНДЫ ============
-@bot.message_handler(commands=['start'])
-def start(message):
+def delete_and_send(chat_id, old_message_id, text, reply_markup):
+    """Для обновления погоды — удалить старое + отправить новое (курсор вверх)."""
     try:
-        save_user(message.chat.id)
-        info = bot.get_me()
-
-        if info.username != MY_BOT_USERNAME:
-            bot.send_message(
-                message.chat.id,
-                f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
-                parse_mode="HTML"
-            )
-            return
-
-        sub_status = is_subscribed(message.chat.id)
-        bot.send_message(
-            message.chat.id,
-            "🏍️ <b>MOTOWEATHER МИНСК</b>\n"
-            "погода для райдеров\n\n"
-            "Проверяю аэропорт Минск — говорю прямо: ехать или нет.\n\n"
-            "<b>Жми «СЕЙЧАС» — и вперёд.</b>",
-            parse_mode="HTML",
-            reply_markup=get_main_keyboard(is_subscribed=sub_status)
-        )
+        bot.delete_message(chat_id, old_message_id)
     except Exception as e:
-        print(f"❌ /start: {e}", flush=True)
-
-
-@bot.message_handler(commands=['weather'])
-def weather_cmd(m):
+        print(f"⚠️ delete: {e}", flush=True)
     try:
-        save_user(m.chat.id)
-        loading = bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
-        send_weather(m.chat.id, edit_message=loading)
+        bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
-        print(f"❌ /weather: {e}", flush=True)
-
-
-@bot.message_handler(commands=['about'])
-def about_cmd(m):
-    try:
-        save_user(m.chat.id)
-        sub_status = is_subscribed(m.chat.id)
-        bot.send_message(m.chat.id, ABOUT_TEXT, parse_mode="HTML",
-                         reply_markup=get_about_keyboard(is_subscribed=sub_status))
-    except Exception as e:
-        print(f"❌ /about: {e}", flush=True)
-
-
-@bot.message_handler(commands=['subscribe'])
-def subscribe_cmd(m):
-    try:
-        save_user(m.chat.id)
-        if is_subscribed(m.chat.id):
-            bot.send_message(m.chat.id, ALREADY_SUBSCRIBED,
-                             parse_mode="HTML",
-                             reply_markup=get_main_keyboard(is_subscribed=True))
-            return
-        bot.send_message(m.chat.id, SUBSCRIBE_TEXT, parse_mode="HTML",
-                         reply_markup=get_subscribe_keyboard())
-    except Exception as e:
-        print(f"❌ /subscribe: {e}", flush=True)
-
-
-@bot.message_handler(commands=['unsubscribe'])
-def unsubscribe_cmd(m):
-    try:
-        save_user(m.chat.id)
-        if not is_subscribed(m.chat.id):
-            bot.send_message(m.chat.id, "ℹ️ Ты не подписан.",
-                             parse_mode="HTML",
-                             reply_markup=get_main_keyboard(is_subscribed=False))
-            return
-        bot.send_message(m.chat.id, UNSUBSCRIBE_PROMPT, parse_mode="HTML",
-                         reply_markup=get_unsubscribe_keyboard())
-    except Exception as e:
-        print(f"❌ /unsubscribe: {e}", flush=True)
-
-
-@bot.message_handler(commands=['stats'])
-def stats_cmd(m):
-    if not ADMIN_ID or m.chat.id != ADMIN_ID:
-        bot.reply_to(m, "❌ Нет прав.")
-        return
-    bot.reply_to(
-        m,
-        f"📊 <b>Статистика</b>\n"
-        f"👥 Юзеров: {get_users_count()}\n"
-        f"🌅 Подписчиков: {get_subscribers_count()}\n"
-        f"💾 Хранилище: {'Upstash' if UPSTASH_ENABLED else 'файлы'}\n"
-        f"📅 {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
-        parse_mode="HTML"
-    )
-
-
-# ============ CALLBACK ============
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-    try:
-        print(f"📩 {call.data} от {call.message.chat.id}", flush=True)
-        try:
-            save_user(call.message.chat.id)
-        except Exception:
-            pass
-
-        chat_id = call.message.chat.id
-        msg_id = call.message.message_id
-
-        if call.data in ("weather", "update"):
-            msg_text = "⏳ Смотрю..." if call.data == "weather" else "⏳ Обновляю..."
-            bot.answer_callback_query(call.id, msg_text, cache_time=3)
-            send_weather(chat_id, edit_message=call.message)
-
-        elif call.data == "about":
-            bot.answer_callback_query(call.id, "✅", cache_time=3)
-            sub_status = is_subscribed(chat_id)
-            edit_or_send(chat_id, msg_id, ABOUT_TEXT,
-                         get_about_keyboard(is_subscribed=sub_status))
-
-        elif call.data == "subscribe":
-            if is_subscribed(chat_id):
-                bot.answer_callback_query(call.id, "ℹ️ Уже подписан", cache_time=3)
-                edit_or_send(chat_id, msg_id, ALREADY_SUBSCRIBED,
-                             get_main_keyboard(is_subscribed=True))
-            else:
-                bot.answer_callback_query(call.id, "🌅", cache_time=3)
-                edit_or_send(chat_id, msg_id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
-
-        elif call.data == "subscribe_confirm":
-            save_subscriber(chat_id)
-            bot.answer_callback_query(call.id, "✅ Подписка", cache_time=3)
-            edit_or_send(chat_id, msg_id, SUBSCRIBE_CONFIRMED,
-                         get_main_keyboard(is_subscribed=True))
-
-        elif call.data == "subscribe_cancel":
-            bot.answer_callback_query(call.id, "❌", cache_time=3)
-            sub_status = is_subscribed(chat_id)
-            edit_or_send(chat_id, msg_id, SUBSCRIBE_CANCELED,
-                         get_main_keyboard(is_subscribed=sub_status))
-
-        elif call.data == "unsubscribe_prompt":
-            bot.answer_callback_query(call.id, "❌ Отписка", cache_time=3)
-            edit_or_send(chat_id, msg_id, UNSUBSCRIBE_PROMPT,
-                         get_unsubscribe_keyboard())
-
-        elif call.data == "unsubscribe_confirm":
-            remove_subscriber(chat_id)
-            bot.answer_callback_query(call.id, "❌ Отписан", cache_time=3)
-            edit_or_send(chat_id, msg_id, UNSUBSCRIBED,
-                         get_main_keyboard(is_subscribed=False))
-
-        elif call.data == "unsubscribe_cancel":
-            bot.answer_callback_query(call.id, "✅ Остаёмся", cache_time=3)
-            edit_or_send(chat_id, msg_id, UNSUBSCRIBE_CANCELED,
-                         get_main_keyboard(is_subscribed=True))
-
-        else:
-            bot.answer_callback_query(call.id, "❓", cache_time=3)
-
-    except Exception as e:
-        print(f"❌ callback: {type(e).__name__}: {e}", flush=True)
-
-
-# ============ ОТПРАВКА ПОГОДЫ ============
-def send_weather(chat_id, edit_message=None):
-    try:
-        w = get_weather()
-        if not w:
-            bot.send_message(chat_id, "❌ Небо молчит.")
-            return
-
-        a = analyze_risks(w)
-        short = get_short_forecast()
-        f = get_forecast_tomorrow()
-
-        msg = build_weather_message(w, a, short, f, is_morning=False)
-        sub_status = is_subscribed(chat_id)
-
-        if edit_message:
-            edit_or_send(chat_id, edit_message.message_id, msg,
-                         get_after_weather_keyboard(is_subscribed=sub_status))
-        else:
-            bot.send_message(chat_id, msg, parse_mode="HTML",
-                             reply_markup=get_after_weather_keyboard(is_subscribed=sub_status))
-
-    except Exception as e:
-        print(f"❌ send_weather: {type(e).__name__}: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-
-
-# ============ FLASK ============
-@app.route("/")
-def home():
-    return "🏍️ MotoWeather Bot is running!", 200
-
-
-@app.route("/favicon.ico")
-def favicon():
-    return "", 204
-
-
-@app.route("/apple-touch-icon-precomposed.png")
-def apple_icon():
-    return "", 204
-
-
-@app.route("/health")
-def health():
-    return jsonify({
-        "status": "ok",
-        "bot": "MotoWeather Minsk",
-        "storage": "upstash" if UPSTASH_ENABLED else "files",
-        "users": get_users_count(),
-        "subscribers": get_subscribers_count(),
-        "time": datetime.now(MINSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
-    }), 200
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-
-# ============ ЗАПУСК ============
-if __name__ == "__main__":
-    print("🏍️ MotoWeather Бот запущен!", flush=True)
-
-    try:
-        bot.remove_webhook()
-        print("✅ Webhook сброшен", flush=True)
-    except Exception as e:
-        print(f"⚠️ remove_webhook: {e}", flush=True)
-
-    threading.Thread(target=run_flask, daemon=True).start()
-    threading.Thread(target=morning_broadcast_loop, daemon=True).start()
-
-    print("🔄 Polling...", flush=True)
-    while True:
-        try:
-            bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        except Exception as e:
-            err_str = str(e)
-            if "409" in err_str:
-                print("⚠️ 409. Жду 20 сек...", flush=True)
-                time.sleep(20)
-            else:
-                print(f"⚠️ Polling упал: {e}", flush=True)
-                time.sleep(10)
+        print(f"⚠️ send: {e}", flush=True)
