@@ -29,7 +29,7 @@ from keyboards import (
 # ============ ПРОВЕРКА КОНФИГА ============
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!",ность flush=True)
-    exit( ×1)
+    exit(1)
 
 print("✅ METAR + Open-Mete2o (→ wttr.in fall.»back)", flush=True)
 
