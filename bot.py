@@ -5,12 +5,14 @@ import threading
 import time
 from datetime import datetime
 
+import requests
 import telebot
 from flask import Flask, jsonify
 
 from config import (
     BOT_TOKEN, MY_BOT_USERNAME,
     USERS_FILE, SUBSCRIBERS_FILE, ADMIN_ID, MINSK_TZ,
+    UPSTASH_URL, UPSTASH_TOKEN,
 )
 from weather import (
     get_weather, get_forecast_tomorrow,
@@ -31,6 +33,11 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
+if UPSTASH_URL and UPSTASH_TOKEN:
+    print("✅ Хранилище: Upstash Redis", flush=True)
+else:
+    print("⚠️ Хранилище: локальные файлы (Upstash не настроен)", flush=True)
+
 print("✅ METAR + Open-Meteo (→ wttr.in fallback)", flush=True)
 
 
@@ -43,6 +50,142 @@ app = Flask(__name__)
 Z = "\u200b"
 DEV_USERNAME = f"@{Z}Aleksandr_K8V"
 WTTR_NAME = f"wttr{Z}.in"
+
+
+# ============ UPSTASH REDIS ============
+UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
+
+
+def _redis(cmd, *args):
+    """Универсальный вызов Upstash REST API. Возвращает result или None."""
+    if not UPSTASH_ENABLED:
+        return None
+    try:
+        url = f"{UPSTASH_URL}/{cmd}"
+        if args:
+            url += "/" + "/".join(str(a) for a in args)
+        r = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
+            timeout=5
+        )
+        if r.status_code != 200:
+            print(f"⚠️ Redis {cmd} → {r.status_code}: {r.text[:200]}", flush=True)
+            return None
+        return r.json().get("result")
+    except Exception as e:
+        print(f"⚠️ Redis {cmd}: {e}", flush=True)
+        return None
+
+
+# ============ ПОЛЬЗОВАТЕЛИ ============
+def load_users():
+    """Возвращает список ID пользователей."""
+    if UPSTASH_ENABLED:
+        result = _redis("smembers", "users")
+        if result is None:
+            return []
+        try:
+            return [int(x) for x in result]
+        except (ValueError, TypeError):
+            return []
+
+    # fallback на файлы
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_user(user_id):
+    if UPSTASH_ENABLED:
+        _redis("sadd", "users", user_id)
+        return
+
+    users = load_users()
+    if user_id not in users:
+        users.append(user_id)
+        try:
+            with open(USERS_FILE, "w") as f:
+                json.dump(users, f)
+        except Exception as e:
+            print(f"⚠️ user save: {e}", flush=True)
+
+
+def get_users_count():
+    if UPSTASH_ENABLED:
+        result = _redis("scard", "users")
+        return int(result) if result else 0
+    return len(load_users())
+
+
+# ============ ПОДПИСЧИКИ ============
+def load_subscribers():
+    """Возвращает список ID подписчиков."""
+    if UPSTASH_ENABLED:
+        result = _redis("smembers", "subscribers")
+        if result is None:
+            return []
+        try:
+            return [int(x) for x in result]
+        except (ValueError, TypeError):
+            return []
+
+    # fallback на файлы
+    if os.path.exists(SUBSCRIBERS_FILE):
+        try:
+            with open(SUBSCRIBERS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_subscriber(user_id):
+    if UPSTASH_ENABLED:
+        _redis("sadd", "subscribers", user_id)
+        return
+
+    subs = load_subscribers()
+    if user_id not in subs:
+        subs.append(user_id)
+        try:
+            with open(SUBSCRIBERS_FILE, "w") as f:
+                json.dump(subs, f)
+        except Exception as e:
+            print(f"⚠️ sub save: {e}", flush=True)
+
+
+def remove_subscriber(user_id):
+    if UPSTASH_ENABLED:
+        _redis("srem", "subscribers", user_id)
+        return
+
+    subs = load_subscribers()
+    if user_id in subs:
+        subs.remove(user_id)
+        try:
+            with open(SUBSCRIBERS_FILE, "w") as f:
+                json.dump(subs, f)
+        except Exception as e:
+            print(f"⚠️ sub remove: {e}", flush=True)
+
+
+def is_subscribed(user_id):
+    if UPSTASH_ENABLED:
+        result = _redis("sismember", "subscribers", user_id)
+        return result == 1
+    return user_id in load_subscribers()
+
+
+def get_subscribers_count():
+    if UPSTASH_ENABLED:
+        result = _redis("scard", "subscribers")
+        return int(result) if result else 0
+    return len(load_subscribers())
 
 
 # ============ ЦИТАТЫ ============
@@ -87,69 +230,6 @@ def get_alcohol_warning():
         return "🍷 Воскресенье. Реакция ещё не та — не рискуй."
     else:
         return "🚫 За рулём — трезвый. Алкоголь = реакция ×3 хуже."
-
-
-# ============ ПОЛЬЗОВАТЕЛИ ============
-def load_users():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-
-def save_user(user_id):
-    users = load_users()
-    if user_id not in users:
-        users.append(user_id)
-        try:
-            with open(USERS_FILE, "w") as f:
-                json.dump(users, f)
-        except Exception as e:
-            print(f"⚠️ user save: {e}", flush=True)
-
-
-def get_users_count():
-    return len(load_users())
-
-
-# ============ ПОДПИСЧИКИ ============
-def load_subscribers():
-    if os.path.exists(SUBSCRIBERS_FILE):
-        try:
-            with open(SUBSCRIBERS_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-
-def save_subscriber(user_id):
-    subs = load_subscribers()
-    if user_id not in subs:
-        subs.append(user_id)
-        try:
-            with open(SUBSCRIBERS_FILE, "w") as f:
-                json.dump(subs, f)
-        except Exception as e:
-            print(f"⚠️ sub save: {e}", flush=True)
-
-
-def remove_subscriber(user_id):
-    subs = load_subscribers()
-    if user_id in subs:
-        subs.remove(user_id)
-        try:
-            with open(SUBSCRIBERS_FILE, "w") as f:
-                json.dump(subs, f)
-        except Exception as e:
-            print(f"⚠️ sub remove: {e}", flush=True)
-
-
-def is_subscribed(user_id):
-    return user_id in load_subscribers()
 
 
 # ============ ФОРМАТИРОВАНИЕ ============
@@ -582,7 +662,8 @@ def stats_cmd(m):
         m,
         f"📊 <b>Статистика</b>\n"
         f"👥 Юзеров: {get_users_count()}\n"
-        f"🌅 Подписчиков: {len(load_subscribers())}\n"
+        f"🌅 Подписчиков: {get_subscribers_count()}\n"
+        f"💾 Хранилище: {'Upstash' if UPSTASH_ENABLED else 'файлы'}\n"
         f"📅 {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
         parse_mode="HTML"
     )
@@ -705,8 +786,9 @@ def health():
     return jsonify({
         "status": "ok",
         "bot": "MotoWeather Minsk",
+        "storage": "upstash" if UPSTASH_ENABLED else "files",
         "users": get_users_count(),
-        "subscribers": len(load_subscribers()),
+        "subscribers": get_subscribers_count(),
         "time": datetime.now(MINSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
     }), 200
 
