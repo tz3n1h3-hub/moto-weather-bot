@@ -56,9 +56,6 @@ def _calc_sun_times():
     """
     Локальный расчёт времени восхода/заката для Минска на текущую дату.
     Не требует сети. Возвращает (sunrise "HH:MM", sunset "HH:MM") или (None, None).
-
-    Алгоритм: упрощённый NOAA solar calculator.
-    Точность: ±5 минут для широты Минска (53.9°).
     """
     try:
         now = datetime.now(MINSK_TZ)
@@ -66,31 +63,24 @@ def _calc_sun_times():
 
         lat = MINSK_LAT
         lon = MINSK_LON
-        tz_offset = 3  # Минск UTC+3
+        tz_offset = 3
 
         n = day_of_year
-
-        # Солнечное склонение (в градусах)
         decl = -23.44 * math.cos(math.radians(360 / 365 * (n + 10)))
 
-        # Часовой угол восхода
         cos_ha = -math.tan(math.radians(lat)) * math.tan(math.radians(decl))
         if cos_ha > 1 or cos_ha < -1:
-            # Полярная ночь / день — для Минска не бывает
             return None, None
 
         ha = math.degrees(math.acos(cos_ha))
 
-        # Уравнение времени (минуты)
         b = math.radians(360 / 364 * (n - 81))
         eot = 9.87 * math.sin(2 * b) - 7.53 * math.cos(b) - 1.5 * math.sin(b)
 
-        # Солнечный полдень в UTC (минуты)
         solar_noon_utc_min = 720 - 4 * lon - eot
         sunrise_utc_min = solar_noon_utc_min - 4 * ha
         sunset_utc_min = solar_noon_utc_min + 4 * ha
 
-        # В местное время
         sunrise_min = int(sunrise_utc_min + tz_offset * 60) % 1440
         sunset_min = int(sunset_utc_min + tz_offset * 60) % 1440
 
@@ -104,21 +94,10 @@ def _calc_sun_times():
 
 
 def is_night_now(sunrise=None, sunset=None):
-    """
-    🔴 ФИКС: точная проверка "ночь сейчас".
-    Приоритет источников sunrise/sunset:
-    1. Переданные аргументы (Open-Meteo / wttr.in)
-    2. Локальный астрономический расчёт (не требует сети)
-    3. Грубая оценка по месяцам (последний fallback)
-
-    Ночь = до рассвета ИЛИ после заката.
-    """
-    # Уровень 1: переданные значения
+    """Точная проверка 'ночь сейчас' с 3 уровнями fallback."""
     if not sunrise or not sunset:
-        # Уровень 2: локальный астро-расчёт
         sunrise, sunset = _calc_sun_times()
 
-    # Уровень 3: если и это не сработало — грубо по месяцам
     if not sunrise or not sunset:
         return is_night_time()
 
@@ -325,7 +304,7 @@ def _fetch_open_meteo():
             f"relative_humidity_2m,weather_code,visibility"
             f"&hourly=temperature_2m,wind_speed_10m,weather_code,precipitation_probability"
             f"&daily=temperature_2m_max,temperature_2m_min,weather_code,"
-            f"wind_speed_10m_max,precipitation_sum,sunrise,sunset"
+            f"wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum,sunrise,sunset"
             f"&timezone=Europe/Minsk"
             f"&forecast_days=3"
             f"&wind_speed_unit=ms"
@@ -604,7 +583,6 @@ def get_weather():
             "visibility": visibility,
             "is_rain": is_rain,
             "is_thunder": is_thunder,
-            # 🔴 ФИКС: точная ночь по солнцу, с 3 уровнями fallback
             "is_night": is_night_now(sunrise, sunset),
             "sunrise": sunrise,
             "sunset": sunset,
@@ -648,10 +626,15 @@ def get_forecast_tomorrow():
 
         if tomorrow_winds:
             wind_speed_avg = round(sum(tomorrow_winds) / len(tomorrow_winds))
-            wind_speed_max = round(max(tomorrow_winds))
         else:
             wind_speed_avg = round(daily["wind_speed_10m_max"][1])
-            wind_speed_max = round(daily["wind_speed_10m_max"][1])
+
+        # 🔴 ФИКС Y: реальные порывы из daily.wind_gusts_10m_max
+        daily_gusts = daily.get("wind_gusts_10m_max", [])
+        if len(daily_gusts) > 1 and daily_gusts[1] is not None:
+            wind_gust = round(daily_gusts[1])
+        else:
+            wind_gust = None
 
         emoji, text = _wmo_emoji(weather_code)
         is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
@@ -672,9 +655,12 @@ def get_forecast_tomorrow():
             "temp_max": temp_max,
             "temp_min": temp_min,
             "wind_speed": wind_speed_avg,
-            "wind_gust": wind_speed_max,
+            # 🔴 ФИКС Y: реальные порывы (могут быть None)
+            "wind_gust": wind_gust,
             "rain_total": round(precip_sum, 1) if precip_sum else 0,
             "condition": f"{emoji} {text}",
+            # 🔴 ФИКС C: прокидываем weather_code для analyze_risks
+            "weather_code": weather_code,
             "is_rain": is_rain,
             "is_thunder": is_thunder
         }
@@ -703,8 +689,6 @@ def get_short_forecast():
         current_hour = now.hour
         today = now.date()
 
-        # Определяем следующий период суток
-        # Утро: 6-12, День: 12-18, Вечер: 18-24, Ночь: 0-6
         if 6 <= current_hour <= 11:
             next_period = "day"
             target_start, target_end = 12, 18
@@ -730,7 +714,6 @@ def get_short_forecast():
             next_label = "УТРО"
             next_title = "🌅 Сегодня утром"
 
-        # Текущий час из прогноза (для дельты)
         current_idx = 0
         min_diff_cur = float("inf")
         for i, t_str in enumerate(times):
@@ -744,7 +727,6 @@ def get_short_forecast():
                 continue
         current_temp = round(temps[current_idx]) if current_idx < len(temps) else None
 
-        # Ближайший час к "сейчас + 3 часа"
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -767,7 +749,6 @@ def get_short_forecast():
         else:
             next_hour = "нет данных"
 
-        # Проверяем: "через 3 часа" попадает в тот же период?
         target_hour = (current_hour + 3) % 24
         show_next_hour = True
         if next_period == "day" and 12 <= target_hour < 18:
@@ -779,7 +760,6 @@ def get_short_forecast():
         elif next_period == "morning" and 6 <= target_hour < 12:
             show_next_hour = False
 
-        # Собираем следующий период
         period_temps = []
         period_winds = []
         period_codes = []
