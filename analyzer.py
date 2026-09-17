@@ -129,19 +129,18 @@ def analyze_risks(weather, is_forecast=False):
 
     # 🔴 ФИКС: единая шкала риска (0-2 / 3-4 / 5-6 / 7-8 / 9-10)
     if score >= 9:
-        verdict, color = "⛔️ КРИТИЧНО! НЕ ВЫЕЗЖАЙ!", "⛔"
+        color = "⛔"
     elif score >= 7:
-        verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
+        color = "🔴"
     elif score >= 5:
-        verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟠"
+        color = "🟠"
     elif score >= 3:
-        verdict, color = "🟡 ОСТОРОЖНО — есть нюансы", "🟡"
+        color = "🟡"
     else:
-        verdict, color = "✅ БЕЗОПАСНО — отличная погода!", "🟢"
+        color = "🟢"
 
     return {
         "score": min(score, 10),
-        "verdict": verdict,
         "color": color,
         "risks": risks,
         "recommendations": recommendations,
