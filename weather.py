@@ -34,7 +34,7 @@ def get_minsk_month():
 
 # ============ ОСВЕЩЁННОСТЬ ============
 def get_light_level():
-    """Fallback: приблизительная оценка по месяцам, если нет sunrise/sunset."""
+    """Fallback: приблизительная оценка по месяцам."""
     h = get_minsk_hour()
     m = get_minsk_month()
 
@@ -47,27 +47,22 @@ def get_light_level():
 
 
 def is_night_time():
-    """Fallback: ночь по месяцам (если нет данных о солнце)."""
+    """Fallback: ночь по месяцам."""
     return get_light_level() == "🌙 Темно"
 
 
-# ============ АСТРОНОМИЧЕСКИЙ РАСЧЁТ ВОСХОДА/ЗАКАТА ============
+# ============ АСТРО-РАСЧЁТ ============
 def _calc_sun_times():
-    """
-    Локальный расчёт времени восхода/заката для Минска на текущую дату.
-    Не требует сети. Возвращает (sunrise "HH:MM", sunset "HH:MM") или (None, None).
-    """
+    """Локальный расчёт восхода/заката для Минска. Не требует сети."""
     try:
         now = datetime.now(MINSK_TZ)
-        day_of_year = now.timetuple().tm_yday
+        n = now.timetuple().tm_yday
 
         lat = MINSK_LAT
         lon = MINSK_LON
         tz_offset = 3
 
-        n = day_of_year
         decl = -23.44 * math.cos(math.radians(360 / 365 * (n + 10)))
-
         cos_ha = -math.tan(math.radians(lat)) * math.tan(math.radians(decl))
         if cos_ha > 1 or cos_ha < -1:
             return None, None
@@ -78,11 +73,8 @@ def _calc_sun_times():
         eot = 9.87 * math.sin(2 * b) - 7.53 * math.cos(b) - 1.5 * math.sin(b)
 
         solar_noon_utc_min = 720 - 4 * lon - eot
-        sunrise_utc_min = solar_noon_utc_min - 4 * ha
-        sunset_utc_min = solar_noon_utc_min + 4 * ha
-
-        sunrise_min = int(sunrise_utc_min + tz_offset * 60) % 1440
-        sunset_min = int(sunset_utc_min + tz_offset * 60) % 1440
+        sunrise_min = int(solar_noon_utc_min - 4 * ha + tz_offset * 60) % 1440
+        sunset_min = int(solar_noon_utc_min + 4 * ha + tz_offset * 60) % 1440
 
         sh, sm = sunrise_min // 60, sunrise_min % 60
         eh, em = sunset_min // 60, sunset_min % 60
@@ -94,7 +86,7 @@ def _calc_sun_times():
 
 
 def is_night_now(sunrise=None, sunset=None):
-    """Точная проверка 'ночь сейчас' с 3 уровнями fallback."""
+    """Точная проверка 'ночь сейчас'."""
     if not sunrise or not sunset:
         sunrise, sunset = _calc_sun_times()
 
@@ -110,14 +102,11 @@ def is_night_now(sunrise=None, sunset=None):
         sunrise_min = h_s * 60 + m_s
         sunset_min = h_e * 60 + m_e
 
-        if now_min < sunrise_min or now_min >= sunset_min:
-            return True
-        return False
+        return now_min < sunrise_min or now_min >= sunset_min
     except (ValueError, AttributeError):
         return is_night_time()
 
 
-# ============ ДЕНЬ/НОЧЬ ИНФО ============
 def get_daylight_info(sunrise, sunset):
     if not sunrise or not sunset:
         return "—"
@@ -145,7 +134,7 @@ def get_daylight_info(sunrise, sunset):
         return "—"
 
 
-# ============ РАСЧЁТ ВЛАЖНОСТИ ============
+# ============ РАСЧЁТЫ ============
 def calculate_humidity(temp, dew_point):
     try:
         a, b = 17.27, 237.7
@@ -165,6 +154,13 @@ def calculate_feels_like(temp, wind_speed):
     return round(temp)
 
 
+def hpa_to_mmhg(hpa):
+    """Конвертация гПа → мм рт.ст."""
+    if hpa is None:
+        return None
+    return round(hpa * 0.750062)
+
+
 # ============ ПАРСЕР METAR ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
@@ -176,7 +172,7 @@ def parse_clouds(metar_text):
     if "FEW" in metar_text:
         return "🌤️", "Малооблачно"
     if any(x in metar_text for x in ["CAVOK", "NSC", "SKC", "CLR"]):
-        return "🌤️", "Преимущественно ясно"
+        return "🌤️", "Ясно"
     return "⛅", "Облачно"
 
 
@@ -230,6 +226,99 @@ def parse_weather_phenomena(metar_text):
     return "", "", False, False
 
 
+def parse_wind_direction(metar_text):
+    """Парсит направление ветра."""
+    match = re.search(r"\b(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?(KT|MPS)\b", metar_text)
+    if not match:
+        return None
+    direction = match.group(1)
+    if direction == "VRB":
+        return "переменный"
+    deg = int(direction)
+    if deg == 0:
+        return "штиль"
+    dirs = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+    idx = round(deg / 45) % 8
+    return f"{dirs[idx]} ({deg}°)"
+
+
+def parse_pressure_hpa(metar_text):
+    """Парсит давление (QNH) из METAR. Возвращает гПа."""
+    match = re.search(r"\bQ(\d{4})\b", metar_text)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"\bA(\d{4})\b", metar_text)
+    if match:
+        inhg = int(match.group(1)) / 100
+        return round(inhg * 33.8639)
+    return None
+
+
+def parse_trend(metar_text):
+    """Парсит тренд METAR."""
+    if "NOSIG" in metar_text:
+        return {"type": "NOSIG", "text": "Без изменений"}
+
+    match = re.search(r"\b(BECMG|TEMPO)\b(?:\s+TL?\d{4})?(.+?)(?=\s+(BECMG|TEMPO|NOSIG)|$)", metar_text)
+    if not match:
+        return None
+
+    trend_type = match.group(1)
+    conditions = match.group(2).strip()
+    prefix = "Через 2 часа" if trend_type == "BECMG" else "Временами"
+    parts = []
+
+    vis_match = re.search(r"\b(\d{4})\b", conditions)
+    if vis_match:
+        vis = int(vis_match.group(1))
+        if vis == 9999:
+            parts.append("видимость 10+ км")
+        elif vis >= 1000:
+            km = vis / 1000
+            if km == int(km):
+                parts.append(f"видимость {int(km)} км")
+            else:
+                parts.append(f"видимость {km:.1f} км")
+        else:
+            parts.append(f"видимость {vis} м")
+
+    phenomena_map = {
+        "FG": "туман", "BR": "дымка", "HZ": "мгла",
+        "RA": "дождь", "SHRA": "ливневый дождь",
+        "+RA": "сильный дождь", "-RA": "слабый дождь",
+        "DZ": "морось", "SN": "снег", "+SN": "сильный снег",
+        "-SN": "слабый снег", "SHSN": "ливневый снег",
+        "TS": "гроза", "TSRA": "гроза с дождём", "GR": "град",
+    }
+
+    found = []
+    for code in ["TSRA", "SHRA", "SHSN", "+RA", "-RA", "+SN", "-SN",
+                 "FG", "BR", "HZ", "RA", "DZ", "SN", "TS", "GR"]:
+        if code in conditions and phenomena_map[code] not in found:
+            found.append(phenomena_map[code])
+
+    if found:
+        parts.append(", ".join(found))
+
+    if parts:
+        text = f"{prefix}: {', '.join(parts)}"
+    else:
+        text = f"{prefix}: изменения"
+
+    return {"type": trend_type, "text": text}
+
+
+def parse_observation_time(metar_text):
+    """Парсит время наблюдения (172030Z → 23:30)."""
+    match = re.search(r"\b(\d{2})(\d{2})(\d{2})Z\b", metar_text)
+    if not match:
+        return None
+    day, hh, mm = match.group(1), int(match.group(2)), int(match.group(3))
+    msk_hh = (hh + 3) % 24
+    return f"{msk_hh:02d}:{mm:02d}"
+
+
+# ============ METAR FETCH ============
 def _fetch_metar_text():
     for url in (METAR_URL, METAR_FALLBACK_URL):
         try:
@@ -253,7 +342,7 @@ def get_metar_data():
         print(f"METAR OK: {metar_text}", flush=True)
         result = {}
 
-        wind_match = re.search(r"\b(\d{3})(\d{2,3})(G(\d{2,3}))?(KT|MPS)\b", metar_text)
+        wind_match = re.search(r"\b(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?(KT|MPS)\b", metar_text)
         if wind_match:
             unit = wind_match.group(5)
             value = int(wind_match.group(2))
@@ -282,6 +371,11 @@ def get_metar_data():
             result["temp"] = int(temp_match.group(1).replace("M", "-"))
             result["dew_point"] = int(temp_match.group(2).replace("M", "-"))
 
+        result["wind_direction"] = parse_wind_direction(metar_text)
+        result["pressure_hpa"] = parse_pressure_hpa(metar_text)
+        result["obs_time"] = parse_observation_time(metar_text)
+        result["trend"] = parse_trend(metar_text)
+
         return result
     except Exception as e:
         print(f"Ошибка METAR: {e}", flush=True)
@@ -300,8 +394,10 @@ def _fetch_open_meteo():
         url = (
             f"{OPEN_METEO_URL}"
             f"?latitude={MINSK_LAT}&longitude={MINSK_LON}"
-            f"&current=temperature_2m,wind_speed_10m,wind_gusts_10m,"
-            f"relative_humidity_2m,weather_code,visibility"
+            f"&current=temperature_2m,apparent_temperature,"
+            f"wind_speed_10m,wind_gusts_10m,wind_direction_10m,"
+            f"relative_humidity_2m,dew_point_2m,weather_code,"
+            f"visibility,pressure_msl"
             f"&hourly=temperature_2m,wind_speed_10m,weather_code,precipitation_probability"
             f"&daily=temperature_2m_max,temperature_2m_min,weather_code,"
             f"wind_speed_10m_max,wind_gusts_10m_max,precipitation_sum,sunrise,sunset"
@@ -441,6 +537,7 @@ def _wttr_to_daily(wttr_data):
 
 
 def _get_forecast_data():
+    """Возвращает (данные, источник). Источник: 'Open-Meteo' / 'wttr.in' / 'none'."""
     om = _fetch_open_meteo()
     if om and "hourly" in om:
         return om, "Open-Meteo"
@@ -455,10 +552,14 @@ def _get_forecast_data():
                 "daily": daily,
                 "current": {
                     "temperature_2m": float(wttr["current_condition"][0]["temp_C"]),
+                    "apparent_temperature": float(wttr["current_condition"][0].get("FeelsLikeC", wttr["current_condition"][0]["temp_C"])),
                     "wind_speed_10m": round(float(wttr["current_condition"][0]["windspeedKmph"]) / 3.6, 1),
+                    "wind_direction_10m": None,
                     "relative_humidity_2m": int(wttr["current_condition"][0]["humidity"]),
+                    "dew_point_2m": None,
                     "weather_code": 0,
                     "visibility": int(wttr["current_condition"][0].get("visibility", 10)) * 1000,
+                    "pressure_msl": float(wttr["current_condition"][0].get("pressure", 1013)),
                     "wind_gusts_10m": None,
                 }
             }
@@ -498,10 +599,30 @@ def _wmo_emoji(code):
 
 # ============ ТЕКУЩАЯ ПОГОДА ============
 def get_weather():
+    """
+    Возвращает словарь:
+    {
+        # METAR-данные
+        "m": {"temp":..., "dew_point":..., "humidity":..., "feels_like":..., "wind_speed":...,
+              "wind_gust":..., "wind_direction":..., "visibility":..., "cloud_text":...,
+              "pressure_hpa":..., "pressure_mmhg":..., "trend":..., "obs_time":...,
+              "weather_emoji":..., "weather_text":..., "is_rain":..., "is_thunder":...},
+
+        # Open-Meteo/W текущие (для сравнения)
+        "om": {...} или None,
+
+        # источник прогноза
+        "forecast_source": "Open-Meteo" / "wttr.in" / "none",
+
+        # общие
+        "sunrise":..., "sunset":..., "is_night":...,
+    }
+    """
     try:
         metar = get_metar_data()
         forecast_data, forecast_src = _get_forecast_data()
 
+        # ---- Sunrise/sunset ----
         daily = (forecast_data or {}).get("daily", {})
         sunrise_iso = daily.get("sunrise", [None])[0] if daily.get("sunrise") else None
         sunset_iso = daily.get("sunset", [None])[0] if daily.get("sunset") else None
@@ -515,79 +636,75 @@ def get_weather():
 
         sunrise = to_hm(sunrise_iso)
         sunset = to_hm(sunset_iso)
+        is_night = is_night_now(sunrise, sunset)
 
+        # ---- METAR ----
+        m_data = None
         if metar:
-            temp = metar.get("temp", 0)
-            wind_speed = metar.get("wind_speed", 0)
-            cloud_emoji = metar.get("cloud_emoji", "⛅")
-            cloud_text = metar.get("cloud_text", "Облачно")
-            visibility = metar.get("visibility", 10000)
-            weather_text = metar.get("weather_text") or ""
-            weather_emoji = metar.get("weather_emoji") or ""
-            dew_point = metar.get("dew_point")
-            is_rain = metar.get("is_rain", False)
-            is_thunder = metar.get("is_thunder", False)
+            m_temp = metar.get("temp", 0)
+            m_dew = metar.get("dew_point")
+            m_wind = metar.get("wind_speed", 0)
+            m_humidity = calculate_humidity(m_temp, m_dew) if m_dew is not None else None
+            m_feels = calculate_feels_like(m_temp, m_wind)
+            m_pressure = metar.get("pressure_hpa")
 
-            wind_gust = metar.get("wind_gust")
-            if wind_gust is None:
-                om_cur = (forecast_data or {}).get("current", {})
-                gust_om = om_cur.get("wind_gusts_10m")
-                if gust_om:
-                    wind_gust = round(gust_om)
-            if wind_speed == 0:
-                wind_gust = None
+            m_data = {
+                "temp": m_temp,
+                "dew_point": m_dew,
+                "humidity": m_humidity,
+                "feels_like": m_feels,
+                "wind_speed": m_wind,
+                "wind_gust": metar.get("wind_gust"),
+                "wind_direction": metar.get("wind_direction"),
+                "visibility": metar.get("visibility", 10000),
+                "cloud_text": metar.get("cloud_text", "Облачно"),
+                "cloud_emoji": metar.get("cloud_emoji", "⛅"),
+                "weather_emoji": metar.get("weather_emoji") or "",
+                "weather_text": metar.get("weather_text") or "",
+                "is_rain": metar.get("is_rain", False),
+                "is_thunder": metar.get("is_thunder", False),
+                "pressure_hpa": m_pressure,
+                "pressure_mmhg": hpa_to_mmhg(m_pressure),
+                "trend": metar.get("trend"),
+                "obs_time": metar.get("obs_time"),
+            }
 
-            source = "METAR (аэропорт Минск)"
-        else:
-            cur = (forecast_data or {}).get("current", {})
-            if not cur:
-                print("Нет данных", flush=True)
-                return None
+        # ---- Open-Meteo / wttr.in current ----
+        om_data = None
+        cur = (forecast_data or {}).get("current", {})
+        if cur:
+            om_temp = round(cur.get("temperature_2m", 0))
+            om_dew = cur.get("dew_point_2m")
+            om_pressure = cur.get("pressure_msl")
+            om_visibility = cur.get("visibility")
 
-            temp = round(cur.get("temperature_2m", 0))
-            wind_speed = round(cur.get("wind_speed_10m", 0))
-            wind_gust_val = cur.get("wind_gusts_10m")
-            wind_gust = round(wind_gust_val) if wind_gust_val else None
-            weather_code = cur.get("weather_code", 0)
-            emoji, text = _wmo_emoji(weather_code)
+            om_data = {
+                "temp": om_temp,
+                "dew_point": round(om_dew) if om_dew is not None else None,
+                "humidity": round(cur.get("relative_humidity_2m", 0)) or None,
+                "feels_like": round(cur.get("apparent_temperature", om_temp)),
+                "wind_speed": round(cur.get("wind_speed_10m", 0)),
+                "wind_gust": round(cur["wind_gusts_10m"]) if cur.get("wind_gusts_10m") else None,
+                "wind_direction": cur.get("wind_direction_10m"),
+                "visibility": int(om_visibility) if om_visibility else None,
+                "pressure_hpa": round(om_pressure) if om_pressure else None,
+                "pressure_mmhg": hpa_to_mmhg(round(om_pressure)) if om_pressure else None,
+            }
 
-            cloud_emoji = emoji
-            cloud_text = text
-            weather_text = text
-            weather_emoji = emoji
-            dew_point = None
-            visibility = int(cur.get("visibility") or 10000)
-            is_rain = weather_code in (51, 53, 55, 61, 63, 65, 80, 81, 82)
-            is_thunder = weather_code in (95, 96, 99)
-            source = f"Прогноз ({forecast_src})"
+        if not m_data and not om_data:
+            print("Нет данных вообще", flush=True)
+            return None
 
-        feels_like = calculate_feels_like(temp, wind_speed)
-        humidity = calculate_humidity(temp, dew_point) if dew_point is not None else None
-        if humidity is None:
-            om_cur = (forecast_data or {}).get("current", {})
-            humidity = round(om_cur.get("relative_humidity_2m", 0)) or None
-
-        print(f"✅ Weather: {temp}°C, влажность {humidity}%, {source}", flush=True)
+        print(f"✅ Weather: M={m_data.get('temp') if m_data else None}°C, "
+              f"OM={om_data.get('temp') if om_data else None}°C, src={forecast_src}", flush=True)
 
         return {
-            "temp": temp,
-            "feels_like": feels_like,
-            "cloud_emoji": cloud_emoji,
-            "cloud_text": cloud_text,
-            "weather_text": weather_text,
-            "weather_emoji": weather_emoji,
-            "dew_point": dew_point,
-            "humidity": humidity,
-            "wind_speed": wind_speed,
-            "wind_gust": wind_gust,
-            "visibility": visibility,
-            "is_rain": is_rain,
-            "is_thunder": is_thunder,
-            "is_night": is_night_now(sunrise, sunset),
+            "m": m_data,
+            "om": om_data,
+            "forecast_source": forecast_src,
             "sunrise": sunrise,
             "sunset": sunset,
-            "source": source,
-            "forecast_source": forecast_src
+            "is_night": is_night,
         }
     except Exception as e:
         print(f"❌ Ошибка погоды: {e}", flush=True)
@@ -629,7 +746,6 @@ def get_forecast_tomorrow():
         else:
             wind_speed_avg = round(daily["wind_speed_10m_max"][1])
 
-        # 🔴 ФИКС Y: реальные порывы из daily.wind_gusts_10m_max
         daily_gusts = daily.get("wind_gusts_10m_max", [])
         if len(daily_gusts) > 1 and daily_gusts[1] is not None:
             wind_gust = round(daily_gusts[1])
@@ -655,14 +771,15 @@ def get_forecast_tomorrow():
             "temp_max": temp_max,
             "temp_min": temp_min,
             "wind_speed": wind_speed_avg,
-            # 🔴 ФИКС Y: реальные порывы (могут быть None)
             "wind_gust": wind_gust,
             "rain_total": round(precip_sum, 1) if precip_sum else 0,
             "condition": f"{emoji} {text}",
-            # 🔴 ФИКС C: прокидываем weather_code для analyze_risks
+            "condition_emoji": emoji,
+            "condition_text": text,
             "weather_code": weather_code,
             "is_rain": is_rain,
-            "is_thunder": is_thunder
+            "is_thunder": is_thunder,
+            "source": src,
         }
     except Exception as e:
         print(f"Ошибка завтра: {e}", flush=True)
@@ -694,25 +811,25 @@ def get_short_forecast():
             target_start, target_end = 12, 18
             target_date = today
             next_label = "ДЕНЬ"
-            next_title = "☀️ Сегодня днём"
+            next_title = "☀️ СЕГОДНЯ ДНЁМ"
         elif 12 <= current_hour <= 17:
             next_period = "evening"
             target_start, target_end = 18, 24
             target_date = today
             next_label = "ВЕЧЕР"
-            next_title = "🌆 Сегодня вечером"
+            next_title = "🌆 СЕГОДНЯ ВЕЧЕРОМ"
         elif 18 <= current_hour <= 23:
             next_period = "night"
             target_start, target_end = 0, 6
             target_date = today + timedelta(days=1)
             next_label = "НОЧЬ"
-            next_title = "🌙 Сегодня ночью"
+            next_title = "🌙 СЕГОДНЯ НОЧЬЮ"
         else:
             next_period = "morning"
             target_start, target_end = 6, 12
             target_date = today
             next_label = "УТРО"
-            next_title = "🌅 Сегодня утром"
+            next_title = "🌅 СЕГОДНЯ УТРОМ"
 
         current_idx = 0
         min_diff_cur = float("inf")
@@ -745,7 +862,7 @@ def get_short_forecast():
             w = round(winds[next_idx])
             code = codes[next_idx]
             _, cond = _wmo_emoji(code)
-            next_hour = f"{t}°C, {cond}, {w} м/с"
+            next_hour = f"{t}°C, {cond} · {w}м/с"
         else:
             next_hour = "нет данных"
 
@@ -777,7 +894,7 @@ def get_short_forecast():
             avg_t = round(sum(period_temps) / len(period_temps))
             avg_w = round(sum(period_winds) / len(period_winds))
             _, cond = _wmo_emoji(period_codes[0])
-            next_period_value = f"{avg_t}°C, {cond}, {avg_w} м/с"
+            next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с"
         else:
             next_period_value = "нет данных"
 
@@ -789,7 +906,7 @@ def get_short_forecast():
             "next_period_title": next_title,
             "source": src,
             "current_temp": current_temp,
-            "show_next_hour": show_next_hour
+            "show_next_hour": show_next_hour,
         }
     except Exception as e:
         print(f"Ошибка short: {e}", flush=True)
