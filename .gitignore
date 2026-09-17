@@ -21,7 +21,11 @@ ENV/
 
 # Data files
 users.json
+subscribers.json
 *.log
+*.db
+*.sqlite
+*.sqlite3
 
 # Flask
 instance/
