@@ -115,11 +115,15 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💡 Включите свет")
 
-    if score >= 8:
+    # 🔴 ФИКС: единая шкала риска (0-2 / 3-4 / 5-6 / 7-8 / 9-10)
+    # Согласована с get_short_verdict и get_rider_verdict
+    if score >= 9:
+        verdict, color = "⛔️ КРИТИЧНО! НЕ ВЫЕЗЖАЙ!", "⛔"
+    elif score >= 7:
         verdict, color = "⛔️ ОПАСНОСТЬ! НЕ РЕКОМЕНДУЕТСЯ!", "🔴"
     elif score >= 5:
         verdict, color = "⚠️ РИСКОВАННО — с осторожностью", "🟠"
-    elif score >= 2:
+    elif score >= 3:
         verdict, color = "🟡 ОСТОРОЖНО — есть нюансы", "🟡"
     else:
         verdict, color = "✅ БЕЗОПАСНО — отличная погода!", "🟢"
@@ -136,24 +140,28 @@ def analyze_risks(weather, is_forecast=False):
 
 # ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
-    if score <= 1:
+    # 🔴 ФИКС: единая шкала с analyze_risks и get_rider_verdict
+    if score <= 2:
         return "БЕЗОПАСНО"
     if score <= 4:
         return "ОСТОРОЖНО"
-    if score <= 7:
+    if score <= 6:
         return "РИСКОВАННО"
-    return "ОПАСНО"
+    if score <= 8:
+        return "ОПАСНО"
+    return "НЕ ВЫЕЗЖАЙ"
 
 
 # ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
 def get_rider_verdict(score):
+    # 🔴 ФИКС: единая шкала с analyze_risks и get_short_verdict
     if score <= 2:
         return "🟢 ДОРОГА ЧИСТАЯ — ГАЗУЙ"
-    if score <= 5:
+    if score <= 4:
         return "🟡 ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
-    if score <= 7:
+    if score <= 6:
         return "🟠 С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
-    if score <= 9:
+    if score <= 8:
         return "🔴 НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО"
     return "⛔ НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
 
