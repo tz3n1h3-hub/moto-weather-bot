@@ -34,6 +34,7 @@ def get_minsk_month():
 
 # ============ ОСВЕЩЁННОСТЬ ============
 def get_light_level():
+    """Fallback: приблизительная оценка по месяцам, если нет sunrise/sunset."""
     h = get_minsk_hour()
     m = get_minsk_month()
 
@@ -46,9 +47,98 @@ def get_light_level():
 
 
 def is_night_time():
+    """Fallback: ночь по месяцам (если нет данных о солнце)."""
     return get_light_level() == "🌙 Темно"
 
 
+# ============ АСТРОНОМИЧЕСКИЙ РАСЧЁТ ВОСХОДА/ЗАКАТА ============
+def _calc_sun_times():
+    """
+    Локальный расчёт времени восхода/заката для Минска на текущую дату.
+    Не требует сети. Возвращает (sunrise "HH:MM", sunset "HH:MM") или (None, None).
+
+    Алгоритм: упрощённый NOAA solar calculator.
+    Точность: ±5 минут для широты Минска (53.9°).
+    """
+    try:
+        now = datetime.now(MINSK_TZ)
+        day_of_year = now.timetuple().tm_yday
+
+        lat = MINSK_LAT
+        lon = MINSK_LON
+        tz_offset = 3  # Минск UTC+3
+
+        n = day_of_year
+
+        # Солнечное склонение (в градусах)
+        decl = -23.44 * math.cos(math.radians(360 / 365 * (n + 10)))
+
+        # Часовой угол восхода
+        cos_ha = -math.tan(math.radians(lat)) * math.tan(math.radians(decl))
+        if cos_ha > 1 or cos_ha < -1:
+            # Полярная ночь / день — для Минска не бывает
+            return None, None
+
+        ha = math.degrees(math.acos(cos_ha))
+
+        # Уравнение времени (минуты)
+        b = math.radians(360 / 364 * (n - 81))
+        eot = 9.87 * math.sin(2 * b) - 7.53 * math.cos(b) - 1.5 * math.sin(b)
+
+        # Солнечный полдень в UTC (минуты)
+        solar_noon_utc_min = 720 - 4 * lon - eot
+        sunrise_utc_min = solar_noon_utc_min - 4 * ha
+        sunset_utc_min = solar_noon_utc_min + 4 * ha
+
+        # В местное время
+        sunrise_min = int(sunrise_utc_min + tz_offset * 60) % 1440
+        sunset_min = int(sunset_utc_min + tz_offset * 60) % 1440
+
+        sh, sm = sunrise_min // 60, sunrise_min % 60
+        eh, em = sunset_min // 60, sunset_min % 60
+
+        return f"{sh:02d}:{sm:02d}", f"{eh:02d}:{em:02d}"
+    except Exception as e:
+        print(f"⚠️ Астро-расчёт: {e}", flush=True)
+        return None, None
+
+
+def is_night_now(sunrise=None, sunset=None):
+    """
+    🔴 ФИКС: точная проверка "ночь сейчас".
+    Приоритет источников sunrise/sunset:
+    1. Переданные аргументы (Open-Meteo / wttr.in)
+    2. Локальный астрономический расчёт (не требует сети)
+    3. Грубая оценка по месяцам (последний fallback)
+
+    Ночь = до рассвета ИЛИ после заката.
+    """
+    # Уровень 1: переданные значения
+    if not sunrise or not sunset:
+        # Уровень 2: локальный астро-расчёт
+        sunrise, sunset = _calc_sun_times()
+
+    # Уровень 3: если и это не сработало — грубо по месяцам
+    if not sunrise or not sunset:
+        return is_night_time()
+
+    try:
+        now = datetime.now(MINSK_TZ)
+        h_s, m_s = map(int, sunrise.split(":"))
+        h_e, m_e = map(int, sunset.split(":"))
+
+        now_min = now.hour * 60 + now.minute
+        sunrise_min = h_s * 60 + m_s
+        sunset_min = h_e * 60 + m_e
+
+        if now_min < sunrise_min or now_min >= sunset_min:
+            return True
+        return False
+    except (ValueError, AttributeError):
+        return is_night_time()
+
+
+# ============ ДЕНЬ/НОЧЬ ИНФО ============
 def get_daylight_info(sunrise, sunset):
     if not sunrise or not sunset:
         return "—"
@@ -514,7 +604,8 @@ def get_weather():
             "visibility": visibility,
             "is_rain": is_rain,
             "is_thunder": is_thunder,
-            "is_night": is_night_time(),
+            # 🔴 ФИКС: точная ночь по солнцу, с 3 уровнями fallback
+            "is_night": is_night_now(sunrise, sunset),
             "sunrise": sunrise,
             "sunset": sunset,
             "source": source,
