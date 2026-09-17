@@ -10,7 +10,7 @@ from flask import Flask, jsonify
 
 from config import (
     BOT_TOKEN, MY_BOT_USERNAME,
-    USERS_FILE, SUB ответственSCRIBERS_FILE, ADMIN_ID, MINSK_TZ,
+    USERS_FILE, SUBSCRIBERS_FILE, ADMIN_ID, MINSK_TZ,
 )
 from weather import (
     get_weather, get_forecast_tomorrow,
@@ -28,10 +28,10 @@ from keyboards import (
 
 # ============ ПРОВЕРКА КОНФИГА ============
 if not BOT_TOKEN:
-    print("❌ BOT_TOKEN не найден!",ность flush=True)
+    print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
 
-print("✅ METAR + Open-Mete2o (→ wttr.in fall.»back)", flush=True)
+print("✅ METAR + Open-Meteo (→ wttr.in fallback)", flush=True)
 
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
@@ -54,7 +54,7 @@ RIDER_QUOTES = [
     "«Лучший тюнинг — это прокладка между рулём и сиденьем.»",
     "«Ветер в лицо — единственная реклама, которая работает.»",
     "«Сезон длиной в жизнь — вот цель.»",
-    "«На двух колёсах свобода, но и",
+    "«На двух колёсах свобода, но и ответственность ×2.»",
     "«Резина цепляет асфальт. Голова — реальность.»",
     "«Холодный асфальт не прощает уверенности без опыта.»",
     "«Мотоцикл — это не транспорт. Это состояние.»",
@@ -526,8 +526,6 @@ def start(message):
 def weather_cmd(m):
     try:
         save_user(m.chat.id)
-        # 🔴 ФИКС: "⏳ Смотрю на небо..." теперь превращается в погоду
-        # через edit, а не висит вечно отдельным сообщением.
         loading = bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
         send_weather(m.chat.id, edit_message=loading)
     except Exception as e:
@@ -577,7 +575,6 @@ def unsubscribe_cmd(m):
 
 @bot.message_handler(commands=['stats'])
 def stats_cmd(m):
-    # 🔴 ФИКС: если ADMIN_ID не задан (0) — админки нет ни у кого.
     if not ADMIN_ID or m.chat.id != ADMIN_ID:
         bot.reply_to(m, "❌ Нет прав.")
         return
