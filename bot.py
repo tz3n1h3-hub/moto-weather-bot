@@ -80,7 +80,6 @@ def _redis(cmd, *args):
 
 # ============ ПОЛЬЗОВАТЕЛИ ============
 def load_users():
-    """Возвращает список ID пользователей."""
     if UPSTASH_ENABLED:
         result = _redis("smembers", "users")
         if result is None:
@@ -90,7 +89,6 @@ def load_users():
         except (ValueError, TypeError):
             return []
 
-    # fallback на файлы
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE) as f:
@@ -124,7 +122,6 @@ def get_users_count():
 
 # ============ ПОДПИСЧИКИ ============
 def load_subscribers():
-    """Возвращает список ID подписчиков."""
     if UPSTASH_ENABLED:
         result = _redis("smembers", "subscribers")
         if result is None:
@@ -134,7 +131,6 @@ def load_subscribers():
         except (ValueError, TypeError):
             return []
 
-    # fallback на файлы
     if os.path.exists(SUBSCRIBERS_FILE):
         try:
             with open(SUBSCRIBERS_FILE) as f:
@@ -465,9 +461,10 @@ def build_weather_message(w, a, short, f, is_morning=False):
         fa_short = get_short_verdict(fa["score"])
         cond_low = shorten_cond(f["condition"].split(" ", 1)[-1].lower())
         emoji_short = f["condition"].split(" ", 1)[0]
+        # 🔴 ФИКС: расшифровка цвета в строке "Завтра" (вариант C)
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}°C, {cond_low} · "
-            f"{f['wind_speed']} м/с {emoji_short} {fa['color']}"
+            f"{f['wind_speed']} м/с {emoji_short} {fa['color']} {fa_short} ({fa['score']}/10)"
         )
 
     tip = get_tip(
