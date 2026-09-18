@@ -134,6 +134,16 @@ def calculate_feels_like(temp, wind_speed):
     return round(temp)
 
 
+def calculate_dew_point(temp, humidity):
+    """🔴 НОВОЕ: приблизительный расчёт точки росы из T и RH."""
+    if temp is None or humidity is None:
+        return None
+    try:
+        return round(temp - (100 - humidity) / 5)
+    except Exception:
+        return None
+
+
 def hpa_to_mmhg(hpa):
     if hpa is None:
         return None
@@ -592,10 +602,11 @@ def get_weather():
             om_dew = cur.get("dew_point_2m")
             om_pressure = cur.get("pressure_msl")
             om_visibility = cur.get("visibility")
+            om_humidity = round(cur.get("relative_humidity_2m", 0)) or None
             om_data = {
                 "temp": om_temp,
                 "dew_point": round(om_dew) if om_dew is not None else None,
-                "humidity": round(cur.get("relative_humidity_2m", 0)) or None,
+                "humidity": om_humidity,
                 "feels_like": round(cur.get("apparent_temperature", om_temp)),
                 "wind_speed": round(cur.get("wind_speed_10m", 0)),
                 "wind_gust": round(cur["wind_gusts_10m"]) if cur.get("wind_gusts_10m") else None,
@@ -606,6 +617,9 @@ def get_weather():
                 "is_rain": False,
                 "is_thunder": False,
             }
+            # 🔴 ФИКС: если нет точки росы — вычисляем из T и RH
+            if om_data["dew_point"] is None and om_humidity is not None:
+                om_data["dew_point"] = calculate_dew_point(om_temp, om_humidity)
 
         if not m_data and not om_data:
             print("Нет данных вообще", flush=True)
@@ -813,10 +827,7 @@ def get_short_forecast():
 
 # ============ УСРЕДНЕНИЕ ДАННЫХ ============
 def avg_weather_data(w):
-    """
-    🔴 ФИКС: создаёт усреднённый словарь из METAR и Open-Meteo/W.
-    Для analyze_risks() — риск считается по среднему (город).
-    """
+    """🔴 Усреднённый словарь из METAR + OM/W для analyze_risks."""
     if not w:
         return None
     m = w.get("m") or {}
