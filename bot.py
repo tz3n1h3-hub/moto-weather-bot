@@ -18,6 +18,7 @@ from config import (
 from weather import (
     get_weather, get_forecast_tomorrow,
     get_short_forecast, get_daylight_info, hpa_to_mmhg,
+    avg_weather_data,
 )
 from analyzer import (
     analyze_risks, get_short_verdict, get_rider_verdict,
@@ -242,7 +243,6 @@ MONTHS_RU = [
 
 
 def format_visibility(v):
-    """🔴 ФИКС: убираем .0"""
     if v is None:
         return "—"
     v = int(v)
@@ -292,26 +292,15 @@ def fmt_num(v):
 
 
 def build_risk_bar(score):
-    """🔴 ФИКС: минимум 1 зелёный квадрат"""
+    """🔴 Бар с черепами: 0/10 → 0 черепов, 10/10 → 10 черепов"""
     score = max(0, min(10, score))
-    if score >= 9:
-        color = "🟪"
-    elif score >= 7:
-        color = "🟥"
-    elif score >= 5:
-        color = "🟧"
-    elif score >= 3:
-        color = "🟨"
-    else:
-        color = "🟩"
-    display_score = max(score, 1)
-    filled = color * display_score
-    empty = "⬜️" * (10 - display_score)
+    filled = "☠️" * score
+    empty = "⬜️" * (10 - score)
     return f"{filled}{empty}"
 
 
 def fmt_vis_alert(v):
-    """🔴 ФИКС: ⚠️ если видимость < 500м"""
+    """⚠️ если видимость < 500м"""
     if v is None:
         return "—"
     s = format_visibility(v)
@@ -343,7 +332,7 @@ W  — wttr.in (Минск)
 
 <b>Что показывает:</b>
 • Погода сейчас (усреднение M+OM)
-• Риск 0-10 для райдера
+• Два риска: город и аэропорт
 • Экипировка и подготовка
 • Прогноз на ночь и завтра
 
@@ -424,7 +413,12 @@ def delete_and_send(chat_id, old_message_id, text, reply_markup):
 
 
 # ============ СБОРКА СООБЩЕНИЯ ============
-def build_weather_message(w, a, short, f, is_morning=False):
+def build_weather_message(w, a_city, a_airport, short, f, is_morning=False):
+    """
+    w — словарь {"m": METAR, "om": Open-Meteo, ...}
+    a_city — риск по усреднённому (город)
+    a_airport — риск по METAR (аэропорт)
+    """
     now_dt = datetime.now(MINSK_TZ)
     m = w.get("m") or {}
     om = w.get("om") or {}
@@ -480,7 +474,7 @@ def build_weather_message(w, a, short, f, is_morning=False):
     weather_lines.append(fmt_field("💦 Точка росы", m_dew, om_dew, "°C", "M", om_label))
     weather_lines.append(fmt_field("💨 Ветер", m_wind, om_wind, "м/с", "M", om_label))
 
-    # 🔴 ФИКС: видимость — усреднение + ⚠️ если < 500м
+    # Видимость с ⚠️
     if m_vis is not None and om_vis is not None:
         avg_vis = int((m_vis + om_vis) / 2)
         weather_lines.append(
@@ -497,7 +491,7 @@ def build_weather_message(w, a, short, f, is_morning=False):
     weather_lines.append(f"☁️ Облачность: {m_cloud} (M|{om_label})" if m_cloud else "☁️ Облачность: —")
     weather_lines.append(fmt_field("📊 Давление", m_press, om_press, "мм рт.ст.", "M", om_label))
 
-    # 🔴 ФИКС: «Тренд» → «Через 2 часа»
+    # Тренд
     trend = m.get("trend")
     if trend:
         if trend.get("type") == "NOSIG":
@@ -512,35 +506,63 @@ def build_weather_message(w, a, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
-    # Вердикт
-    rider_verdict = get_rider_verdict(a["score"])
-    risk_bar = build_risk_bar(a["score"])
+    # ============ ДВА БЛОКА РИСКА ============
+    city_score = a_city["score"]
+    airport_score = a_airport["score"]
+    city_verdict = get_rider_verdict(city_score)
+    airport_verdict = get_rider_verdict(airport_score)
+    city_bar = build_risk_bar(city_score)
+    airport_bar = build_risk_bar(airport_score)
 
-    risk_factors = a["risks"][:3]
-    risk_block = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
+    if city_score == airport_score:
+        # Объединённый блок
+        risk_block = (
+            f"🏙️ ГОРОД · ✈️ АЭРОПОРТ · Риск:{city_score}/10\n"
+            f"{city_bar}\n"
+            f"{city_verdict}"
+        )
+    else:
+        risk_block = (
+            f"🏙️ <b>ГОРОД</b> · Риск:{city_score}/10\n"
+            f"{city_bar}\n"
+            f"{city_verdict}\n\n"
+            f"✈️ <b>АЭРОПОРТ</b> · Риск:{airport_score}/10\n"
+            f"{airport_bar}\n"
+            f"{airport_verdict}"
+        )
 
+    # ЧТО НА ДОРОГЕ — объединяем риски города и аэропорта
+    all_risks = []
+    for r in a_city["risks"] + a_airport["risks"]:
+        if r not in all_risks:
+            all_risks.append(r)
+    risk_factors = all_risks[:4]
+    risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
+
+    # НА СЕБЯ — по городу
     gear = get_gear_short(
-        a.get("feels_like", m_feels or 0),
+        a_city.get("feels_like", m_feels or 0),
         m.get("is_rain", False),
         w.get("is_night", False),
         m_wind or 0,
     )
     gear_block = "\n".join(gear)
 
+    # ПЕРЕД ВЫЕЗДОМ — по городу
     tech = get_tech_check(
-        a.get("feels_like", m_feels or 0),
+        a_city.get("feels_like", m_feels or 0),
         w.get("is_night", False),
         m.get("is_rain", False),
         m_hum, m_dew,
     )
     tech_block = "\n".join(f"✅ {t}" for t in tech)
 
+    # ПРОГНОЗ
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
 
     forecast_block = ""
     if next_period != "нет данных":
-        # 🔴 ФИКС: .lower()
         period_clean = next_period
         for cap in ["Переменная облачность", "Пасмурно", "Ясно", "Облачно", "Малооблачно", "Дождь", "Снег", "Туман"]:
             period_clean = period_clean.replace(cap, cap.lower())
@@ -555,12 +577,13 @@ def build_weather_message(w, a, short, f, is_morning=False):
         tomorrow_block = (
             f"\n<b>📅 ЗАВТРА</b>\n"
             f"{f['temp_min']}–{f['temp_max']}°C, {cond_low} · {f['wind_speed']}м/с {emoji_short}\n"
-            f"{fa['color']} {fa_short} ({fa['score']}/10) ({om_label})\n"
+            f"{fa_short} ({fa['score']}/10) ({om_label})\n"
             f"{build_risk_bar(fa['score'])}"
         )
 
+    # Совет
     tip = get_tip(
-        a.get("feels_like", m_feels or 0),
+        a_city.get("feels_like", m_feels or 0),
         m_hum, m.get("is_rain", False),
         w.get("is_night", False), m_wind or 0,
         m.get("is_thunder", False), m_vis,
@@ -573,12 +596,10 @@ def build_weather_message(w, a, short, f, is_morning=False):
 —————
 {weather_block}
 —————
-<b>{rider_verdict}</b>
-Риск:{a['score']}/10
-{risk_bar}
+{risk_block}
 —————
 <b>ЧТО НА ДОРОГЕ</b>
-{risk_block}
+{risk_text}
 —————
 <b>НА СЕБЯ</b>
 {gear_block}
@@ -628,11 +649,20 @@ def morning_broadcast_loop():
                     set_last_morning_date(today_str)
                     continue
 
-                a = analyze_risks(w["m"])
+                # Риск по городу
+                avg_w = avg_weather_data(w)
+                a_city = analyze_risks(avg_w)
+
+                # Риск по аэропорту
+                m_w = dict(w["m"])
+                m_w["_airport_visibility"] = w["m"].get("visibility")
+                m_w["is_night"] = w.get("is_night", False)
+                a_airport = analyze_risks(m_w)
+
                 short = get_short_forecast()
                 f = get_forecast_tomorrow()
 
-                msg = build_weather_message(w, a, short, f, is_morning=True)
+                msg = build_weather_message(w, a_city, a_airport, short, f, is_morning=True)
 
                 sent = 0
                 failed_403 = []
@@ -833,11 +863,20 @@ def send_weather(chat_id, old_message_id=None):
             bot.send_message(chat_id, "❌ Небо молчит.")
             return
 
-        a = analyze_risks(w["m"])
+        # Риск по городу
+        avg_w = avg_weather_data(w)
+        a_city = analyze_risks(avg_w)
+
+        # Риск по аэропорту
+        m_w = dict(w["m"])
+        m_w["_airport_visibility"] = w["m"].get("visibility")
+        m_w["is_night"] = w.get("is_night", False)
+        a_airport = analyze_risks(m_w)
+
         short = get_short_forecast()
         f = get_forecast_tomorrow()
 
-        msg = build_weather_message(w, a, short, f, is_morning=False)
+        msg = build_weather_message(w, a_city, a_airport, short, f, is_morning=False)
         sub_status = is_subscribed(chat_id)
 
         if old_message_id:
