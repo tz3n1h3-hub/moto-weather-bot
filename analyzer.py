@@ -153,7 +153,7 @@ def analyze_risks(weather, is_forecast=False):
 
     # ---- Шкала ----
     if score >= 9:
-        color = "☠️"
+        color = "💀"
     elif score >= 7:
         color = "🔴"
     elif score >= 5:
