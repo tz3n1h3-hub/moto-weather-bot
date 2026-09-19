@@ -281,19 +281,6 @@ def fmt_avg(values, unit=""):
     return f"{s}{NBSP}{unit}" if unit else s
 
 
-def fmt_range(values, unit=""):
-    """Диапазон min–max — только для ветра."""
-    vals = [v for v in values if v is not None]
-    if not vals:
-        return f"—{NBSP}{unit}" if unit else "—"
-    lo, hi = min(vals), max(vals)
-    if lo == hi:
-        s = fmt_num(lo)
-    else:
-        s = f"{fmt_num(lo)}–{fmt_num(hi)}"
-    return f"{s}{NBSP}{unit}" if unit else s
-
-
 def format_visibility(v):
     if v is None:
         return "—"
@@ -354,7 +341,7 @@ def uv_level(uv):
 
 
 def wind_dir_short(full):
-    """'юго-западный (225°)' → 'Ю-З'."""
+    """'ЮЗ (230°)' → 'Ю-З'."""
     if not full or not isinstance(full, str):
         return None
     m = {
@@ -529,10 +516,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
 
     # Ветер — среднее (до среднего порыва), направление сокращённо
-    wind_vals = gather("wind_speed", src_map)
-    gust_vals = gather("wind_gust", src_map)
-    wind_avg = round(sum([v for v in wind_vals if v is not None]) / len([v for v in wind_vals if v is not None]), 1) if any(v is not None for v in wind_vals) else None
-    gust_avg = round(sum([g for g in gust_vals if g is not None]) / len([g for g in gust_vals if g is not None]), 1) if any(g is not None for g in gust_vals) else None
+    wind_vals = [v for v in gather("wind_speed", src_map) if v is not None]
+    gust_vals = [g for g in gather("wind_gust", src_map) if g is not None]
+    wind_avg = round(sum(wind_vals) / len(wind_vals), 1) if wind_vals else None
+    gust_avg = round(sum(gust_vals) / len(gust_vals), 1) if gust_vals else None
 
     wind_line = "💨 Ветер: "
     if wind_avg is not None:
@@ -694,9 +681,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
 
         if tomorrow_bar:
-            tomorrow_block = f"\n\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_verdict}"
+            tomorrow_block = f"\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_verdict}"
         else:
-            tomorrow_block = f"\n\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_verdict}"
+            tomorrow_block = f"\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_verdict}"
 
     # Совет
     tip = get_tip(
@@ -717,17 +704,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     agreement = a_city.get("agreement") if isinstance(a_city, dict) else None
     agree_values = a_city.get("agree_values") if isinstance(a_city, dict) else None
 
-    # ВАЖНО: agreement в a_city нет — берём из merge. Но merge у нас отдельно.
-    # Передадим через w, если есть
-    # (см. send_weather: там merge_weather_data(w) → потом a_city)
-
-    # Согласие берём из avg_w. Передадим через a_city? Нет. Через w.
-    # Проще: в w есть formula, а согласие получим отдельно.
-    # См. вызов build_weather_message — там передаём merge результат.
-    # Для простоты: согласие не покажем здесь, если не передали.
-    # НО — мы можем взять его из a_city, если положили туда.
-    # Давай так: в a_city положим agreement.
-
     formula_line = formula
     agreement_line = ""
     values_line = ""
@@ -735,9 +711,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if agreement:
         agreement_line = f"Согласие источников: {agreement}"
     if agree_values:
-        vals_str = fmt_agree_values(agree_values)
-        if vals_str:
-            values_line = vals_str
+        agree_values_clean = [(v, u) for v, u in agree_values if v is not None]
+        if agree_values_clean:
+            vals_str = fmt_agree_values(agree_values_clean)
+            if vals_str:
+                values_line = vals_str
 
     msg = f"""{header_line1}
 {header_line2}
@@ -819,7 +797,6 @@ def morning_broadcast_loop():
                     continue
 
                 a_city = analyze_risks(avg_w)
-                # переносим согласие в a_city
                 a_city["agreement"] = avg_w.get("agreement")
                 a_city["agree_values"] = avg_w.get("agree_values")
 
