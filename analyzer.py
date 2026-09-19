@@ -135,11 +135,21 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду")
 
-    # ---- Ночь ----
-    if not is_forecast and weather.get("is_night", False):
+    # ---- Ночь (работает и в прогнозе, пропорционально) ----
+    # night_score: 0 — светло, 1 — частично темно (25–74 %), 2 — темно (≥75 %)
+    night_score = weather.get("night_score")
+    if night_score is None:
+        # fallback для старых вызовов
+        night_score = 2 if weather.get("is_night", False) else 0
+
+    if night_score == 2:
         risks.append("🌙 Темно — плохая видимость")
         score += 2
         recommendations.append("💡 Включите свет")
+    elif night_score == 1:
+        risks.append("🌆 Частично темно — видимость хуже")
+        score += 1
+        recommendations.append("💡 Включите свет заранее")
 
     # ---- Шкала ----
     if score >= 9:
@@ -164,7 +174,7 @@ def analyze_risks(weather, is_forecast=False):
 
 # ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
-    if score <= 2:
+    if score <= 0:
         return "БЕЗОПАСНО"
     if score <= 4:
         return "ОСТОРОЖНО"
@@ -177,10 +187,10 @@ def get_short_verdict(score):
 
 # ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
 def get_rider_verdict(score):
-    if score <= 2:
+    if score <= 0:
         return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 4:
-        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
+        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
     if score <= 6:
         return "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
