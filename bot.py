@@ -51,10 +51,6 @@ else:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-
-# ============ НЕВИДИМЫЕ ПРОБЕЛЫ ============
-Z = "\u200b"
-DEV_USERNAME = f"@{Z}Aleksandr_K8V"
 NBSP = "\u00A0"
 
 
@@ -263,6 +259,41 @@ MONTHS_RU = [
 ]
 
 
+def fmt_num(v):
+    if v is None:
+        return "—"
+    if isinstance(v, float):
+        s = f"{v:.1f}"
+        s = s.replace(".", ",")
+        if s.endswith(",0"):
+            s = s[:-2]
+        return s
+    return str(v)
+
+
+def fmt_avg(values, unit=""):
+    """Среднее арифметическое с NBSP."""
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return f"—{NBSP}{unit}" if unit else "—"
+    avg = round(sum(vals) / len(vals), 1)
+    s = fmt_num(avg)
+    return f"{s}{NBSP}{unit}" if unit else s
+
+
+def fmt_range(values, unit=""):
+    """Диапазон min–max — только для ветра."""
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return f"—{NBSP}{unit}" if unit else "—"
+    lo, hi = min(vals), max(vals)
+    if lo == hi:
+        s = fmt_num(lo)
+    else:
+        s = f"{fmt_num(lo)}–{fmt_num(hi)}"
+    return f"{s}{NBSP}{unit}" if unit else s
+
+
 def format_visibility(v):
     if v is None:
         return "—"
@@ -294,35 +325,11 @@ def shorten_cond(cond):
     return cond_lower
 
 
-def fmt_num(v):
-    if v is None:
-        return "—"
-    if isinstance(v, float):
-        s = f"{v:.1f}"
-        s = s.replace(".", ",")
-        if s.endswith(",0"):
-            s = s[:-2]
-        return s
-    return str(v)
-
-
 def build_risk_bar(score):
     score = max(0, min(10, score))
     if score == 0:
         return ""
     return "💀" * score
-
-
-def fmt_range(values, unit=""):
-    vals = [v for v in values if v is not None]
-    if not vals:
-        return f"—{NBSP}{unit}" if unit else "—"
-    lo, hi = min(vals), max(vals)
-    if lo == hi:
-        s = fmt_num(lo)
-    else:
-        s = f"{fmt_num(lo)}–{fmt_num(hi)}"
-    return f"{s}{NBSP}{unit}" if unit else s
 
 
 def avg_uv(live_values):
@@ -346,6 +353,24 @@ def uv_level(uv):
     return "экстремальный"
 
 
+def wind_dir_short(full):
+    """'юго-западный (225°)' → 'Ю-З'."""
+    if not full or not isinstance(full, str):
+        return None
+    m = {
+        "С": "С", "СВ": "С-В", "В": "В", "ЮВ": "Ю-В",
+        "Ю": "Ю", "ЮЗ": "Ю-З", "З": "З", "СЗ": "С-З",
+    }
+    part = full.split(" ")[0]
+    if part in m:
+        return m[part]
+    if part == "переменный":
+        return "перем."
+    if part == "штиль":
+        return "штиль"
+    return None
+
+
 # ============ ТЕКСТЫ ============
 START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
 
@@ -355,54 +380,33 @@ START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
 ехать сегодня или нет.
 
 <b>Откуда беру данные:</b>
-• METAR аэропорта Минск (UMMS) — фактическая погода «здесь и сейчас». Аэропорт числится за Минском, но стоит на открытой равнине в 20 км от центра. Там всегда ветренее, а зимой холоднее, чем в городе. Поэтому я поправляю данные METAR под Минск — чтобы они были ближе к реальной погоде в городе.
+• METAR аэропорта Минск (UMMS) — фактическая погода «здесь и сейчас». Аэропорт стоит на открытой равнине в 20 км от центра — там ветренее и холоднее, чем в городе. Поэтому данные METAR учитываю как один из источников, а не как истину.
 
-• OpenWeatherMap, Open-Meteo и wttr — три прогнозных сервиса. Каждый показывает погоду не для твоей улицы, а для квадрата на карте. Размер этого квадрата у всех разный — иногда совсем маленький (меньше километра), а иногда больше десяти километров. Внутри квадрата погода может отличаться, но это не учитывается.
+• Open-Meteo, OpenWeatherMap и wttr — три прогнозных сервиса. Каждый показывает погоду не для твоей улицы, а для квадрата на карте. Размер квадрата у всех разный — иногда меньше километра, иногда больше десяти. Внутри квадрата погода может отличаться, но это не учитывается.
 
 <b>Как считаю:</b>
-1. Беру факт с аэропорта и поправляю под Минск (ветер, температура).
-2. Сравниваю с тремя прогнозами и убираю явные выбросы — если один сервис врёт, он не портит общую картину.
-3. Показываю диапазон, а не одно число: например, «ветер 3–5 м/с», а не «4 м/с».
+1. Собираю данные со всех четырёх источников.
+2. Убираю выбросы: если один источник сильно отличается от остальных — не учитываю его.
+3. Показываю среднее значение по живым источникам — с точностью до десятых.
 
 <b>Что на выходе:</b>
-• Погода сейчас — с поправкой на Минск.
+• Погода сейчас — средняя по источникам.
 • Прогноз на ближайшие часы.
-• Вердикт: ехать или нет — по ветру, осадкам и температуре.
+• Вердикт: ехать или нет — по 6 параметрам:
+  – ветер (скорость и порывы);
+  – осадки (дождь, снег, гроза, град);
+  – видимость (туман, дымка, мгла);
+  – температура (ощущаемая);
+  – влажность и точка росы;
+  – время суток.
 
 <b>Про точность:</b>
-Честно: возможна погрешность примерно ±3 °C по температуре и ±3 м/с по ветру. Это ориентир, а не гарантия. Но если три сервиса из четырёх сходятся — доверия больше.
+Всё зависит от согласия источников. Если три-четыре сервиса дают близкие значения — доверия больше. Если расходятся — показываю среднее и предупреждаю.
 
 Нажми ПРОГНОЗ — и вперёд.
 
 —
-👨‍💻 Разработчик: @Aleksandr_K8V"""
-
-
-ABOUT_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
-
-Погода для райдеров.
-
-<b>Собираю данные с 4 источников:</b>
-• METAR аэропорта Минск;
-• Open-Meteo;
-• wttr;
-• OpenWeatherMap.
-
-<b>Как считаю:</b>
-Анализирую полученные данные, убираю явные выбросы, вывожу средние показатели и выдаю вердикт: ехать или нет.
-
-<b>Что на выходе:</b>
-• Погода сейчас — с поправкой на Минск;
-• Прогноз на ближайшее время;
-• Вердикт: ехать или нет — по ветру, осадкам и температуре.
-
-<b>Риск от 0 до 10 · экипировка · прогноз</b>
-
-<b>Подписка:</b> /subscribe
-<b>Отписка:</b> /unsubscribe
-
-—
-👨‍💻 Разработчик: {DEV_USERNAME}"""
+👨‍💻 Разработчик: <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>"""
 
 
 SUBSCRIBE_TEXT = """🌅 <b>Подписка на утро</b>
@@ -418,9 +422,7 @@ SUBSCRIBE_TEXT = """🌅 <b>Подписка на утро</b>
 
 SUBSCRIBE_CONFIRMED = """✅ <b>Подписка активирована</b>
 
-Прогноз в 7:00 каждый день.
-
-Отписаться: /unsubscribe"""
+Прогноз в 7:00 каждый день."""
 
 SUBSCRIBE_CANCELED = """❌ <b>Подписка отменена</b>
 
@@ -440,15 +442,11 @@ UNSUBSCRIBE_CANCELED = """✅ <b>Остаёмся!</b>
 
 ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 
-Отписаться: /unsubscribe"""
+Отписаться можно в «О проекте»."""
 
 
 # ============ ЕДИНАЯ ТОЧКА ОТПРАВКИ ============
 def send_or_edit(chat_id, text, reply_markup=None):
-    """
-    Удаляет последнее сообщение бота (если есть) и шлёт новое.
-    Запоминает id нового сообщения — для следующего цикла.
-    """
     last_id = get_last_bot_msg(chat_id)
     if last_id:
         try:
@@ -464,10 +462,21 @@ def send_or_edit(chat_id, text, reply_markup=None):
         return None
 
 
+# ============ СОГЛАСИЕ ИСТОЧНИКОВ ============
+def fmt_agree_values(agree_values):
+    """Список (значение, единица) → '(1,5 °C · 1,8 °C · ...)' с NBSP."""
+    if not agree_values:
+        return None
+    parts = []
+    for val, unit in agree_values:
+        parts.append(f"{fmt_num(val)}{NBSP}{unit}")
+    return "(" + " · ".join(parts) + ")"
+
+
 # ============ СБОРКА СООБЩЕНИЯ ============
 def build_weather_message(w, a_city, short, f, is_morning=False):
     if not isinstance(short, dict):
-        print(f"⚠️ short не dict: type={type(short).__name__}, value={short!r}", flush=True)
+        print(f"⚠️ short не dict: type={type(short).__name__}", flush=True)
         short = {}
 
     now_dt = datetime.now(MINSK_TZ)
@@ -511,68 +520,58 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_lines = []
 
-    weather_lines.append(f"🌡️ Температура: {fmt_range(gather('temp', src_map), '°C')}")
-    weather_lines.append(f"🤔 Ощущается: {fmt_range(gather('feels_like', src_map), '°C')}")
+    weather_lines.append(f"🌡️ Температура: {fmt_avg(gather('temp', src_map), '°C')}")
+    weather_lines.append(f"🤔 Ощущается: {fmt_avg(gather('feels_like', src_map), '°C')}")
 
     soil = om.get("soil_temp") if om else None
     weather_lines.append(
         f"🌱 Почва: {fmt_num(soil)}{NBSP}°C" if soil is not None else "🌱 Почва: —"
     )
 
+    # Ветер — среднее (до среднего порыва), направление сокращённо
     wind_vals = gather("wind_speed", src_map)
     gust_vals = gather("wind_gust", src_map)
+    wind_avg = round(sum([v for v in wind_vals if v is not None]) / len([v for v in wind_vals if v is not None]), 1) if any(v is not None for v in wind_vals) else None
+    gust_avg = round(sum([g for g in gust_vals if g is not None]) / len([g for g in gust_vals if g is not None]), 1) if any(g is not None for g in gust_vals) else None
 
     wind_line = "💨 Ветер: "
-    if any(v is not None for v in wind_vals):
-        wind_line += fmt_range(wind_vals, "м/с")
-        gmax = max([g for g in gust_vals if g is not None], default=None)
-        if gmax is not None and gmax > (max([v for v in wind_vals if v is not None], default=0)):
-            wind_line += f" (до {fmt_num(gmax)}{NBSP}м/с)"
-        wind_dir = m.get("wind_direction") or om.get("wind_direction")
-        if wind_dir and isinstance(wind_dir, str):
-            dir_map = {
-                "С": "северный", "СВ": "северо-восточный",
-                "В": "восточный", "ЮВ": "юго-восточный",
-                "Ю": "южный", "ЮЗ": "юго-западный",
-                "З": "западный", "СЗ": "северо-западный",
-                "переменный": "переменный", "штиль": "штиль",
-            }
-            short_dir = wind_dir.split(" ")[0]
-            if short_dir in dir_map:
-                wind_line += f", {dir_map[short_dir]}"
-            else:
-                wind_line += f", {wind_dir}"
+    if wind_avg is not None:
+        wind_line += f"{fmt_num(wind_avg)}{NBSP}м/с"
+        if gust_avg is not None and gust_avg > wind_avg:
+            wind_line += f" (до {fmt_num(gust_avg)}{NBSP}м/с)"
+        wind_dir_raw = m.get("wind_direction") or om.get("wind_direction")
+        short_dir = wind_dir_short(wind_dir_raw) if isinstance(wind_dir_raw, str) else None
+        if short_dir:
+            wind_line += f", {short_dir}"
     else:
         wind_line += "—"
     weather_lines.append(wind_line)
 
+    # Видимость — среднее, но если все ≥ 10000 → 10+
     vis_vals = [v for v in gather("visibility", src_map) if v is not None]
     if vis_vals:
-        lo, hi = min(vis_vals), max(vis_vals)
-        if hi >= 10000:
+        if all(v >= 10000 for v in vis_vals):
             vis_str = "10+" + NBSP + "км"
-        elif lo == hi:
-            vis_str = format_visibility(lo)
         else:
-            vis_str = f"{format_visibility(lo)}–{format_visibility(hi)}"
-        if lo < 500:
+            avg_vis = round(sum(vis_vals) / len(vis_vals))
+            vis_str = format_visibility(avg_vis)
+        if min(vis_vals) < 500:
             vis_str = "⚠️" + vis_str
         weather_lines.append(f"👁️ Видимость: {vis_str}")
     else:
         weather_lines.append("👁️ Видимость: —")
 
-    weather_lines.append(f"💧 Влажность: {fmt_range(gather('humidity', src_map), '%')}")
-    weather_lines.append(f"💦 Точка росы: {fmt_range(gather('dew_point', src_map), '°C')}")
+    weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
+    weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     if cloud_vals:
-        lo, hi = min(cloud_vals), max(cloud_vals)
-        cloud_pct = f"{fmt_num(lo)}{NBSP}%" if lo == hi else f"{fmt_num(lo)}–{fmt_num(hi)}{NBSP}%"
+        avg_cloud = round(sum(cloud_vals) / len(cloud_vals))
         if cloud_text:
-            weather_lines.append(f"🌥️ Облачность: {cloud_text} ({cloud_pct})")
+            weather_lines.append(f"🌥️ Облачность: {cloud_text} ({avg_cloud}{NBSP}%)")
         else:
-            weather_lines.append(f"🌥️ Облачность: {cloud_pct}")
+            weather_lines.append(f"🌥️ Облачность: {avg_cloud}{NBSP}%")
     elif cloud_text:
         weather_lines.append(f"🌥️ Облачность: {cloud_text}")
     else:
@@ -580,15 +579,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     if precip_vals:
-        lo, hi = min(precip_vals), max(precip_vals)
-        if lo == hi:
-            weather_lines.append(f"🌧️ Осадки: {fmt_num(lo)}{NBSP}мм")
-        else:
-            weather_lines.append(f"🌧️ Осадки: {fmt_num(lo)}–{fmt_num(hi)}{NBSP}мм")
+        avg_precip = round(sum(precip_vals) / len(precip_vals), 1)
+        weather_lines.append(f"🌧️ Осадки: {fmt_num(avg_precip)}{NBSP}мм")
     elif m.get("is_rain"):
         weather_lines.append(f"🌧️ Осадки: {m.get('weather_text') or 'дождь'}")
 
-    weather_lines.append(f"📊 Давление: {fmt_range(gather('pressure_mmhg', src_map), 'мм рт. ст.')}")
+    weather_lines.append(f"📊 Давление: {fmt_avg(gather('pressure_mmhg', src_map), 'мм рт. ст.')}")
 
     twilight = get_twilight_state(w.get("sunrise"), w.get("sunset"))
     weather_lines.append(f"🌇 На улице: {twilight}")
@@ -651,6 +647,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                               if g is not None], default=0),
             "is_rain": "дождь" in (next_period or "").lower() or m.get("is_rain", False),
             "is_thunder": m.get("is_thunder", False),
+            "is_hail": m.get("is_hail", False),
             "visibility": m.get("visibility") or 10000,
             "dew_point": m.get("dew_point"),
             "humidity": m.get("humidity"),
@@ -664,7 +661,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         else:
             forecast_block = f"{next_period_title}\n{next_period}\n{period_verdict}"
 
-    # Сноска про осадки — только если вероятности ≥ 30 %
+    # Сноска про осадки
     precip_note = ""
     prob_now = re.search(r"дождь\s*(\d+)\s*%", next_period or "")
     prob_tomorrow = f.get("rain_prob") if f else None
@@ -716,13 +713,45 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         uv_index=(uv if uv is not None else 0),
     )
 
-    # ⚠️ ВАЖНО: .strip() НЕ применяется к tomorrow_block и forecast_block
+    # Согласие
+    agreement = a_city.get("agreement") if isinstance(a_city, dict) else None
+    agree_values = a_city.get("agree_values") if isinstance(a_city, dict) else None
+
+    # ВАЖНО: agreement в a_city нет — берём из merge. Но merge у нас отдельно.
+    # Передадим через w, если есть
+    # (см. send_weather: там merge_weather_data(w) → потом a_city)
+
+    # Согласие берём из avg_w. Передадим через a_city? Нет. Через w.
+    # Проще: в w есть formula, а согласие получим отдельно.
+    # См. вызов build_weather_message — там передаём merge результат.
+    # Для простоты: согласие не покажем здесь, если не передали.
+    # НО — мы можем взять его из a_city, если положили туда.
+    # Давай так: в a_city положим agreement.
+
+    formula_line = formula
+    agreement_line = ""
+    values_line = ""
+
+    if agreement:
+        agreement_line = f"Согласие источников: {agreement}"
+    if agree_values:
+        vals_str = fmt_agree_values(agree_values)
+        if vals_str:
+            values_line = vals_str
+
     msg = f"""{header_line1}
 {header_line2}
 —————
 {legend_text}
 
-{formula}
+Формула: {formula_line}"""
+
+    if agreement_line:
+        msg += f"\n\n{agreement_line}"
+    if values_line:
+        msg += f"\n{values_line}"
+
+    msg += f"""
 —————
 {weather_block}
 —————
@@ -785,7 +814,14 @@ def morning_broadcast_loop():
                     continue
 
                 avg_w = merge_weather_data(w)
+                if not avg_w:
+                    set_last_morning_date(today_str)
+                    continue
+
                 a_city = analyze_risks(avg_w)
+                # переносим согласие в a_city
+                a_city["agreement"] = avg_w.get("agreement")
+                a_city["agree_values"] = avg_w.get("agree_values")
 
                 short = get_short_forecast()
                 f = get_forecast_tomorrow()
@@ -832,7 +868,14 @@ def send_weather(chat_id):
             return
 
         avg_w = merge_weather_data(w)
+        if not avg_w:
+            send_or_edit(chat_id, "❌ Небо молчит.", None)
+            return
+
         a_city = analyze_risks(avg_w)
+        a_city["agreement"] = avg_w.get("agreement")
+        a_city["agree_values"] = avg_w.get("agree_values")
+
         short = get_short_forecast()
         f = get_forecast_tomorrow()
 
@@ -878,7 +921,7 @@ def about_cmd(m):
     try:
         save_user(m.chat.id)
         kb = get_about_keyboard(is_subscribed(m.chat.id))
-        send_or_edit(m.chat.id, ABOUT_TEXT, kb)
+        send_or_edit(m.chat.id, START_TEXT, kb)
     except Exception as e:
         print(f"❌ /about: {e}", flush=True)
 
@@ -948,7 +991,7 @@ def callback(call):
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅", cache_time=3)
             kb = get_about_keyboard(is_subscribed(chat_id))
-            send_or_edit(chat_id, ABOUT_TEXT, kb)
+            send_or_edit(chat_id, START_TEXT, kb)
 
         elif call.data == "subscribe":
             if is_subscribed(chat_id):
@@ -956,7 +999,7 @@ def callback(call):
                 kb = get_about_keyboard(is_subscribed=True)
                 send_or_edit(chat_id, ALREADY_SUBSCRIBED, kb)
             else:
-                bot.answer_callback_query(call.id, "🌅", cache_time=3)
+                bot.answer_callback_query(call.id, "✅", cache_time=3)
                 send_or_edit(chat_id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
 
         elif call.data == "subscribe_confirm":
