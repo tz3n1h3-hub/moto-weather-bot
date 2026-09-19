@@ -1102,7 +1102,6 @@ def merge_weather_data(w):
         agreement = "нет данных (один источник)"
         agree_values = None
     else:
-        # Разброс по температуре — основной критерий
         temps = [s.get("temp") for s in sources if s.get("temp") is not None]
         temp_spread = _spread(temps)
         if temp_spread is None:
@@ -1114,7 +1113,6 @@ def merge_weather_data(w):
         else:
             agreement = "низкое"
 
-        # Разбросы по всем параметрам
         def spread_of(key):
             vals = [s.get(key) for s in sources if s.get(key) is not None]
             return _spread(vals)
@@ -1133,11 +1131,14 @@ def merge_weather_data(w):
             sp = spread_of(key)
             if sp is None:
                 continue
+            if sp == 0:
+                # разброс 0 — не показываем
+                continue
             if key == "visibility":
-                # в км
-                sp_km = round(sp / 1000, 1) if sp >= 1000 else round(sp, 1)
-                unit_final = "км" if sp >= 1000 else "м"
-                agree_values.append((sp_km, unit_final))
+                if sp >= 1000:
+                    agree_values.append((round(sp / 1000, 1), "км"))
+                else:
+                    agree_values.append((round(sp, 0), "м"))
             else:
                 agree_values.append((sp, unit))
 
