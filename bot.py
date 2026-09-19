@@ -502,6 +502,11 @@ def delete_and_send(chat_id, old_message_id, text, reply_markup):
 
 # ============ СБОРКА СООБЩЕНИЯ ============
 def build_weather_message(w, a_city, short, f, is_morning=False):
+    # ЗАЩИТА: short всегда dict
+    if not isinstance(short, dict):
+        print(f"⚠️ short не dict: type={type(short).__name__}, value={short!r}", flush=True)
+        short = {}
+
     now_dt = datetime.now(MINSK_TZ)
     m = w.get("m") or {}
     om = w.get("om") or {}
@@ -524,7 +529,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     header_line1 = f"{header_icon} <b>MOTOWEATHER · МИНСК</b>"
     header_line2 = f"{weekday} · {date_str} · {time_str}"
 
-    # Легенда — ВСЕГДА все 4, но живые помечаем
+    # Легенда
     def src_marker(code):
         return code if code in sources_live else f"{code}*"
 
@@ -535,9 +540,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     legend_lines.append(f"{src_marker('OW')} — OpenWeatherMap (Минск)")
     legend_text = "\n".join(legend_lines)
 
-    # Данные — по живым источникам (fmt_field)
+    # Сбор данных по живым источникам
     def collect(key, sources_keys):
-        """values + метки для fmt_field."""
         vals, labels = [], []
         for code, src in sources_keys:
             v = src.get(key) if src else None
@@ -556,14 +560,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     vals, labels = collect("feels_like", src_map)
     weather_lines.append(fmt_field("🤔 Ощущается", vals, "°C", labels))
 
-    # Почва (только OM)
     soil = om.get("soil_temp") if om else None
     weather_lines.append(
         f"🌱 Почва: {fmt_num(soil)}{NBSP}°C" if soil is not None else "🌱 Почва: —"
     )
 
-    # Ветер — диапазон м/с + направление
-    vals_wind, labels_wind = collect("wind_speed", src_map)
+    vals_wind, _ = collect("wind_speed", src_map)
     vals_gust, _ = collect("wind_gust", src_map)
 
     wind_line = "💨 Ветер: "
@@ -573,10 +575,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if vals_gust:
             gmax = max(vals_gust)
             wind_line += f" (до {fmt_num(gmax)}{NBSP}м/с)"
-        # направление из M или OM
         wind_dir = m.get("wind_direction") or om.get("wind_direction")
         if wind_dir and isinstance(wind_dir, str):
-            # берём только словесную часть: «З (270°)» → «западный»
             dir_map = {
                 "С": "северный", "СВ": "северо-восточный",
                 "В": "восточный", "ЮВ": "юго-восточный",
@@ -584,19 +584,19 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 "З": "западный", "СЗ": "северо-западный",
                 "переменный": "переменный", "штиль": "штиль",
             }
-            short = wind_dir.split(" ")[0]
-            if short in dir_map:
-                wind_line += f", {dir_map[short]}"
+            short_dir = wind_dir.split(" ")[0]
+            if short_dir in dir_map:
+                wind_line += f", {dir_map[short_dir]}"
             else:
                 wind_line += f", {wind_dir}"
     else:
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    # Видимость — по живым источникам
-    vals_vis, labels_vis = collect("visibility", src_map)
+    vals_vis, _ = collect("visibility", src_map)
     if vals_vis:
-        vmin, vmax = min(vals_vis), max(vals_vis)
+        vmax = max(vals_vis)
+        vmin = min(vals_vis)
         if vmax >= 10000:
             vis_str = "10+" + NBSP + "км"
         else:
@@ -613,7 +613,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     vals, labels = collect("dew_point", src_map)
     weather_lines.append(fmt_field("💦 Точка росы", vals, "°C", labels))
 
-    # Облачность — из M (текст) + % по живым
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     vals_cloud, _ = collect("clouds_pct", src_map)
     if vals_cloud:
@@ -627,29 +626,25 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # Осадки — мм по живым + факт
     vals_precip, _ = collect("precip_mm", src_map)
     if vals_precip:
         avg_precip = round(sum(vals_precip) / len(vals_precip), 1)
         if avg_precip > 0:
             weather_lines.append(f"🌧️ Осадки: {fmt_num(avg_precip)}{NBSP}мм")
-    if m.get("is_rain") and not vals_precip:
+    elif m.get("is_rain"):
         weather_lines.append(f"🌧️ Осадки: {m.get('weather_text') or 'дождь'}")
 
     vals, labels = collect("pressure_mmhg", src_map)
     weather_lines.append(fmt_field("📊 Давление", vals, "мм рт. ст.", labels))
 
-    # На улице — смеркается / темнеет / светло
     twilight = get_twilight_state(w.get("sunrise"), w.get("sunset"))
     weather_lines.append(f"🌇 На улице: {twilight}")
 
-    # Рассвет/закат
     sunrise = w.get("sunrise")
     sunset = w.get("sunset")
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
-    # UV — по живым
     uv = avg_uv([m.get("uv_index"), om.get("uv_index"),
                  ww.get("uv_index"), ow.get("uv_index")])
     if uv is not None:
@@ -702,7 +697,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             period_clean = period_clean.replace(cap, cap.lower())
         forecast_block = f"{next_period_title}\n{period_clean}"
 
-    # Сноска про осадки
     precip_note = ""
     if "%" in next_period or "%" in next_hour:
         precip_note = "❗ дождь — вероятность, что дождь пойдёт"
