@@ -2,16 +2,16 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_main_keyboard():
-    """Клавиатура для /start — только [ПРОГНОЗ]."""
+    """Клавиатура для /start — только [— ПРОГНОЗ —]."""
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("ПРОГНОЗ", callback_data="weather")
+        InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
     )
     return markup
 
 
 def get_after_weather_keyboard(is_subscribed=False):
-    """Клавиатура после показа погоды — [ПРОГНОЗ] + опционально подписка."""
+    """Клавиатура после показа погоды — [🔄 ОБНОВИТЬ] + [ℹ️ О проекте]."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
@@ -38,7 +38,7 @@ def get_about_keyboard(is_subscribed=False):
     """Клавиатура для /about — с учётом подписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("ПРОГНОЗ", callback_data="weather")
+        InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
     )
     if is_subscribed:
         markup.row(
@@ -46,7 +46,7 @@ def get_about_keyboard(is_subscribed=False):
         )
     else:
         markup.row(
-            InlineKeyboardButton("🌅 Подписаться", callback_data="subscribe")
+            InlineKeyboardButton("✅ Подписаться", callback_data="subscribe")
         )
     return markup
 
