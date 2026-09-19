@@ -7,8 +7,7 @@ from weather import get_minsk_hour
 # ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
     """
-    Анализирует риски. Если weather содержит "_airport_visibility" —
-    добавляет акцент на аэропорт.
+    Анализирует риски по усреднённым данным (город).
     """
     risks, recommendations = [], []
     score = 0
@@ -53,7 +52,7 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию")
 
-    # ---- Видимость + акцент на аэропорт ----
+    # ---- Видимость ----
     visibility_alerted = False
 
     if not is_forecast:
@@ -73,17 +72,6 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("💡 Включите ближний свет")
             visibility_alerted = True
 
-        # 🔴 АКЦЕНТ НА АЭРОПОРТ
-        airport_vis = weather.get("_airport_visibility")
-        if airport_vis is not None and airport_vis < 500:
-            if visibility >= 1000:
-                risks.append(f"✈️ В АЭРОПОРТУ ТУМАН ({int(airport_vis)} м) — не езжай туда")
-                score += 3
-                recommendations.append("🚫 В сторону аэропорта — не выезжай")
-            elif not visibility_alerted:
-                risks.append(f"✈️ В АЭРОПОРТУ ТУМАН ({int(airport_vis)} м)")
-                score += 3
-
     # ---- Туман (точка росы) ----
     if not is_forecast and dew_point is not None:
         diff = temp - dew_point
@@ -98,16 +86,16 @@ def analyze_risks(weather, is_forecast=False):
                 recommendations.append("🚫 Не выезжай — туман, видимость минимальная")
         elif diff <= 2:
             if humidity >= 90:
-                risks.append(f"🌫️ Влажность {int(humidity)}% — воздух близок к туману")
+                risks.append(f"🌫️ Влажность {int(humidity)} % — воздух близок к туману")
                 score += 3
                 recommendations.append("🌫️ Возможен туман — противотуманки, снизьте скорость")
             else:
-                risks.append(f"💧 Высокая влажность {int(humidity)}%")
+                risks.append(f"💧 Высокая влажность {int(humidity)} %")
                 score += 2
                 recommendations.append("🐢 Осторожно на разметке и в поворотах")
         elif diff <= 4:
             if humidity >= 80:
-                risks.append(f"💧 Повышенная влажность {int(humidity)}%")
+                risks.append(f"💧 Повышенная влажность {int(humidity)} %")
                 score += 1
 
     # ---- Для прогноза: туман/морось через weather_code ----
@@ -129,19 +117,19 @@ def analyze_risks(weather, is_forecast=False):
         feels_like = weather.get("feels_like", temp)
 
     if feels_like < 0:
-        risks.append(f"❄️ Мороз (ощущается как {int(feels_like)}°C)")
+        risks.append(f"❄️ Мороз (ощущается как {int(feels_like)} °C)")
         score += 4
         recommendations.append("🧊 Риск обледенения!")
     elif feels_like < 5:
-        risks.append(f"🥶 Очень холодно ({int(feels_like)}°C)")
+        risks.append(f"🥶 Очень холодно ({int(feels_like)} °C)")
         score += 3
         recommendations.append("🧥 Тёплая экипировка, подогрев")
     elif feels_like < 10:
-        risks.append(f"❄️ Холодно ({int(feels_like)}°C)")
+        risks.append(f"❄️ Холодно ({int(feels_like)} °C)")
         score += 1
         recommendations.append("🧥 Ветрозащита обязательна")
     elif feels_like > 35:
-        risks.append(f"🔥 Очень жарко ({int(feels_like)}°C)")
+        risks.append(f"🔥 Очень жарко ({int(feels_like)} °C)")
         score += 2
         recommendations.append("💧 Пейте воду")
 
@@ -190,7 +178,7 @@ def get_rider_verdict(score):
     if score <= 2:
         return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 4:
-        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
+        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
     if score <= 6:
         return "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
@@ -233,26 +221,74 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
 
 
 # ============ ОДИН СОВЕТ ============
-def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility):
+def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility,
+            wind_gust=0, uv_index=0):
+    """
+    🔴 Обновлённая база советов (14 + ротация).
+    """
+    import random
+
+    # 1. Гроза
     if is_thunder:
-        return "Гроза — глуши мотор и в укрытие. Молния шуток не понимает"
-    if temp < 5 and humidity and humidity > 85:
-        return "Мосты и эстакады — там лёд первым. Сбрось скорость заранее"
+        return "💡 Гроза — глуши мотор и в укрытие. Молния — не шутка"
+
+    # 2. Мосты и эстакады (temp < 3 + humidity > 85)
+    if temp < 3 and humidity and humidity > 85:
+        return "💡 Мосты и эстакады — лёд там первым. Сбрось скорость заранее"
+
+    # 3. Гололёд (temp < 0)
     if temp < 0:
-        return "Гололёд — не закладывай в повороты, дожми тормоз заранее"
+        return "💡 Гололёд — тормози заранее, не в повороте"
+
+    # 4. Дождь ночью
+    if is_rain and is_night:
+        return "💡 Дождь ночью — вдвойне скользко, снизь скорость"
+
+    # 5. Дождь
     if is_rain:
-        return "Мокро — тормозной путь ×2, дистанцию держи двойную"
+        return "💡 Мокро — тормозной путь ×2, дистанцию держи двойную"
+
+    # 6. Туман
     if visibility and visibility < 1000:
-        return "Туман — противотуманки, скорость как по яйцам"
+        return "💡 Туман — противотуманки, скорость минимальная"
+
+    # 7. Влажность 100 %
     if humidity and humidity >= 100:
-        return "Влажность 100% — роса на асфальте, не закладывай в поворотах"
+        return "💡 Влажность 100 % — роса на асфальте, тормози плавно"
+
+    # 8. Влажность ≥ 90 %
     if humidity and humidity >= 90:
-        return "Воздух близок к туману — визор вниз, дистанцию больше"
+        return "💡 Воздух близок к туману — визор протри, дистанцию больше"
+
+    # 9. Ночь
     if is_night:
-        return "Ночь — сова не ты. Через 2 часа устанешь, делай паузы"
+        return "💡 Ночь — видимость хуже. Паузы каждые два часа"
+
+    # 10. Порывы > 10
+    if wind_gust and wind_gust > 10:
+        return "💡 Порывы — дистанцию от фур, руль крепче"
+
+    # 11. Боковой ветер
     if wind_speed and wind_speed > 8:
-        return "Боковой ветер — руль крепче, обгоны отложи"
-    return "Давление в шинах проверь — 5 минут спасут вечер"
+        return "💡 Боковой ветер — руль крепче, обгоны отложи"
+
+    # 12. Солнце активное (UV > 5) — 0 валидное значение, проверяем None
+    if uv_index is not None and uv_index > 5:
+        return "💡 Солнце активное — закрой шею и руки"
+
+    # 13. Жара
+    if temp and temp > 30:
+        return "💡 Жарко — пей воду каждые 30 минут"
+
+    # 14. Ротация по умолчанию
+    default_tips = [
+        "💡 Давление в шинах проверь — пять минут спасут вечер",
+        "💡 Цепь смажь — перед каждым выездом",
+        "💡 Тормоза проверь — 30 секунд перед стартом",
+        "💡 Свет — всегда включён",
+        "💡 Зеркала — под себя",
+    ]
+    return random.choice(default_tips)
 
 
 # ============ ЛУЧШЕЕ ВРЕМЯ ============
