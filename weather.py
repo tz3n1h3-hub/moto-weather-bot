@@ -3,6 +3,7 @@ import math
 import time
 import requests
 import urllib3
+import statistics
 from datetime import datetime, timedelta
 
 from config import (
@@ -120,7 +121,6 @@ def get_daylight_info(sunrise, sunset):
 
 
 def get_twilight_state(sunrise=None, sunset=None):
-    """🌇 На улице: светло / смеркается / темнеет / темно."""
     if not sunrise or not sunset:
         return "темно" if is_night_time() else "светло"
     try:
@@ -356,6 +356,7 @@ def get_metar_data():
         result["weather_text"] = w_text
         result["is_rain"] = is_rain
         result["is_thunder"] = is_thunder
+        result["is_hail"] = "GR" in metar_text
         temp_match = re.search(r"\s(M?\d{2})/(M?\d{2})\s", metar_text)
         if temp_match:
             result["temp"] = int(temp_match.group(1).replace("M", "-"))
@@ -469,6 +470,7 @@ def _wttr_to_current(wttr_data):
             "soil_temp": None,
             "is_rain": precip > 0,
             "is_thunder": False,
+            "is_hail": False,
         }
     except Exception as e:
         print(f"wttr current: {e}", flush=True)
@@ -653,6 +655,7 @@ def _owm_to_current(owm_data):
             "soil_temp": None,
             "is_rain": precip > 0,
             "is_thunder": False,
+            "is_hail": False,
         }
     except Exception as e:
         print(f"OWM: парсинг {e}", flush=True)
@@ -745,6 +748,7 @@ def get_weather():
         sunset = to_hm(sunset_iso)
         is_night = is_night_now(sunrise, sunset)
 
+        # ---- M ----
         m_data = None
         if metar:
             m_temp = metar.get("temp", 0)
@@ -768,6 +772,7 @@ def get_weather():
                 "weather_text": metar.get("weather_text") or "",
                 "is_rain": metar.get("is_rain", False),
                 "is_thunder": metar.get("is_thunder", False),
+                "is_hail": metar.get("is_hail", False),
                 "pressure_hpa": m_pressure,
                 "pressure_mmhg": hpa_to_mmhg(m_pressure),
                 "clouds_pct": None,
@@ -778,6 +783,7 @@ def get_weather():
                 "obs_time": metar.get("obs_time"),
             }
 
+        # ---- OM ----
         om_data = None
         cur = (forecast_data or {}).get("current", {})
         if cur and forecast_src == "Open-Meteo":
@@ -803,11 +809,15 @@ def get_weather():
                 "soil_temp": round(cur["soil_temperature_6cm"]) if cur.get("soil_temperature_6cm") is not None else None,
                 "is_rain": (cur.get("precipitation") or 0) > 0,
                 "is_thunder": cur.get("weather_code") in (95, 96, 99),
+                "is_hail": False,
             }
             if om_data["dew_point"] is None and om_humidity is not None:
                 om_data["dew_point"] = calculate_dew_point(om_temp, om_humidity)
 
+        # ---- W ----
         w_data = _wttr_to_current(wttr_raw)
+
+        # ---- OW ----
         ow_data = _owm_to_current(owm_raw)
 
         if not any([m_data, om_data, w_data, ow_data]):
@@ -1043,8 +1053,28 @@ def get_short_forecast():
                 "source": "none", "current_temp": None, "show_next_hour": False}
 
 
-# ============ УСРЕДНЕНИЕ ПО ЖИВЫМ ИСТОЧНИКАМ ============
+# ============ УСРЕДНЕНИЕ + СОГЛАСИЕ ============
+def _filter_outliers(vals):
+    """Отбрасывает значения за 2σ. Возвращает список."""
+    if len(vals) <= 2:
+        return vals
+    mean = statistics.mean(vals)
+    stdev = statistics.pstdev(vals)
+    if stdev == 0:
+        return vals
+    filtered = [v for v in vals if abs(v - mean) <= 2 * stdev]
+    return filtered if filtered else vals
+
+
+def _spread(vals):
+    """Разброс max-min, округлённый."""
+    if len(vals) < 2:
+        return None
+    return round(max(vals) - min(vals), 1)
+
+
 def merge_weather_data(w):
+    """Среднее по живым источникам + согласие + разбросы."""
     if not w:
         return None
     m = w.get("m") or {}
@@ -1060,10 +1090,56 @@ def merge_weather_data(w):
         vals = [s.get(key) for s in sources if s.get(key) is not None]
         if not vals:
             return None
-        return round(sum(vals) / len(vals), 1) if len(vals) > 1 else vals[0]
+        filtered = _filter_outliers(vals)
+        return round(sum(filtered) / len(filtered), 1) if len(filtered) > 1 else filtered[0]
 
     def merge_bool(key):
         return any(s.get(key) for s in sources)
+
+    # ---- Согласие ----
+    n_live = len(sources)
+    if n_live < 2:
+        agreement = "нет данных (один источник)"
+        agree_values = None
+    else:
+        # Разброс по температуре — основной критерий
+        temps = [s.get("temp") for s in sources if s.get("temp") is not None]
+        temp_spread = _spread(temps)
+        if temp_spread is None:
+            agreement = "нет данных"
+        elif temp_spread <= 2:
+            agreement = "высокое"
+        elif temp_spread <= 5:
+            agreement = "среднее"
+        else:
+            agreement = "низкое"
+
+        # Разбросы по всем параметрам
+        def spread_of(key):
+            vals = [s.get(key) for s in sources if s.get(key) is not None]
+            return _spread(vals)
+
+        agree_values = []
+        for key, unit in [
+            ("temp", "°C"),
+            ("feels_like", "°C"),
+            ("wind_speed", "м/с"),
+            ("wind_gust", "м/с"),
+            ("humidity", "%"),
+            ("dew_point", "°C"),
+            ("pressure_mmhg", "мм рт. ст."),
+            ("visibility", "м"),
+        ]:
+            sp = spread_of(key)
+            if sp is None:
+                continue
+            if key == "visibility":
+                # в км
+                sp_km = round(sp / 1000, 1) if sp >= 1000 else round(sp, 1)
+                unit_final = "км" if sp >= 1000 else "м"
+                agree_values.append((sp_km, unit_final))
+            else:
+                agree_values.append((sp, unit))
 
     return {
         "temp": merge_field("temp"),
@@ -1085,6 +1161,7 @@ def merge_weather_data(w):
         "weather_text": m.get("weather_text") or "",
         "is_rain": merge_bool("is_rain"),
         "is_thunder": merge_bool("is_thunder"),
+        "is_hail": merge_bool("is_hail"),
         "is_night": w.get("is_night", False),
         "trend": m.get("trend"),
         "obs_time": m.get("obs_time"),
@@ -1092,4 +1169,6 @@ def merge_weather_data(w):
         "formula": w.get("formula", ""),
         "sunrise": w.get("sunrise"),
         "sunset": w.get("sunset"),
+        "agreement": agreement,
+        "agree_values": agree_values,
     }
