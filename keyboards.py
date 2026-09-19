@@ -1,69 +1,53 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def _subscribe_button(is_subscribed):
-    """Универсальная кнопка подписки."""
-    if is_subscribed:
-        return None
-    return InlineKeyboardButton("🌅 Подписка", callback_data="subscribe")
-
-
-def get_main_keyboard(is_subscribed=False):
-    """Клавиатура для /start."""
+def get_main_keyboard():
+    """Клавиатура для /start — только [ПРОГНОЗ]."""
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🏍️ СЕЙЧАС", callback_data="weather")
+        InlineKeyboardButton("ПРОГНОЗ", callback_data="weather")
     )
-    sub_btn = _subscribe_button(is_subscribed)
-    if sub_btn:
-        markup.row(
-            sub_btn,
-            InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
-        )
-    else:
-        markup.row(
-            InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
-        )
     return markup
 
 
 def get_after_weather_keyboard(is_subscribed=False):
-    """Клавиатура после показа погоды."""
+    """Клавиатура после показа погоды — [ПРОГНОЗ] + опционально подписка."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
     )
-    sub_btn = _subscribe_button(is_subscribed)
-    if sub_btn:
-        markup.row(
-            sub_btn,
-            InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
-        )
-    else:
-        markup.row(
-            InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
-        )
+    markup.row(
+        InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
+    )
     return markup
 
 
 def get_morning_keyboard():
-    """Клавиатура для утренней рассылки — только ОБНОВИТЬ."""
+    """Клавиатура для утренней рассылки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
     )
+    markup.row(
+        InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
+    )
     return markup
 
 
-def get_about_keyboard():
-    """Клавиатура для /about."""
+def get_about_keyboard(is_subscribed=False):
+    """Клавиатура для /about — с учётом подписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🏍️ СЕЙЧАС", callback_data="weather")
+        InlineKeyboardButton("ПРОГНОЗ", callback_data="weather")
     )
-    markup.row(
-        InlineKeyboardButton("✉️ Разработчику", url="https://t.me/Aleksandr_K8V")
-    )
+    if is_subscribed:
+        markup.row(
+            InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe")
+        )
+    else:
+        markup.row(
+            InlineKeyboardButton("🌅 Подписаться", callback_data="subscribe")
+        )
     return markup
 
 
@@ -80,7 +64,7 @@ def get_subscribe_keyboard():
 
 
 def get_unsubscribe_keyboard():
-    """Клавиатура подтверждения отписки (вызывается командой /unsubscribe)."""
+    """Клавиатура подтверждения отписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("❌ Да, отписаться", callback_data="unsubscribe_confirm")
