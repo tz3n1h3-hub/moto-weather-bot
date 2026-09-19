@@ -383,7 +383,6 @@ def night_score_for_period(title, sunrise, sunset):
 
     rng = period_ranges.get(title)
     if not rng:
-        # Неизвестный период — fallback
         return 2 if title == "🌙 НОЧЬЮ" else 0
 
     start, end = rng
@@ -395,13 +394,10 @@ def night_score_for_period(title, sunrise, sunset):
     ss_min = _time_to_min(sunset) if sunset else None
 
     if sr_min is None or ss_min is None:
-        # Нет данных — fallback: НОЧЬЮ → 2
         return 2 if title == "🌙 НОЧЬЮ" else 0
 
-    # Тёмные интервалы: [0, sr_min) и [ss_min, 1440)
     dark_intervals = [(0, sr_min), (ss_min, 1440)]
 
-    # Считаем количество тёмных минут в периоде
     dark_minutes = 0
     for d_start, d_end in dark_intervals:
         lo = max(start, d_start)
@@ -686,7 +682,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     forecast_block = ""
     if next_period != "нет данных":
-        # Ночь для прогноза — 0/1/2 балла по реальному рассвету/закату
         period_night_score = night_score_for_period(
             next_period_title,
             w.get("sunrise"),
@@ -708,14 +703,21 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "humidity": m.get("humidity"),
             "night_score": period_night_score,
         }
-        period_risk = analyze_risks(period_data)
+        period_risk = analyze_risks(period_data, is_forecast=True)
         period_bar = build_risk_bar(period_risk["score"])
         period_verdict = get_rider_verdict(period_risk["score"])
+
+        # Строки рисков прогноза (максимум 4)
+        period_risks = period_risk["risks"][:4]
+        period_risks_text = "\n".join(period_risks) if period_risks else ""
 
         if period_bar:
             forecast_block = f"{next_period_title} | {period_bar}\n{next_period}\n{period_verdict}"
         else:
             forecast_block = f"{next_period_title}\n{next_period}\n{period_verdict}"
+
+        if period_risks_text:
+            forecast_block += f"\n{period_risks_text}"
 
     # Сноска про осадки
     precip_note = ""
@@ -732,13 +734,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # === ЗАВТРА ===
     tomorrow_block = ""
     if f:
-        # Завтра днём — ночь не учитываем
         f["night_score"] = 0
         fa = analyze_risks(f, is_forecast=True)
         fa_verdict = get_rider_verdict(fa["score"])
         cond_low = shorten_cond(f.get("condition_text", ""))
         emoji_short = f.get("condition_emoji", "")
         tomorrow_bar = build_risk_bar(fa["score"])
+
+        # Строки рисков завтра (максимум 4)
+        tomorrow_risks = fa["risks"][:4]
+        tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
 
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
@@ -755,6 +760,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             tomorrow_block = f"\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_verdict}"
         else:
             tomorrow_block = f"\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_verdict}"
+
+        if tomorrow_risks_text:
+            tomorrow_block += f"\n{tomorrow_risks_text}"
 
     # Совет
     tip = get_tip(
