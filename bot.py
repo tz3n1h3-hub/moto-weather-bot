@@ -197,6 +197,22 @@ def set_last_morning_date(date_str):
         _redis("set", "last_morning_date", date_str)
 
 
+# ============ ХРАНЕНИЕ ID ПОСЛЕДНЕГО СООБЩЕНИЯ БОТА ============
+def get_last_bot_msg(chat_id):
+    if UPSTASH_ENABLED:
+        result = _redis("get", f"last_msg:{chat_id}")
+        try:
+            return int(result) if result else None
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def set_last_bot_msg(chat_id, message_id):
+    if UPSTASH_ENABLED:
+        _redis("set", f"last_msg:{chat_id}", message_id)
+
+
 # ============ ЦИТАТЫ ============
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
@@ -427,34 +443,25 @@ ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 Отписаться: /unsubscribe"""
 
 
-# ============ ХЕЛПЕР ============
-def edit_or_send(chat_id, message_id, text, reply_markup):
-    try:
-        bot.edit_message_text(
-            chat_id=chat_id, message_id=message_id,
-            text=text, parse_mode="HTML", reply_markup=reply_markup
-        )
-        return True
-    except Exception as e:
-        err = str(e).lower()
-        if "message is not modified" in err:
-            return True
+# ============ ЕДИНАЯ ТОЧКА ОТПРАВКИ ============
+def send_or_edit(chat_id, text, reply_markup=None):
+    """
+    Удаляет последнее сообщение бота (если есть) и шлёт новое.
+    Запоминает id нового сообщения — для следующего цикла.
+    """
+    last_id = get_last_bot_msg(chat_id)
+    if last_id:
         try:
-            bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
-        except Exception as e2:
-            print(f"⚠️ edit_or_send: {e2}", flush=True)
-        return False
-
-
-def delete_and_send(chat_id, old_message_id, text, reply_markup):
+            bot.delete_message(chat_id, last_id)
+        except Exception as e:
+            print(f"⚠️ delete last_msg {last_id}: {e}", flush=True)
     try:
-        bot.delete_message(chat_id, old_message_id)
+        sent = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
+        set_last_bot_msg(chat_id, sent.message_id)
+        return sent.message_id
     except Exception as e:
-        print(f"⚠️ delete: {e}", flush=True)
-    try:
-        bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
-    except Exception as e:
-        print(f"⚠️ send: {e}", flush=True)
+        print(f"⚠️ send_or_edit: {e}", flush=True)
+        return None
 
 
 # ============ СБОРКА СООБЩЕНИЯ ============
@@ -652,7 +659,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_bar = build_risk_bar(period_risk["score"])
         period_verdict = get_rider_verdict(period_risk["score"])
 
-        # next_period уже отформатирован с NBSP в weather.py
         if period_bar:
             forecast_block = f"{next_period_title} | {period_bar}\n{next_period}\n{period_verdict}"
         else:
@@ -790,10 +796,12 @@ def morning_broadcast_loop():
 
                 for uid in subs:
                     try:
-                        bot.send_message(
+                        # Рассылка НЕ удаляет старое — иначе снесёт пользователю что-то
+                        sent_msg = bot.send_message(
                             uid, msg, parse_mode="HTML",
                             reply_markup=get_morning_keyboard()
                         )
+                        set_last_bot_msg(uid, sent_msg.message_id)
                         sent += 1
                         time.sleep(0.05)
                     except ApiTelegramException as e:
@@ -815,6 +823,28 @@ def morning_broadcast_loop():
         time.sleep(60)
 
 
+# ============ ОТПРАВКА ПОГОДЫ ============
+def send_weather(chat_id):
+    """Собирает погоду и отправляет через send_or_edit (удаляет старое)."""
+    try:
+        w = get_weather()
+        if not w or not w.get("m"):
+            send_or_edit(chat_id, "❌ Небо молчит.", None)
+            return
+
+        avg_w = merge_weather_data(w)
+        a_city = analyze_risks(avg_w)
+        short = get_short_forecast()
+        f = get_forecast_tomorrow()
+
+        msg = build_weather_message(w, a_city, short, f, is_morning=False)
+        send_or_edit(chat_id, msg, get_after_weather_keyboard(is_subscribed(chat_id)))
+    except Exception as e:
+        print(f"❌ send_weather: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+
 # ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -823,19 +853,14 @@ def start(message):
         info = bot.get_me()
 
         if info.username != MY_BOT_USERNAME:
-            bot.send_message(
+            send_or_edit(
                 message.chat.id,
                 f"⚠️ <b>Это поддельный бот!</b>\nНастоящий: @{MY_BOT_USERNAME}",
-                parse_mode="HTML"
+                None
             )
             return
 
-        bot.send_message(
-            message.chat.id,
-            START_TEXT,
-            parse_mode="HTML",
-            reply_markup=get_main_keyboard()
-        )
+        send_or_edit(message.chat.id, START_TEXT, get_main_keyboard())
     except Exception as e:
         print(f"❌ /start: {e}", flush=True)
 
@@ -844,8 +869,7 @@ def start(message):
 def weather_cmd(m):
     try:
         save_user(m.chat.id)
-        loading = bot.send_message(m.chat.id, "⏳ Смотрю на небо...")
-        send_weather(m.chat.id, old_message_id=loading.message_id)
+        send_weather(m.chat.id)
     except Exception as e:
         print(f"❌ /weather: {e}", flush=True)
 
@@ -854,8 +878,8 @@ def weather_cmd(m):
 def about_cmd(m):
     try:
         save_user(m.chat.id)
-        bot.send_message(m.chat.id, ABOUT_TEXT, parse_mode="HTML",
-                         reply_markup=get_about_keyboard())
+        kb = get_about_keyboard(is_subscribed(m.chat.id))
+        send_or_edit(m.chat.id, ABOUT_TEXT, kb)
     except Exception as e:
         print(f"❌ /about: {e}", flush=True)
 
@@ -865,11 +889,10 @@ def subscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if is_subscribed(m.chat.id):
-            bot.send_message(m.chat.id, ALREADY_SUBSCRIBED, parse_mode="HTML",
-                             reply_markup=get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed=True)
+            send_or_edit(m.chat.id, ALREADY_SUBSCRIBED, kb)
             return
-        bot.send_message(m.chat.id, SUBSCRIBE_TEXT, parse_mode="HTML",
-                         reply_markup=get_subscribe_keyboard())
+        send_or_edit(m.chat.id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
     except Exception as e:
         print(f"❌ /subscribe: {e}", flush=True)
 
@@ -879,11 +902,10 @@ def unsubscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if not is_subscribed(m.chat.id):
-            bot.send_message(m.chat.id, "ℹ️ Ты не подписан.", parse_mode="HTML",
-                             reply_markup=get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed=False)
+            send_or_edit(m.chat.id, "ℹ️ Ты не подписан.", kb)
             return
-        bot.send_message(m.chat.id, UNSUBSCRIBE_PROMPT, parse_mode="HTML",
-                         reply_markup=get_unsubscribe_keyboard())
+        send_or_edit(m.chat.id, UNSUBSCRIBE_PROMPT, get_unsubscribe_keyboard())
     except Exception as e:
         print(f"❌ /unsubscribe: {e}", flush=True)
 
@@ -915,89 +937,65 @@ def callback(call):
             pass
 
         chat_id = call.message.chat.id
-        msg_id = call.message.message_id
 
-        if call.data in ("weather", "update"):
-            if call.data == "update":
-                bot.answer_callback_query(call.id, "🔄 Обновляю...", cache_time=3)
-            else:
-                bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=3)
-            send_weather(chat_id, old_message_id=msg_id)
+        if call.data == "weather":
+            bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=3)
+            send_weather(chat_id)
+
+        elif call.data == "update":
+            bot.answer_callback_query(call.id, "🔄 Обновляю...", cache_time=3)
+            send_weather(chat_id)
 
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅", cache_time=3)
-            edit_or_send(chat_id, msg_id, ABOUT_TEXT, get_about_keyboard())
+            kb = get_about_keyboard(is_subscribed(chat_id))
+            send_or_edit(chat_id, ABOUT_TEXT, kb)
 
         elif call.data == "subscribe":
             if is_subscribed(chat_id):
                 bot.answer_callback_query(call.id, "ℹ️ Уже подписан", cache_time=3)
-                edit_or_send(chat_id, msg_id, ALREADY_SUBSCRIBED,
-                             get_main_keyboard())
+                kb = get_about_keyboard(is_subscribed=True)
+                send_or_edit(chat_id, ALREADY_SUBSCRIBED, kb)
             else:
                 bot.answer_callback_query(call.id, "🌅", cache_time=3)
-                edit_or_send(chat_id, msg_id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
+                send_or_edit(chat_id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
 
         elif call.data == "subscribe_confirm":
             save_subscriber(chat_id)
             bot.answer_callback_query(call.id, "✅ Подписка", cache_time=3)
-            edit_or_send(chat_id, msg_id, SUBSCRIBE_CONFIRMED,
-                         get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed=True)
+            send_or_edit(chat_id, SUBSCRIBE_CONFIRMED, kb)
 
         elif call.data == "subscribe_cancel":
             bot.answer_callback_query(call.id, "❌", cache_time=3)
-            edit_or_send(chat_id, msg_id, SUBSCRIBE_CANCELED,
-                         get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed(chat_id))
+            send_or_edit(chat_id, SUBSCRIBE_CANCELED, kb)
+
+        elif call.data == "unsubscribe":
+            if not is_subscribed(chat_id):
+                bot.answer_callback_query(call.id, "ℹ️ Не подписан", cache_time=3)
+                kb = get_about_keyboard(is_subscribed=False)
+                send_or_edit(chat_id, "ℹ️ Ты не подписан.", kb)
+            else:
+                bot.answer_callback_query(call.id, "❌", cache_time=3)
+                send_or_edit(chat_id, UNSUBSCRIBE_PROMPT, get_unsubscribe_keyboard())
 
         elif call.data == "unsubscribe_confirm":
             remove_subscriber(chat_id)
             bot.answer_callback_query(call.id, "❌ Отписан", cache_time=3)
-            edit_or_send(chat_id, msg_id, UNSUBSCRIBED,
-                         get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed=False)
+            send_or_edit(chat_id, UNSUBSCRIBED, kb)
 
         elif call.data == "unsubscribe_cancel":
             bot.answer_callback_query(call.id, "✅ Остаёмся", cache_time=3)
-            edit_or_send(chat_id, msg_id, UNSUBSCRIBE_CANCELED,
-                         get_main_keyboard())
+            kb = get_about_keyboard(is_subscribed=True)
+            send_or_edit(chat_id, UNSUBSCRIBE_CANCELED, kb)
 
         else:
             bot.answer_callback_query(call.id, "❓", cache_time=3)
 
     except Exception as e:
         print(f"❌ callback: {type(e).__name__}: {e}", flush=True)
-
-
-# ============ ОТПРАВКА ПОГОДЫ ============
-def send_weather(chat_id, old_message_id=None):
-    try:
-        w = get_weather()
-        if not w or not w.get("m"):
-            if old_message_id:
-                try:
-                    bot.delete_message(chat_id, old_message_id)
-                except Exception:
-                    pass
-            bot.send_message(chat_id, "❌ Небо молчит.")
-            return
-
-        avg_w = merge_weather_data(w)
-        a_city = analyze_risks(avg_w)
-
-        short = get_short_forecast()
-        f = get_forecast_tomorrow()
-
-        msg = build_weather_message(w, a_city, short, f, is_morning=False)
-
-        if old_message_id:
-            delete_and_send(chat_id, old_message_id, msg,
-                            get_after_weather_keyboard())
-        else:
-            bot.send_message(chat_id, msg, parse_mode="HTML",
-                             reply_markup=get_after_weather_keyboard())
-
-    except Exception as e:
-        print(f"❌ send_weather: {type(e).__name__}: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
 
 
 # ============ FLASK ============
