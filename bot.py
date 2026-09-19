@@ -773,15 +773,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # Совет
     tip = get_tip(
         a_city.get("feels_like", m.get("feels_like") or 0),
-        m.get("humidity"),
+        avg_w.get("humidity") or m.get("humidity"),
         m.get("is_rain", False) or ww.get("is_rain", False),
         w.get("is_night", False),
-        (m.get("wind_speed") or om.get("wind_speed") or 0),
+        avg_w.get("wind_speed") or m.get("wind_speed") or 0,
         m.get("is_thunder", False),
-        m.get("visibility"),
-        wind_gust=(max([g for g in [m.get("wind_gust"), om.get("wind_gust"),
-                                    ww.get("wind_gust"), ow.get("wind_gust")]
-                        if g is not None], default=0)),
+        avg_w.get("visibility") or m.get("visibility"),
+        wind_gust=(avg_w.get("wind_gust") or 0),
         uv_index=(uv if uv is not None else 0),
     )
 
