@@ -635,7 +635,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     forecast_block = ""
     if next_period != "нет данных":
-        # Считаем риск ближайшего периода через analyze_risks
         period_data = {
             "temp": short.get("current_temp") or (m.get("temp") or 0),
             "feels_like": short.get("current_temp") or (m.get("temp") or 0),
@@ -653,25 +652,20 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_bar = build_risk_bar(period_risk["score"])
         period_verdict = get_rider_verdict(period_risk["score"])
 
-        # Чистим период от технических скобок (16°C, ясно · 3м/с)
-        period_clean = next_period
-        for cap in ["Переменная облачность", "Пасмурно", "Ясно", "Облачно",
-                    "Малооблачно", "Дождь", "Снег", "Туман"]:
-            period_clean = period_clean.replace(cap, cap.lower())
-
+        # next_period уже отформатирован с NBSP в weather.py
         if period_bar:
-            forecast_block = f"{next_period_title} | {period_bar}\n{period_clean}\n{period_verdict}"
+            forecast_block = f"{next_period_title} | {period_bar}\n{next_period}\n{period_verdict}"
         else:
-            forecast_block = f"{next_period_title}\n{period_clean}\n{period_verdict}"
+            forecast_block = f"{next_period_title}\n{next_period}\n{period_verdict}"
 
-    # Сноска про осадки — берём проценты из next_period и rain_prob завтра
+    # Сноска про осадки — только если вероятности ≥ 30 %
     precip_note = ""
     prob_now = re.search(r"дождь\s*(\d+)\s*%", next_period or "")
     prob_tomorrow = f.get("rain_prob") if f else None
     probs_found = []
-    if prob_now:
+    if prob_now and int(prob_now.group(1)) >= 30:
         probs_found.append(prob_now.group(1))
-    if prob_tomorrow:
+    if prob_tomorrow and prob_tomorrow >= 30:
         probs_found.append(str(prob_tomorrow))
     if probs_found:
         precip_note = f"❗ дождь {' % / '.join(probs_found)} % — вероятность, что дождь пойдёт"
@@ -680,12 +674,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     tomorrow_block = ""
     if f:
         fa = analyze_risks(f, is_forecast=True)
-        fa_short = get_short_verdict(fa["score"])
+        fa_verdict = get_rider_verdict(fa["score"])
         cond_low = shorten_cond(f.get("condition_text", ""))
         emoji_short = f.get("condition_emoji", "")
         tomorrow_bar = build_risk_bar(fa["score"])
 
-        # Линия: 12–18 °C · 4 м/с (до 8 м/с) · дождь 70 %
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
             f"{f['wind_speed']}{NBSP}м/с"
@@ -693,14 +686,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if f.get("wind_gust"):
             tomorrow_line += f" (до {fmt_num(f['wind_gust'])}{NBSP}м/с)"
         if f.get("rain_prob") and f["rain_prob"] > 30:
-            tomorrow_line += f" · дождь {f['rain_prob']}%"
+            tomorrow_line += f" · дождь {f['rain_prob']}{NBSP}%"
         else:
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
 
         if tomorrow_bar:
-            tomorrow_block = f"\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_short}"
+            tomorrow_block = f"\n\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_verdict}"
         else:
-            tomorrow_block = f"\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_short}"
+            tomorrow_block = f"\n\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_verdict}"
 
     # Совет
     tip = get_tip(
