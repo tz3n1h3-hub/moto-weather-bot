@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import re
 import threading
 import time
 from datetime import datetime
@@ -278,7 +279,6 @@ def shorten_cond(cond):
 
 
 def fmt_num(v):
-    """Формат числа: 11.0 → 11, 11.5 → 11,5"""
     if v is None:
         return "—"
     if isinstance(v, float):
@@ -291,7 +291,6 @@ def fmt_num(v):
 
 
 def build_risk_bar(score):
-    """🔴 Бар: 💀 (цветной, видно в любой теме). 0 → пусто."""
     score = max(0, min(10, score))
     if score == 0:
         return ""
@@ -299,11 +298,6 @@ def build_risk_bar(score):
 
 
 def fmt_range(values, unit=""):
-    """
-    Диапазон min–max по живым источникам.
-    Если все значения равны — одно число.
-    Если значений нет — «—».
-    """
     vals = [v for v in values if v is not None]
     if not vals:
         return f"—{NBSP}{unit}" if unit else "—"
@@ -465,7 +459,6 @@ def delete_and_send(chat_id, old_message_id, text, reply_markup):
 
 # ============ СБОРКА СООБЩЕНИЯ ============
 def build_weather_message(w, a_city, short, f, is_morning=False):
-    # ЗАЩИТА: short всегда dict
     if not isinstance(short, dict):
         print(f"⚠️ short не dict: type={type(short).__name__}, value={short!r}", flush=True)
         short = {}
@@ -503,7 +496,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     legend_lines.append(f"{src_marker('OW')} — OpenWeatherMap (Минск)")
     legend_text = "\n".join(legend_lines)
 
-    # Сбор значений по живым источникам
+    # Сбор значений
     def gather(key, sources_keys):
         return [src.get(key) for code, src in sources_keys if src]
 
@@ -511,19 +504,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_lines = []
 
-    # Температура — диапазон
     weather_lines.append(f"🌡️ Температура: {fmt_range(gather('temp', src_map), '°C')}")
-
-    # Ощущается — диапазон
     weather_lines.append(f"🤔 Ощущается: {fmt_range(gather('feels_like', src_map), '°C')}")
 
-    # Почва — только OM (единственный источник)
     soil = om.get("soil_temp") if om else None
     weather_lines.append(
         f"🌱 Почва: {fmt_num(soil)}{NBSP}°C" if soil is not None else "🌱 Почва: —"
     )
 
-    # Ветер — диапазон м/с + порывы + направление
     wind_vals = gather("wind_speed", src_map)
     gust_vals = gather("wind_gust", src_map)
 
@@ -531,7 +519,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if any(v is not None for v in wind_vals):
         wind_line += fmt_range(wind_vals, "м/с")
         gmax = max([g for g in gust_vals if g is not None], default=None)
-        if gmax is not None:
+        if gmax is not None and gmax > (max([v for v in wind_vals if v is not None], default=0)):
             wind_line += f" (до {fmt_num(gmax)}{NBSP}м/с)"
         wind_dir = m.get("wind_direction") or om.get("wind_direction")
         if wind_dir and isinstance(wind_dir, str):
@@ -551,11 +539,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    # Видимость — диапазон
     vis_vals = [v for v in gather("visibility", src_map) if v is not None]
     if vis_vals:
         lo, hi = min(vis_vals), max(vis_vals)
-        # диапазон км
         if hi >= 10000:
             vis_str = "10+" + NBSP + "км"
         elif lo == hi:
@@ -568,13 +554,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("👁️ Видимость: —")
 
-    # Влажность — диапазон
     weather_lines.append(f"💧 Влажность: {fmt_range(gather('humidity', src_map), '%')}")
-
-    # Точка росы — диапазон
     weather_lines.append(f"💦 Точка росы: {fmt_range(gather('dew_point', src_map), '°C')}")
 
-    # Облачность — текст из M + % диапазон
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     if cloud_vals:
@@ -589,7 +571,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # Осадки — мм диапазон
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     if precip_vals:
         lo, hi = min(precip_vals), max(precip_vals)
@@ -600,20 +581,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     elif m.get("is_rain"):
         weather_lines.append(f"🌧️ Осадки: {m.get('weather_text') or 'дождь'}")
 
-    # Давление — диапазон
     weather_lines.append(f"📊 Давление: {fmt_range(gather('pressure_mmhg', src_map), 'мм рт. ст.')}")
 
-    # На улице
     twilight = get_twilight_state(w.get("sunrise"), w.get("sunset"))
     weather_lines.append(f"🌇 На улице: {twilight}")
 
-    # Рассвет/закат
     sunrise = w.get("sunrise")
     sunset = w.get("sunset")
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
-    # UV
     uv = avg_uv([m.get("uv_index"), om.get("uv_index"),
                  ww.get("uv_index"), ow.get("uv_index")])
     if uv is not None:
@@ -652,25 +629,54 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
     tech_block = "\n".join(f"✅ {t}" for t in tech)
 
-    # ПРОГНОЗ
+    # === ПРОГНОЗ ===
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
-    next_hour = short.get("next_hour", "нет данных")
 
     forecast_block = ""
     if next_period != "нет данных":
+        # Считаем риск ближайшего периода через analyze_risks
+        period_data = {
+            "temp": short.get("current_temp") or (m.get("temp") or 0),
+            "feels_like": short.get("current_temp") or (m.get("temp") or 0),
+            "wind_speed": (m.get("wind_speed") or om.get("wind_speed") or 0),
+            "wind_gust": max([g for g in [m.get("wind_gust"), om.get("wind_gust"),
+                                           ww.get("wind_gust"), ow.get("wind_gust")]
+                              if g is not None], default=0),
+            "is_rain": "дождь" in (next_period or "").lower() or m.get("is_rain", False),
+            "is_thunder": m.get("is_thunder", False),
+            "visibility": m.get("visibility") or 10000,
+            "dew_point": m.get("dew_point"),
+            "humidity": m.get("humidity"),
+        }
+        period_risk = analyze_risks(period_data)
+        period_bar = build_risk_bar(period_risk["score"])
+        period_verdict = get_rider_verdict(period_risk["score"])
+
+        # Чистим период от технических скобок (16°C, ясно · 3м/с)
         period_clean = next_period
         for cap in ["Переменная облачность", "Пасмурно", "Ясно", "Облачно",
                     "Малооблачно", "Дождь", "Снег", "Туман"]:
             period_clean = period_clean.replace(cap, cap.lower())
-        forecast_block = f"{next_period_title}\n{period_clean}"
 
-    # Сноска про осадки
+        if period_bar:
+            forecast_block = f"{next_period_title} | {period_bar}\n{period_clean}\n{period_verdict}"
+        else:
+            forecast_block = f"{next_period_title}\n{period_clean}\n{period_verdict}"
+
+    # Сноска про осадки — берём проценты из next_period и rain_prob завтра
     precip_note = ""
-    if "%" in next_period or "%" in next_hour:
-        precip_note = "❗ дождь — вероятность, что дождь пойдёт"
+    prob_now = re.search(r"дождь\s*(\d+)\s*%", next_period or "")
+    prob_tomorrow = f.get("rain_prob") if f else None
+    probs_found = []
+    if prob_now:
+        probs_found.append(prob_now.group(1))
+    if prob_tomorrow:
+        probs_found.append(str(prob_tomorrow))
+    if probs_found:
+        precip_note = f"❗ дождь {' % / '.join(probs_found)} % — вероятность, что дождь пойдёт"
 
-    # ЗАВТРА
+    # === ЗАВТРА ===
     tomorrow_block = ""
     if f:
         fa = analyze_risks(f, is_forecast=True)
@@ -678,14 +684,23 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         cond_low = shorten_cond(f.get("condition_text", ""))
         emoji_short = f.get("condition_emoji", "")
         tomorrow_bar = build_risk_bar(fa["score"])
-        tomorrow_block = (
-            f"\n📅 ЗАВТРА | {fa['score']}/10\n"
+
+        # Линия: 12–18 °C · 4 м/с (до 8 м/с) · дождь 70 %
+        tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
-            f"{f['wind_speed']}{NBSP}м/с · {cond_low} {emoji_short}"
+            f"{f['wind_speed']}{NBSP}м/с"
         )
+        if f.get("wind_gust"):
+            tomorrow_line += f" (до {fmt_num(f['wind_gust'])}{NBSP}м/с)"
+        if f.get("rain_prob") and f["rain_prob"] > 30:
+            tomorrow_line += f" · дождь {f['rain_prob']}%"
+        else:
+            tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
+
         if tomorrow_bar:
-            tomorrow_block += f"\n{tomorrow_bar}"
-        tomorrow_block += f"\n{fa_short}"
+            tomorrow_block = f"\n📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}\n{fa_short}"
+        else:
+            tomorrow_block = f"\n📅 ЗАВТРА\n{tomorrow_line}\n{fa_short}"
 
     # Совет
     tip = get_tip(
