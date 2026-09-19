@@ -358,6 +358,67 @@ def wind_dir_short(full):
     return None
 
 
+def _time_to_min(hhmm):
+    """'06:50' → 410 минут."""
+    try:
+        h, m = map(int, hhmm.split(":"))
+        return h * 60 + m
+    except Exception:
+        return None
+
+
+def night_score_for_period(title, sunrise, sunset):
+    """
+    Возвращает 0/1/2 балла риска за темноту периода.
+    0 — светло (<25 % тёмного времени)
+    1 — частично темно (25–74 %)
+    2 — темно (≥75 %)
+    """
+    period_ranges = {
+        "🌅 УТРОМ":    (6 * 60,  12 * 60),
+        "☀️ ДНЁМ":      (12 * 60, 18 * 60),
+        "🌆 ВЕЧЕРОМ":  (18 * 60, 24 * 60),
+        "🌙 НОЧЬЮ":    (0,       6 * 60),
+    }
+
+    rng = period_ranges.get(title)
+    if not rng:
+        # Неизвестный период — fallback
+        return 2 if title == "🌙 НОЧЬЮ" else 0
+
+    start, end = rng
+    period_len = end - start
+    if period_len <= 0:
+        return 0
+
+    sr_min = _time_to_min(sunrise) if sunrise else None
+    ss_min = _time_to_min(sunset) if sunset else None
+
+    if sr_min is None or ss_min is None:
+        # Нет данных — fallback: НОЧЬЮ → 2
+        return 2 if title == "🌙 НОЧЬЮ" else 0
+
+    # Тёмные интервалы: [0, sr_min) и [ss_min, 1440)
+    dark_intervals = [(0, sr_min), (ss_min, 1440)]
+
+    # Считаем количество тёмных минут в периоде
+    dark_minutes = 0
+    for d_start, d_end in dark_intervals:
+        lo = max(start, d_start)
+        hi = min(end, d_end)
+        if hi > lo:
+            dark_minutes += (hi - lo)
+
+    ratio = dark_minutes / period_len
+
+    if ratio >= 0.75:
+        return 2
+    elif ratio >= 0.25:
+        return 1
+    else:
+        return 0
+
+
 # ============ ТЕКСТЫ ============
 START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
 
@@ -625,6 +686,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     forecast_block = ""
     if next_period != "нет данных":
+        # Ночь для прогноза — 0/1/2 балла по реальному рассвету/закату
+        period_night_score = night_score_for_period(
+            next_period_title,
+            w.get("sunrise"),
+            w.get("sunset"),
+        )
+
         period_data = {
             "temp": short.get("current_temp") or (m.get("temp") or 0),
             "feels_like": short.get("current_temp") or (m.get("temp") or 0),
@@ -638,6 +706,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "visibility": m.get("visibility") or 10000,
             "dew_point": m.get("dew_point"),
             "humidity": m.get("humidity"),
+            "night_score": period_night_score,
         }
         period_risk = analyze_risks(period_data)
         period_bar = build_risk_bar(period_risk["score"])
@@ -663,6 +732,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # === ЗАВТРА ===
     tomorrow_block = ""
     if f:
+        # Завтра днём — ночь не учитываем
+        f["night_score"] = 0
         fa = analyze_risks(f, is_forecast=True)
         fa_verdict = get_rider_verdict(fa["score"])
         cond_low = shorten_cond(f.get("condition_text", ""))
