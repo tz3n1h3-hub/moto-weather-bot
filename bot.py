@@ -531,6 +531,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     sources_live = w.get("sources_live", [])
     formula = w.get("formula", "")
 
+    # Средние значения из merge — для прогноза (чтобы не смешивать источники)
+    avg_w = a_city.get("avg_w") if isinstance(a_city, dict) else None
+    if not avg_w:
+        avg_w = {}
+
     # Шапка
     weekday = WEEKDAYS_RU[now_dt.weekday()]
     date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
@@ -688,19 +693,18 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             w.get("sunset"),
         )
 
+        # Для прогноза берём средние humidity / dew_point из avg_w
         period_data = {
-            "temp": short.get("current_temp") or (m.get("temp") or 0),
-            "feels_like": short.get("current_temp") or (m.get("temp") or 0),
-            "wind_speed": (m.get("wind_speed") or om.get("wind_speed") or 0),
-            "wind_gust": max([g for g in [m.get("wind_gust"), om.get("wind_gust"),
-                                           ww.get("wind_gust"), ow.get("wind_gust")]
-                              if g is not None], default=0),
-            "is_rain": "дождь" in (next_period or "").lower() or m.get("is_rain", False),
-            "is_thunder": m.get("is_thunder", False),
-            "is_hail": m.get("is_hail", False),
-            "visibility": m.get("visibility") or 10000,
-            "dew_point": m.get("dew_point"),
-            "humidity": m.get("humidity"),
+            "temp": avg_w.get("temp") or (m.get("temp") or 0),
+            "feels_like": avg_w.get("feels_like") or (m.get("feels_like") or 0),
+            "wind_speed": avg_w.get("wind_speed") or (m.get("wind_speed") or 0),
+            "wind_gust": avg_w.get("wind_gust") or 0,
+            "is_rain": "дождь" in (next_period or "").lower() or avg_w.get("is_rain", False),
+            "is_thunder": avg_w.get("is_thunder", False),
+            "is_hail": avg_w.get("is_hail", False),
+            "visibility": avg_w.get("visibility") or 10000,
+            "dew_point": avg_w.get("dew_point"),
+            "humidity": avg_w.get("humidity"),
             "night_score": period_night_score,
         }
         period_risk = analyze_risks(period_data, is_forecast=True)
@@ -734,7 +738,17 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # === ЗАВТРА ===
     tomorrow_block = ""
     if f:
+        # Для завтра тоже используем средние, чтобы не смешивать
         f["night_score"] = 0
+        # Средние данные для завтра
+        f["temp"] = avg_w.get("temp") or (m.get("temp") or 0)
+        f["feels_like"] = avg_w.get("feels_like") or (m.get("feels_like") or 0)
+        f["wind_speed"] = avg_w.get("wind_speed") or (m.get("wind_speed") or 0)
+        f["wind_gust"] = avg_w.get("wind_gust") or 0
+        f["dew_point"] = avg_w.get("dew_point")
+        f["humidity"] = avg_w.get("humidity")
+        f["visibility"] = avg_w.get("visibility") or 10000
+
         fa = analyze_risks(f, is_forecast=True)
         fa_verdict = get_rider_verdict(fa["score"])
         cond_low = shorten_cond(f.get("condition_text", ""))
@@ -878,6 +892,7 @@ def morning_broadcast_loop():
                 a_city = analyze_risks(avg_w)
                 a_city["agreement"] = avg_w.get("agreement")
                 a_city["agree_values"] = avg_w.get("agree_values")
+                a_city["avg_w"] = avg_w
 
                 short = get_short_forecast()
                 f = get_forecast_tomorrow()
@@ -931,6 +946,7 @@ def send_weather(chat_id):
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
+        a_city["avg_w"] = avg_w
 
         short = get_short_forecast()
         f = get_forecast_tomorrow()
