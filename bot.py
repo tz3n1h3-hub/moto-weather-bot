@@ -693,7 +693,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             w.get("sunset"),
         )
 
-        # Для прогноза берём средние humidity / dew_point из avg_w
         period_data = {
             "temp": avg_w.get("temp") or (m.get("temp") or 0),
             "feels_like": avg_w.get("feels_like") or (m.get("feels_like") or 0),
@@ -738,16 +737,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # === ЗАВТРА ===
     tomorrow_block = ""
     if f:
-        # Для завтра тоже используем средние, чтобы не смешивать
+        # Завтра днём — ночь не учитываем
         f["night_score"] = 0
-        # Средние данные для завтра
-        f["temp"] = avg_w.get("temp") or (m.get("temp") or 0)
-        f["feels_like"] = avg_w.get("feels_like") or (m.get("feels_like") or 0)
-        f["wind_speed"] = avg_w.get("wind_speed") or (m.get("wind_speed") or 0)
-        f["wind_gust"] = avg_w.get("wind_gust") or 0
-        f["dew_point"] = avg_w.get("dew_point")
-        f["humidity"] = avg_w.get("humidity")
-        f["visibility"] = avg_w.get("visibility") or 10000
+        # НЕ перезаписываем f средними из avg_w —
+        # прогноз завтра должен использовать свои данные
 
         fa = analyze_risks(f, is_forecast=True)
         fa_verdict = get_rider_verdict(fa["score"])
@@ -755,13 +748,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         emoji_short = f.get("condition_emoji", "")
         tomorrow_bar = build_risk_bar(fa["score"])
 
-        # Строки рисков завтра (максимум 4)
         tomorrow_risks = fa["risks"][:4]
         tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
 
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
-            f"{f['wind_speed']}{NBSP}м/с"
+            f"{fmt_num(f['wind_speed'])}{NBSP}м/с"
         )
         if f.get("wind_gust"):
             tomorrow_line += f" (до {fmt_num(f['wind_gust'])}{NBSP}м/с)"
