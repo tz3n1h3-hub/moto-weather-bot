@@ -716,6 +716,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         uv_index=(uv if uv is not None else 0),
     )
 
+    # ⚠️ ВАЖНО: .strip() НЕ применяется к tomorrow_block и forecast_block
     msg = f"""{header_line1}
 {header_line2}
 —————
@@ -736,8 +737,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 <b>ПЕРЕД ВЫЕЗДОМ</b>
 {tech_block}
 —————
-{forecast_block.strip()}
-{tomorrow_block.strip()}"""
+{forecast_block}
+{tomorrow_block}"""
 
     if precip_note:
         msg += f"\n\n{precip_note}"
@@ -796,7 +797,6 @@ def morning_broadcast_loop():
 
                 for uid in subs:
                     try:
-                        # Рассылка НЕ удаляет старое — иначе снесёт пользователю что-то
                         sent_msg = bot.send_message(
                             uid, msg, parse_mode="HTML",
                             reply_markup=get_morning_keyboard()
@@ -825,7 +825,6 @@ def morning_broadcast_loop():
 
 # ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
-    """Собирает погоду и отправляет через send_or_edit (удаляет старое)."""
     try:
         w = get_weather()
         if not w or not w.get("m"):
