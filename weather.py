@@ -14,6 +14,8 @@ from config import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+NBSP = "\u00A0"
+
 
 # ============ ГЛОБАЛЬНЫЙ КЭШ ============
 _open_meteo_cache = {"data": None, "ts": 0}
@@ -429,7 +431,6 @@ def _fetch_wttr():
 
 
 def _wttr_to_current(wttr_data):
-    """wttr current_condition → нормализованный dict (отдельный источник W)."""
     if not wttr_data:
         return None
     try:
@@ -744,7 +745,6 @@ def get_weather():
         sunset = to_hm(sunset_iso)
         is_night = is_night_now(sunrise, sunset)
 
-        # ---- M ----
         m_data = None
         if metar:
             m_temp = metar.get("temp", 0)
@@ -778,7 +778,6 @@ def get_weather():
                 "obs_time": metar.get("obs_time"),
             }
 
-        # ---- OM ----
         om_data = None
         cur = (forecast_data or {}).get("current", {})
         if cur and forecast_src == "Open-Meteo":
@@ -808,10 +807,7 @@ def get_weather():
             if om_data["dew_point"] is None and om_humidity is not None:
                 om_data["dew_point"] = calculate_dew_point(om_temp, om_humidity)
 
-        # ---- W ----
         w_data = _wttr_to_current(wttr_raw)
-
-        # ---- OW ----
         ow_data = _owm_to_current(owm_raw)
 
         if not any([m_data, om_data, w_data, ow_data]):
@@ -864,7 +860,6 @@ def get_forecast_tomorrow():
         temp_avg = round((temp_max + temp_min) / 2)
         weather_code = daily["weather_code"][1]
         precip_sum = daily.get("precipitation_sum", [0, 0])[1]
-        # Проценты дождя на завтра
         daily_probs = daily.get("precipitation_probability_max", [])
         rain_prob = daily_probs[1] if len(daily_probs) > 1 else None
         hourly_times = hourly.get("time", [])
@@ -990,9 +985,9 @@ def get_short_forecast():
             _, cond = _wmo_emoji(code)
             prob = probs[next_idx] if next_idx < len(probs) else None
             if prob is not None and prob > 30:
-                next_hour = f"{t}°C, {cond} · {w}м/с · дождь {prob}%"
+                next_hour = f"{t}{NBSP}°C · {w}{NBSP}м/с · {cond.lower()} · дождь {prob}{NBSP}%"
             else:
-                next_hour = f"{t}°C, {cond} · {w}м/с"
+                next_hour = f"{t}{NBSP}°C · {w}{NBSP}м/с · {cond.lower()}"
         else:
             next_hour = "нет данных"
         target_hour = (current_hour + 3) % 24
@@ -1026,9 +1021,9 @@ def get_short_forecast():
             _, cond = _wmo_emoji(period_codes[0])
             max_prob = max(period_probs) if period_probs else None
             if max_prob is not None and max_prob > 30:
-                next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с · дождь {max_prob}%"
+                next_period_value = f"{avg_t}{NBSP}°C · {avg_w}{NBSP}м/с · {cond.lower()} · дождь {max_prob}{NBSP}%"
             else:
-                next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с"
+                next_period_value = f"{avg_t}{NBSP}°C · {avg_w}{NBSP}м/с · {cond.lower()}"
         else:
             next_period_value = "нет данных"
         print(f"✅ Short ({src}): {next_hour} | {next_title}: {next_period_value}", flush=True)
@@ -1050,7 +1045,6 @@ def get_short_forecast():
 
 # ============ УСРЕДНЕНИЕ ПО ЖИВЫМ ИСТОЧНИКАМ ============
 def merge_weather_data(w):
-    """Среднее по живым источникам M / OM / W / OW. Формула — динамическая."""
     if not w:
         return None
     m = w.get("m") or {}
