@@ -127,7 +127,6 @@ def get_twilight_state(sunrise=None, sunset=None):
         h_e, m_e = map(int, sunset.split(":"))
         sr = now.replace(hour=h_s, minute=m_s, second=0, microsecond=0)
         ss = now.replace(hour=h_e, minute=m_e, second=0, microsecond=0)
-        # окна ±60 мин вокруг рассвета/заката
         if sr - timedelta(hours=1) <= now < sr:
             return "рассветает"
         if sr <= now < sr + timedelta(hours=1):
@@ -163,7 +162,6 @@ def calculate_feels_like(temp, wind_speed):
 
 
 def calculate_dew_point(temp, humidity):
-    """🔴 Приблизительный расчёт точки росы из T и RH."""
     if temp is None or humidity is None:
         return None
     try:
@@ -370,7 +368,7 @@ def get_metar_data():
         return None
 
 
-        # ============ OPEN-METEO ============
+# ============ OPEN-METEO ============
 def _fetch_open_meteo():
     global _open_meteo_cache
     if _open_meteo_cache["data"] and (time.time() - _open_meteo_cache["ts"]) < 300:
@@ -480,7 +478,13 @@ def _wttr_to_hourly(wttr_data):
     if not wttr_data:
         return None
     try:
-        result = {"time": [], "temperature_2m": [], "wind_speed_10m": [], "weather_code": []}
+        result = {
+            "time": [],
+            "temperature_2m": [],
+            "wind_speed_10m": [],
+            "weather_code": [],
+            "precipitation_probability": [],
+        }
         code_map = {
             "113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
             "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
@@ -505,6 +509,11 @@ def _wttr_to_hourly(wttr_data):
                 result["wind_speed_10m"].append(round(float(slot.get("windspeedKmph", 0)) / 3.6, 1))
                 wttr_code = slot.get("weatherCode", "113")
                 result["weather_code"].append(code_map.get(wttr_code, 0))
+                try:
+                    chance = int(slot.get("chanceofrain", 0))
+                except (ValueError, TypeError):
+                    chance = 0
+                result["precipitation_probability"].append(chance)
         return result
     except Exception as e:
         print(f"wttr.in: ошибка hourly {e}", flush=True)
@@ -516,9 +525,15 @@ def _wttr_to_daily(wttr_data):
         return None
     try:
         result = {
-            "time": [], "temperature_2m_max": [], "temperature_2m_min": [],
-            "weather_code": [], "wind_speed_10m_max": [], "precipitation_sum": [],
-            "sunrise": [], "sunset": [],
+            "time": [],
+            "temperature_2m_max": [],
+            "temperature_2m_min": [],
+            "weather_code": [],
+            "wind_speed_10m_max": [],
+            "precipitation_sum": [],
+            "precipitation_probability_max": [],
+            "sunrise": [],
+            "sunset": [],
         }
         code_map = {"113": 0, "116": 2, "119": 3, "122": 3, "143": 45,
                     "248": 45, "260": 45, "200": 95, "386": 95, "392": 95,
@@ -556,6 +571,15 @@ def _wttr_to_daily(wttr_data):
                 precip += float(slot.get("precipMM", 0))
             result["wind_speed_10m_max"].append(round(max_wind))
             result["precipitation_sum"].append(round(precip, 1))
+            max_chance = 0
+            for slot in day.get("hourly", []):
+                try:
+                    c = int(slot.get("chanceofrain", 0))
+                    if c > max_chance:
+                        max_chance = c
+                except (ValueError, TypeError):
+                    pass
+            result["precipitation_probability_max"].append(max_chance)
         return result
     except Exception as e:
         print(f"wttr.in: ошибка daily {e}", flush=True)
@@ -593,7 +617,6 @@ def _fetch_owm():
 
 
 def _owm_to_current(owm_data):
-    """OWM Current Weather 2.5 → нормализованный dict."""
     if not owm_data:
         return None
     try:
@@ -635,7 +658,7 @@ def _owm_to_current(owm_data):
         return None
 
 
-# ============ ПРОГНОЗ: OM (основа) или wttr (fallback) ============
+# ============ ПРОГНОЗ: OM или wttr (fallback) ============
 def _get_forecast_data():
     om = _fetch_open_meteo()
     if om and "hourly" in om:
@@ -841,6 +864,9 @@ def get_forecast_tomorrow():
         temp_avg = round((temp_max + temp_min) / 2)
         weather_code = daily["weather_code"][1]
         precip_sum = daily.get("precipitation_sum", [0, 0])[1]
+        # Проценты дождя на завтра
+        daily_probs = daily.get("precipitation_probability_max", [])
+        rain_prob = daily_probs[1] if len(daily_probs) > 1 else None
         hourly_times = hourly.get("time", [])
         hourly_winds = hourly.get("wind_speed_10m", [])
         tomorrow_winds = []
@@ -878,6 +904,7 @@ def get_forecast_tomorrow():
             "wind_speed": wind_speed_avg,
             "wind_gust": wind_gust,
             "rain_total": round(precip_sum, 1) if precip_sum else 0,
+            "rain_prob": rain_prob,
             "condition": f"{emoji} {text}",
             "condition_emoji": emoji,
             "condition_text": text,
@@ -904,6 +931,7 @@ def get_short_forecast():
         temps = hourly.get("temperature_2m", [])
         winds = hourly.get("wind_speed_10m", [])
         codes = hourly.get("weather_code", [])
+        probs = hourly.get("precipitation_probability", [])
         now = datetime.now(MINSK_TZ).replace(tzinfo=None)
         current_hour = now.hour
         today = now.date()
@@ -960,7 +988,11 @@ def get_short_forecast():
             w = round(winds[next_idx])
             code = codes[next_idx]
             _, cond = _wmo_emoji(code)
-            next_hour = f"{t}°C, {cond} · {w}м/с"
+            prob = probs[next_idx] if next_idx < len(probs) else None
+            if prob is not None and prob > 30:
+                next_hour = f"{t}°C, {cond} · {w}м/с · дождь {prob}%"
+            else:
+                next_hour = f"{t}°C, {cond} · {w}м/с"
         else:
             next_hour = "нет данных"
         target_hour = (current_hour + 3) % 24
@@ -976,6 +1008,7 @@ def get_short_forecast():
         period_temps = []
         period_winds = []
         period_codes = []
+        period_probs = []
         for i, t_str in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t_str)
@@ -983,13 +1016,19 @@ def get_short_forecast():
                     period_temps.append(temps[i])
                     period_winds.append(winds[i])
                     period_codes.append(codes[i])
+                    if i < len(probs):
+                        period_probs.append(probs[i])
             except Exception:
                 continue
         if period_temps:
             avg_t = round(sum(period_temps) / len(period_temps))
             avg_w = round(sum(period_winds) / len(period_winds))
             _, cond = _wmo_emoji(period_codes[0])
-            next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с"
+            max_prob = max(period_probs) if period_probs else None
+            if max_prob is not None and max_prob > 30:
+                next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с · дождь {max_prob}%"
+            else:
+                next_period_value = f"{avg_t}°C, {cond} · {avg_w}м/с"
         else:
             next_period_value = "нет данных"
         print(f"✅ Short ({src}): {next_hour} | {next_title}: {next_period_value}", flush=True)
