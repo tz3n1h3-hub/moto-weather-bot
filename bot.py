@@ -277,16 +277,6 @@ def shorten_cond(cond):
     return cond_lower
 
 
-def avg(a, b):
-    if a is None and b is None:
-        return None
-    if a is None:
-        return b
-    if b is None:
-        return a
-    return round((a + b) / 2, 1)
-
-
 def fmt_num(v):
     """Формат числа: 11.0 → 11, 11.5 → 11,5"""
     if v is None:
@@ -308,46 +298,19 @@ def build_risk_bar(score):
     return "💀" * score
 
 
-def fmt_vis_alert(v):
-    """⚠️ если видимость < 500 м."""
-    if v is None:
-        return "—"
-    s = format_visibility(v)
-    if v < 500:
-        return f"⚠️{s}"
-    return s
-
-
-def fmt_field(name, values, unit="", sources=None):
+def fmt_range(values, unit=""):
     """
-    values — список значений по живым источникам.
-    sources — список меток ('M', 'OM', 'W', 'OW'), параллельно values.
+    Диапазон min–max по живым источникам.
+    Если все значения равны — одно число.
+    Если значений нет — «—».
     """
-    pairs = [(s, v) for s, v in zip(sources or [], values) if v is not None]
-    if not pairs:
-        return f"{name}: —"
-    nums = [v for _, v in pairs]
-    avg_val = round(sum(nums) / len(nums), 1) if len(nums) > 1 else nums[0]
-    if unit:
-        main = f"{fmt_num(avg_val)}{NBSP}{unit}"
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return f"—{NBSP}{unit}" if unit else "—"
+    lo, hi = min(vals), max(vals)
+    if lo == hi:
+        s = fmt_num(lo)
     else:
-        main = fmt_num(avg_val)
-    detail = "|".join(f"{s}{fmt_num(v)}" for s, v in pairs)
-    return f"{name}: {main} ({detail})"
-
-
-def fmt_range_optional(v_min, v_max, unit=""):
-    """Диапазон, если значения различаются; иначе одно число."""
-    if v_min is None and v_max is None:
-        return "—"
-    if v_min is None:
-        v_min = v_max
-    if v_max is None:
-        v_max = v_min
-    if v_min == v_max:
-        s = fmt_num(v_min)
-    else:
-        lo, hi = min(v_min, v_max), max(v_min, v_max)
         s = f"{fmt_num(lo)}–{fmt_num(hi)}"
     return f"{s}{NBSP}{unit}" if unit else s
 
@@ -540,40 +503,35 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     legend_lines.append(f"{src_marker('OW')} — OpenWeatherMap (Минск)")
     legend_text = "\n".join(legend_lines)
 
-    # Сбор данных по живым источникам
-    def collect(key, sources_keys):
-        vals, labels = [], []
-        for code, src in sources_keys:
-            v = src.get(key) if src else None
-            if v is not None:
-                vals.append(v)
-                labels.append(code)
-        return vals, labels
+    # Сбор значений по живым источникам
+    def gather(key, sources_keys):
+        return [src.get(key) for code, src in sources_keys if src]
 
     src_map = [("M", m), ("OM", om), ("W", ww), ("OW", ow)]
 
     weather_lines = []
 
-    vals, labels = collect("temp", src_map)
-    weather_lines.append(fmt_field("🌡️ Температура", vals, "°C", labels))
+    # Температура — диапазон
+    weather_lines.append(f"🌡️ Температура: {fmt_range(gather('temp', src_map), '°C')}")
 
-    vals, labels = collect("feels_like", src_map)
-    weather_lines.append(fmt_field("🤔 Ощущается", vals, "°C", labels))
+    # Ощущается — диапазон
+    weather_lines.append(f"🤔 Ощущается: {fmt_range(gather('feels_like', src_map), '°C')}")
 
+    # Почва — только OM (единственный источник)
     soil = om.get("soil_temp") if om else None
     weather_lines.append(
         f"🌱 Почва: {fmt_num(soil)}{NBSP}°C" if soil is not None else "🌱 Почва: —"
     )
 
-    vals_wind, _ = collect("wind_speed", src_map)
-    vals_gust, _ = collect("wind_gust", src_map)
+    # Ветер — диапазон м/с + порывы + направление
+    wind_vals = gather("wind_speed", src_map)
+    gust_vals = gather("wind_gust", src_map)
 
     wind_line = "💨 Ветер: "
-    if vals_wind:
-        wmin, wmax = min(vals_wind), max(vals_wind)
-        wind_line += fmt_range_optional(wmin, wmax, "м/с")
-        if vals_gust:
-            gmax = max(vals_gust)
+    if any(v is not None for v in wind_vals):
+        wind_line += fmt_range(wind_vals, "м/с")
+        gmax = max([g for g in gust_vals if g is not None], default=None)
+        if gmax is not None:
             wind_line += f" (до {fmt_num(gmax)}{NBSP}м/с)"
         wind_dir = m.get("wind_direction") or om.get("wind_direction")
         if wind_dir and isinstance(wind_dir, str):
@@ -593,58 +551,69 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    vals_vis, _ = collect("visibility", src_map)
-    if vals_vis:
-        vmax = max(vals_vis)
-        vmin = min(vals_vis)
-        if vmax >= 10000:
+    # Видимость — диапазон
+    vis_vals = [v for v in gather("visibility", src_map) if v is not None]
+    if vis_vals:
+        lo, hi = min(vis_vals), max(vis_vals)
+        # диапазон км
+        if hi >= 10000:
             vis_str = "10+" + NBSP + "км"
+        elif lo == hi:
+            vis_str = format_visibility(lo)
         else:
-            vis_str = format_visibility(vmax)
-        if vmin < 500:
+            vis_str = f"{format_visibility(lo)}–{format_visibility(hi)}"
+        if lo < 500:
             vis_str = "⚠️" + vis_str
         weather_lines.append(f"👁️ Видимость: {vis_str}")
     else:
         weather_lines.append("👁️ Видимость: —")
 
-    vals, labels = collect("humidity", src_map)
-    weather_lines.append(fmt_field("💧 Влажность", vals, "%", labels))
+    # Влажность — диапазон
+    weather_lines.append(f"💧 Влажность: {fmt_range(gather('humidity', src_map), '%')}")
 
-    vals, labels = collect("dew_point", src_map)
-    weather_lines.append(fmt_field("💦 Точка росы", vals, "°C", labels))
+    # Точка росы — диапазон
+    weather_lines.append(f"💦 Точка росы: {fmt_range(gather('dew_point', src_map), '°C')}")
 
+    # Облачность — текст из M + % диапазон
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
-    vals_cloud, _ = collect("clouds_pct", src_map)
-    if vals_cloud:
-        avg_cloud = round(sum(vals_cloud) / len(vals_cloud))
+    cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
+    if cloud_vals:
+        lo, hi = min(cloud_vals), max(cloud_vals)
+        cloud_pct = f"{fmt_num(lo)}{NBSP}%" if lo == hi else f"{fmt_num(lo)}–{fmt_num(hi)}{NBSP}%"
         if cloud_text:
-            weather_lines.append(f"🌥️ Облачность: {cloud_text} ({avg_cloud}{NBSP}%)")
+            weather_lines.append(f"🌥️ Облачность: {cloud_text} ({cloud_pct})")
         else:
-            weather_lines.append(f"🌥️ Облачность: {avg_cloud}{NBSP}%")
+            weather_lines.append(f"🌥️ Облачность: {cloud_pct}")
     elif cloud_text:
         weather_lines.append(f"🌥️ Облачность: {cloud_text}")
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    vals_precip, _ = collect("precip_mm", src_map)
-    if vals_precip:
-        avg_precip = round(sum(vals_precip) / len(vals_precip), 1)
-        if avg_precip > 0:
-            weather_lines.append(f"🌧️ Осадки: {fmt_num(avg_precip)}{NBSP}мм")
+    # Осадки — мм диапазон
+    precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
+    if precip_vals:
+        lo, hi = min(precip_vals), max(precip_vals)
+        if lo == hi:
+            weather_lines.append(f"🌧️ Осадки: {fmt_num(lo)}{NBSP}мм")
+        else:
+            weather_lines.append(f"🌧️ Осадки: {fmt_num(lo)}–{fmt_num(hi)}{NBSP}мм")
     elif m.get("is_rain"):
         weather_lines.append(f"🌧️ Осадки: {m.get('weather_text') or 'дождь'}")
 
-    vals, labels = collect("pressure_mmhg", src_map)
-    weather_lines.append(fmt_field("📊 Давление", vals, "мм рт. ст.", labels))
+    # Давление — диапазон
+    weather_lines.append(f"📊 Давление: {fmt_range(gather('pressure_mmhg', src_map), 'мм рт. ст.')}")
 
+    # На улице
     twilight = get_twilight_state(w.get("sunrise"), w.get("sunset"))
     weather_lines.append(f"🌇 На улице: {twilight}")
 
+    # Рассвет/закат
     sunrise = w.get("sunrise")
     sunset = w.get("sunset")
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
+    # UV
     uv = avg_uv([m.get("uv_index"), om.get("uv_index"),
                  ww.get("uv_index"), ow.get("uv_index")])
     if uv is not None:
@@ -686,7 +655,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ПРОГНОЗ
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
-    show_next_hour = short.get("show_next_hour", True)
     next_hour = short.get("next_hour", "нет данных")
 
     forecast_block = ""
@@ -697,6 +665,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             period_clean = period_clean.replace(cap, cap.lower())
         forecast_block = f"{next_period_title}\n{period_clean}"
 
+    # Сноска про осадки
     precip_note = ""
     if "%" in next_period or "%" in next_hour:
         precip_note = "❗ дождь — вероятность, что дождь пойдёт"
