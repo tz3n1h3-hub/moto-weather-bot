@@ -32,7 +32,6 @@ from keyboards import (
 )
 
 
-# ============ МАТЕМАТИЧЕСКОЕ ОКРУГЛЕНИЕ ============
 def math_round(x, digits=0):
     if x is None:
         return None
@@ -44,7 +43,6 @@ def math_round(x, digits=0):
     return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
-# ============ ПРОВЕРКА КОНФИГА ============
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
@@ -60,14 +58,11 @@ else:
     print("⚠️ Источники: METAR + Open-Meteo + wttr.in (OWM отключён)", flush=True)
 
 
-# ============ ИНИЦИАЛИЗАЦИЯ ============
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 NBSP = "\u00A0"
 
-
-# ============ UPSTASH REDIS ============
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
 
@@ -154,8 +149,7 @@ def load_subscribers():
 def save_subscriber(user_id):
     if UPSTASH_ENABLED:
         _redis("sadd", "subscribers", user_id)
-        return
-    subs = load_subscribers()
+        return    subs = load_subscribers()
     if user_id not in subs:
         subs.append(user_id)
         try:
@@ -220,7 +214,7 @@ def set_last_morning_date(date_str):
         print(f"⚠️ last_morning save: {e}", flush=True)
 
 
-# ============ ХРАНЕНИЕ ID ПОСЛЕДНЕГО СООБЩЕНИЯ ============
+# ============ ХРАНЕНИЕ СООБЩЕНИЙ ============
 def get_last_bot_msg(chat_id):
     if UPSTASH_ENABLED:
         result = _redis("get", f"last_msg:{chat_id}")
@@ -525,7 +519,7 @@ ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 Отписаться можно в «О проекте»."""
 
 
-# ============ ЕДИНАЯ ТОЧКА ОТПРАВКИ ============
+# ============ ОТПРАВКА ============
 def send_or_edit(chat_id, text, reply_markup=None):
     last_id = get_last_bot_msg(chat_id)
     if last_id:
@@ -542,11 +536,8 @@ def send_or_edit(chat_id, text, reply_markup=None):
         return None
 
 
-# ============ РАЗБРОСЫ (порог ≥2) ============
+# ============ РАЗБРОСЫ ============
 def fmt_spread(agree_values):
-    """
-    Показываем только значимые разбросы (≥2). Мелочь ≤1 — шум.
-    """
     if not agree_values:
         return None
     filtered = [(v, u) for v, u in agree_values if v and v >= 2]
@@ -577,7 +568,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if not avg_w:
         avg_w = {}
 
-    # ============ ШАПКА ============
     weekday = WEEKDAYS_RU[now_dt.weekday()]
     date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
     time_str = now_dt.strftime("%H:%M")
@@ -591,7 +581,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     header_line1 = f"{header_icon} <b>MOTOWEATHER · МИНСК</b>"
     header_line2 = f"{weekday} · {date_str} · {time_str}"
 
-    # ============ РИСК / ВЕРДИКТ ============
     score = a_city["score"]
     verdict = get_rider_verdict(score, now_dt.month)
     bar = build_risk_bar(score)
@@ -600,7 +589,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if bar:
         verdict_block += f"\n{bar}"
 
-    # ============ ЧТО НА ДОРОГЕ + РЕКОМЕНДАЦИИ ============
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
@@ -609,7 +597,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if score >= 3 and recs:
         rec_text = "\n\n<i>" + "\n".join(recs[:3]) + "</i>"
 
-    # ============ НА СЕБЯ ============
     gear = get_gear_short(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
@@ -618,7 +605,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
     gear_block = "\n".join(gear)
 
-    # ============ ПЕРЕД ВЫЕЗДОМ ============
     tech = get_tech_check(
         a_city.get("feels_like", m.get("feels_like") or 0),
         w.get("is_night", False),
@@ -627,7 +613,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
     tech_block = "\n".join(f"✅ {t}" for t in tech)
 
-    # ============ ТЕКУЩАЯ ПОГОДА ============
     def gather(key, sources_keys):
         return [src.get(key) for code, src in sources_keys if src]
 
@@ -677,7 +662,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # Облачность — большинство
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     if cloud_vals:
@@ -693,7 +677,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # ============ ОСАДКИ (фикс: показываем факт + источник) ============
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -706,7 +689,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
         weather_lines.append(precip_line)
     elif is_rain_anywhere:
-        # Источник видит дождь, но мм нет — показываем факт
         src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
         prob_note = f" · вероятность {rain_prob_now}{NBSP}%" if rain_prob_now and rain_prob_now >= 30 else ""
         weather_lines.append(f"🌧️ Осадки: идёт дождь{prob_note}{src_note}")
@@ -734,7 +716,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
-    # ============ ПРОГНОЗ (БЛИЖАЙШИЙ ПЕРИОД) ============
+    # ============ БЛИЖАЙШИЙ ПЕРИОД ============
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     period_rain_prob = short.get("rain_prob")
@@ -832,7 +814,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if tomorrow_risks_text:
             tomorrow_block += f"\n{tomorrow_risks_text}"
 
-    # ============ СОВЕТ ============
     tip = get_tip(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("humidity") or m.get("humidity"),
@@ -845,7 +826,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         uv_index=(uv if uv is not None else 0),
     )
 
-    # ============ ИСТОЧНИКИ ============
     def src_marker(code):
         return code if code in sources_live else f"{code}*"
 
@@ -868,7 +848,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if agree_values:
         values_line = fmt_spread(agree_values) or ""
 
-    # ============ СБОРКА ============
     msg = f"""{header_line1}
 {header_line2}
 
