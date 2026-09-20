@@ -493,7 +493,6 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (429-safe + Redis cache + wttr fallback) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -879,7 +878,6 @@ def merge_weather_data(w):
 def get_short_forecast():
     om_raw = get_open_meteo_data()
 
-    # Fallback: wttr.in hourly
     if not om_raw or not om_raw.get("hourly"):
         print("⚠️ short_forecast: OM недоступен, fallback на wttr", flush=True)
         return get_short_forecast_wttr()
@@ -928,11 +926,12 @@ def get_short_forecast():
         elif sum_precip > 0.5:
             cond = "дождь"
 
-        text_parts = [f"{avg_temp} °C", f"{avg_wind} м/с"]
+        # Скобка (до X м/с) — в той же строке, что и скорость
+        wind_str = f"{avg_wind} м/с"
         if max_gust and max_gust > avg_wind:
-            text_parts.append(f"(до {max_gust} м/с)")
-        text_parts.append(cond)
-        next_period = " · ".join(text_parts)
+            wind_str += f" (до {math_round(max_gust, 0)} м/с)"
+
+        next_period = f"{avg_temp} °C · {wind_str} · {cond}"
 
         return {
             "next_period": next_period,
@@ -955,12 +954,11 @@ def get_short_forecast_wttr():
         today = w_raw["weather"][0]
         tomorrow = w_raw["weather"][1] if len(w_raw["weather"]) > 1 else None
 
-        # Берём ближайшие 6 часов из hourly
         hourly = today.get("hourly", [])
         target_hours = []
         for h in hourly:
             try:
-                h_time = int(h["time"]) // 100  # "1800" -> 18
+                h_time = int(h["time"]) // 100
                 h_dt = now_dt.replace(hour=h_time, minute=0, second=0, microsecond=0)
                 if now_dt < h_dt <= now_dt + timedelta(hours=6):
                     target_hours.append(h)
@@ -968,7 +966,6 @@ def get_short_forecast_wttr():
                 continue
 
         if not target_hours and tomorrow:
-            # Если сегодня уже поздно — берём завтра
             for h in tomorrow.get("hourly", []):
                 try:
                     h_time = int(h["time"]) // 100
@@ -1001,11 +998,12 @@ def get_short_forecast_wttr():
         elif sum_precip > 0.5:
             cond = "дождь"
 
-        text_parts = [f"{avg_temp} °C", f"{avg_wind} м/с"]
+        # Скобка в той же строке
+        wind_str = f"{avg_wind} м/с"
         if max_gust and max_gust > avg_wind:
-            text_parts.append(f"(до {math_round(max_gust, 0)} м/с)")
-        text_parts.append(cond)
-        next_period = " · ".join(text_parts)
+            wind_str += f" (до {math_round(max_gust, 0)} м/с)"
+
+        next_period = f"{avg_temp} °C · {wind_str} · {cond}"
 
         print(f"✅ short_forecast: fallback wttr OK", flush=True)
         return {
@@ -1021,7 +1019,6 @@ def get_short_forecast_wttr():
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
 
-    # Fallback: wttr.in
     if not om_raw or not om_raw.get("daily"):
         print("⚠️ forecast_tomorrow: OM недоступен, fallback на wttr", flush=True)
         return get_forecast_tomorrow_wttr()
@@ -1083,7 +1080,6 @@ def get_forecast_tomorrow_wttr():
         tmin = math_round(float(tomorrow.get("mintempC", 0)), 0)
         tmax = math_round(float(tomorrow.get("maxtempC", 0)), 0)
 
-        # Средние по hourly
         hourly = tomorrow.get("hourly", [])
         if hourly:
             wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in hourly) / len(hourly), 0)
@@ -1096,7 +1092,6 @@ def get_forecast_tomorrow_wttr():
             rain_prob = None
             rain_sum = 0
 
-        # Погодное описание — берём из полудня
         desc = "—"
         emoji = ""
         for h in hourly:
@@ -1107,7 +1102,6 @@ def get_forecast_tomorrow_wttr():
             except Exception:
                 continue
 
-        # Простой маппинг emoji по описанию
         desc_lower = desc.lower()
         if "rain" in desc_lower or "drizzle" in desc_lower:
             emoji = "🌧️"
