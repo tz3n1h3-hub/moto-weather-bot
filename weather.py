@@ -252,7 +252,8 @@ def calculate_humidity(temp, dew_point):
 
 
 def calculate_feels_like(temp, wind_speed):
-    if temp <= 10 and wind_speed > 1.3:
+    """Wind chill до 15°C (расширено), жара от 27°C."""
+    if temp <= 15 and wind_speed > 1.3:
         w = wind_speed * 3.6
         feels = 13.12 + 0.6215 * temp - 11.37 * (w ** 0.16) + 0.3965 * temp * (w ** 0.16)
         return math_round(feels, 0)
@@ -276,6 +277,21 @@ def hpa_to_mmhg(hpa):
     if hpa is None:
         return None
     return math_round(hpa * 0.750062, 0)
+
+
+# ============ ПЕРИОД ДНЯ (с ночью от 22:00) ============
+def get_period_title(hour):
+    """
+    УТРО: 06–11, ДЕНЬ: 12–17, ВЕЧЕР: 18–21, НОЧЬ: 22–05.
+    """
+    if 6 <= hour < 12:
+        return "🌅 УТРОМ"
+    elif 12 <= hour < 18:
+        return "☀️ ДНЁМ"
+    elif 18 <= hour < 22:
+        return "🌆 ВЕЧЕРОМ"
+    else:
+        return "🌙 НОЧЬЮ"
 
 
 def parse_clouds(metar_text):
@@ -884,9 +900,10 @@ def merge_weather_data(w):
     result["sunset"] = w.get("sunset")
     result["is_night"] = w.get("is_night", False)
 
+    # Разброс — БЕЗ видимости (единицы разные, шум)
     agree_values = []
     for key, unit in [("temp", "°C"), ("wind_speed", "м/с"),
-                       ("humidity", "%"), ("dew_point", "°C"), ("visibility", "км")]:
+                       ("humidity", "%"), ("dew_point", "°C")]:
         vals = gather(key)
         if len(vals) >= 2:
             spread = max(vals) - min(vals)
@@ -939,18 +956,10 @@ def get_short_forecast():
         max_prob = max((probs[i] for i in target_indices if i < len(probs) and probs[i] is not None), default=None)
         sum_precip = sum(precs[i] for i in target_indices if i < len(precs) and precs[i] is not None)
 
-        # НОВОЕ: сумма осадков за период → в rain_total
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        hour_now = now_dt.hour
-        if 6 <= hour_now < 12:
-            title = "🌅 УТРОМ"
-        elif 12 <= hour_now < 18:
-            title = "☀️ ДНЁМ"
-        elif 18 <= hour_now < 24:
-            title = "🌆 ВЕЧЕРОМ"
-        else:
-            title = "🌙 НОЧЬЮ"
+        # ✅ Период с учётом ночи от 22:00
+        title = get_period_title(now_dt.hour)
 
         cond = "ясно"
         if max_prob and max_prob >= 50:
@@ -968,8 +977,8 @@ def get_short_forecast():
             "next_period": next_period,
             "next_period_title": title,
             "rain_prob": max_prob,
-            "rain_total": sum_precip_rounded,   # ← НОВОЕ
-            "precip_mm": sum_precip_rounded,    # ← НОВОЕ
+            "rain_total": sum_precip_rounded,
+            "precip_mm": sum_precip_rounded,
         }
     except Exception as e:
         print(f"⚠️ short_forecast: {e}", flush=True)
@@ -1015,15 +1024,8 @@ def get_short_forecast_wttr():
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        hour_now = now_dt.hour
-        if 6 <= hour_now < 12:
-            title = "🌅 УТРОМ"
-        elif 12 <= hour_now < 18:
-            title = "☀️ ДНЁМ"
-        elif 18 <= hour_now < 24:
-            title = "🌆 ВЕЧЕРОМ"
-        else:
-            title = "🌙 НОЧЬЮ"
+        # ✅ Период с учётом ночи от 22:00
+        title = get_period_title(now_dt.hour)
 
         cond = "ясно"
         if max_prob and max_prob >= 50:
@@ -1042,8 +1044,8 @@ def get_short_forecast_wttr():
             "next_period": next_period,
             "next_period_title": title,
             "rain_prob": max_prob,
-            "rain_total": sum_precip_rounded,   # ← НОВОЕ
-            "precip_mm": sum_precip_rounded,    # ← НОВОЕ
+            "rain_total": sum_precip_rounded,
+            "precip_mm": sum_precip_rounded,
         }
     except Exception as e:
         print(f"⚠️ short_forecast_wttr: {e}", flush=True)
@@ -1094,8 +1096,8 @@ def get_forecast_tomorrow():
             "wind_gust": gust,
             "rain_prob": rain_prob,
             "rain_sum": rain_sum_rounded,
-            "rain_total": rain_sum_rounded,   # ← НОВОЕ: алиас для analyze_risks
-            "precip_mm": rain_sum_rounded,    # ← НОВОЕ
+            "rain_total": rain_sum_rounded,
+            "precip_mm": rain_sum_rounded,
             "condition_text": cond_text,
             "condition_emoji": cond_emoji,
             "weather_code": weather_code,
@@ -1160,8 +1162,8 @@ def get_forecast_tomorrow_wttr():
             "wind_gust": math_round(max_gust, 0) if max_gust else None,
             "rain_prob": rain_prob,
             "rain_sum": rain_sum_rounded,
-            "rain_total": rain_sum_rounded,   # ← НОВОЕ
-            "precip_mm": rain_sum_rounded,    # ← НОВОЕ
+            "rain_total": rain_sum_rounded,
+            "precip_mm": rain_sum_rounded,
             "condition_text": desc,
             "condition_emoji": emoji,
             "weather_code": 0,
