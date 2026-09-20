@@ -87,7 +87,6 @@ def _redis(cmd, *args):
         return None
 
 
-# ============ ПОЛЬЗОВАТЕЛИ ============
 def load_users():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "users")
@@ -127,7 +126,6 @@ def get_users_count():
     return len(load_users())
 
 
-# ============ ПОДПИСЧИКИ ============
 def load_subscribers():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "subscribers")
@@ -149,7 +147,8 @@ def load_subscribers():
 def save_subscriber(user_id):
     if UPSTASH_ENABLED:
         _redis("sadd", "subscribers", user_id)
-        return    subs = load_subscribers()
+        return
+    subs = load_subscribers()
     if user_id not in subs:
         subs.append(user_id)
         try:
@@ -187,7 +186,6 @@ def get_subscribers_count():
     return len(load_subscribers())
 
 
-# ============ УТРЕННИЙ СТАТУС ============
 LAST_MORNING_FILE = "last_morning.txt"
 
 
@@ -214,7 +212,6 @@ def set_last_morning_date(date_str):
         print(f"⚠️ last_morning save: {e}", flush=True)
 
 
-# ============ ХРАНЕНИЕ СООБЩЕНИЙ ============
 def get_last_bot_msg(chat_id):
     if UPSTASH_ENABLED:
         result = _redis("get", f"last_msg:{chat_id}")
@@ -230,7 +227,6 @@ def set_last_bot_msg(chat_id, message_id):
         _redis("set", f"last_msg:{chat_id}", message_id)
 
 
-# ============ ЦИТАТЫ ============
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
     "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
@@ -272,7 +268,6 @@ def get_alcohol_warning():
         return "🚫 За рулём — трезвый. Алкоголь = реакция ×3 хуже."
 
 
-# ============ ФОРМАТИРОВАНИЕ ============
 WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -444,7 +439,6 @@ def night_score_for_period(title, sunrise, sunset):
         return 0
 
 
-# ============ ТЕКСТЫ ============
 START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
 
 <b>Что это?</b>
@@ -519,7 +513,6 @@ ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 Отписаться можно в «О проекте»."""
 
 
-# ============ ОТПРАВКА ============
 def send_or_edit(chat_id, text, reply_markup=None):
     last_id = get_last_bot_msg(chat_id)
     if last_id:
@@ -536,7 +529,6 @@ def send_or_edit(chat_id, text, reply_markup=None):
         return None
 
 
-# ============ РАЗБРОСЫ ============
 def fmt_spread(agree_values):
     if not agree_values:
         return None
@@ -550,7 +542,6 @@ def fmt_spread(agree_values):
     return "📊 Разброс: " + " · ".join(parts)
 
 
-# ============ СБОРКА СООБЩЕНИЯ ============
 def build_weather_message(w, a_city, short, f, is_morning=False):
     if not isinstance(short, dict):
         print(f"⚠️ short не dict: type={type(short).__name__}", flush=True)
@@ -716,7 +707,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
-    # ============ БЛИЖАЙШИЙ ПЕРИОД ============
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     period_rain_prob = short.get("rain_prob")
@@ -768,7 +758,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if period_risks_text:
             forecast_block += f"\n{period_risks_text}"
 
-    # ============ ЗАВТРА ============
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
