@@ -44,11 +44,13 @@ def analyze_risks(weather, is_forecast=False):
         score += 5
         recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие")
     elif rain_total > 5:
-        risks.append(f"🌧️ СИЛЬНЫЙ ДОЖДЬ ({rain_total:.1f} мм)")
+        rain_str = f"{rain_total:.1f}".replace(".", ",")
+        risks.append(f"🌧️ СИЛЬНЫЙ ДОЖДЬ ({rain_str} мм)")
         score += 4
         recommendations.append("🐢 Увеличьте дистанцию, снизьте скорость")
     elif rain_total > 1:
-        risks.append(f"🌧️ Дождь ({rain_total:.1f} мм)")
+        rain_str = f"{rain_total:.1f}".replace(".", ",")
+        risks.append(f"🌧️ Дождь ({rain_str} мм)")
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     elif is_rain:
@@ -104,7 +106,7 @@ def analyze_risks(weather, is_forecast=False):
                 score += 2
                 recommendations.append("🐢 Осторожно на разметке и в поворотах")
         elif diff <= 4:
-            if humidity >= 80:
+            if humidity >= 85:
                 if is_forecast:
                     risks.append(f"🌧️ Дорога мокрая — не высохнет ({int(humidity)} %)")
                 else:
@@ -199,7 +201,7 @@ def get_rider_verdict(score):
     if score <= 0:
         return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
     if score <= 4:
-        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
+        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
     if score <= 6:
         return "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
