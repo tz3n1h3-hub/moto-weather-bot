@@ -4,6 +4,7 @@ from config import MINSK_TZ
 from weather import get_minsk_hour
 
 
+# ============ СЕЗОН ============
 def get_season(month=None):
     if month is None:
         month = datetime.now(MINSK_TZ).month
@@ -14,6 +15,7 @@ def get_season(month=None):
     return "winter"
 
 
+# ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
     score = 0
@@ -31,11 +33,13 @@ def analyze_risks(weather, is_forecast=False):
     dew_point = weather.get("dew_point")
     soil_temp = weather.get("soil_temp")
 
+    # ---- Град ----
     if is_hail:
         risks.append("🧊 ГРАД — опасно для райдера и техники")
         score += 4
         recommendations.append("🚫 НЕ выезжай — град бьёт по шлему и технике")
 
+    # ---- ВЕТЕР (новая градация) ----
     wind_score = 0
     if wind_gust > 20:
         risks.append(f"🌪️ Штормовой ветер (порывы до {wind_gust:.0f} м/с)!")
@@ -76,6 +80,7 @@ def analyze_risks(weather, is_forecast=False):
 
     score += max(wind_score, speed_score)
 
+    # ---- ОСАДКИ (кросс-проверка) ----
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -103,6 +108,7 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("☔ Возьми дождевик — может накрыть")
 
+    # ---- ВИДИМОСТЬ (только «сейчас») ----
     visibility_alerted = False
     if not is_forecast:
         if visibility < 500:
@@ -121,6 +127,7 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("💡 Включите ближний свет")
             visibility_alerted = True
 
+    # ---- ТУМАН / ВЛАГА ----
     if dew_point is not None:
         diff = temp - dew_point
         humidity = weather.get("humidity") or 0
@@ -156,6 +163,7 @@ def analyze_risks(weather, is_forecast=False):
                     risks.append(f"💧 Повышенная влажность {int(humidity)} %")
                 score += 1
 
+    # ---- ПРОГНОЗ: код погоды ----
     if is_forecast:
         weather_code = weather.get("weather_code")
         if weather_code in (45, 48):
@@ -167,6 +175,7 @@ def analyze_risks(weather, is_forecast=False):
             score += 1
             recommendations.append("🐢 Скользко — увеличивайте дистанцию")
 
+    # ---- ТЕМПЕРАТУРА ----
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -189,11 +198,13 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду")
 
+    # ---- ХОЛОДНАЯ ПОЧВА ----
     if soil_temp is not None and soil_temp < 5 and temp > 10:
         risks.append("🧊 Почва холодная — асфальт не прогрелся")
         score += 1
         recommendations.append("🐢 Сцепление хуже, тормози плавно")
 
+    # ---- НОЧЬ ----
     night_score = weather.get("night_score")
     if night_score is None:
         night_score = 2 if weather.get("is_night", False) else 0
@@ -207,6 +218,7 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("💡 Включите свет заранее")
 
+    # ---- ШКАЛА ----
     if score >= 9:
         color = "💀"
     elif score >= 7:
@@ -227,6 +239,7 @@ def analyze_risks(weather, is_forecast=False):
     }
 
 
+# ============ КОРОТКИЙ ВЕРДИКТ ============
 def get_short_verdict(score):
     if score <= 0:
         return "БЕЗОПАСНО"
@@ -239,6 +252,7 @@ def get_short_verdict(score):
     return "НЕ ВЫЕЗЖАЙ"
 
 
+# ============ РАЙДЕРСКИЙ ВЕРДИКТ (сезонный) ============
 def get_rider_verdict(score, month=None):
     if score <= 0:
         season = get_season(month)
@@ -257,6 +271,7 @@ def get_rider_verdict(score, month=None):
     return "НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
 
 
+# ============ ЭКИПИРОВКА ============
 def get_gear_short(temp, is_rain, is_night, wind_speed):
     gear = []
     if temp >= 25:
@@ -275,6 +290,7 @@ def get_gear_short(temp, is_rain, is_night, wind_speed):
     return gear
 
 
+# ============ ПОДГОТОВКА ТЕХНИКИ ============
 def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     tech = [
         "Давление в шинах — на холодную",
@@ -289,6 +305,7 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     return tech
 
 
+# ============ СОВЕТ ============
 def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility,
             wind_gust=0, uv_index=0):
     import random
@@ -345,6 +362,7 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
     return random.choice(default_tips)
 
 
+# ============ ЛУЧШЕЕ ВРЕМЯ ============
 def get_best_time(sunrise=None, sunset=None):
     hour = get_minsk_hour()
 
