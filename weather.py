@@ -493,16 +493,13 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (429-safe + Redis + 2 прокси) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
 
-    # 1. Кэш 5 мин
     if _open_meteo_cache["data"] and (now - _open_meteo_cache["ts"]) < 300:
         return _open_meteo_cache["data"]
 
-    # 2. Блок после 429
     if _open_meteo_cache.get("blocked_until", 0) > now:
         remaining = int(_open_meteo_cache["blocked_until"] - now)
         print(f"⏸️ OM: в блоке ещё {remaining} сек", flush=True)
@@ -528,18 +525,13 @@ def get_open_meteo_data():
         "wind_speed_unit": "ms",
     }
 
-    # Готовая query-строка для прокси
     query_string = "&".join(
         f"{k}={requests.utils.quote(str(v))}" for k, v in params.items()
     )
 
-    # Список источников: (url, params, headers, label)
     sources = [
-        # Прямой запрос 1: свой UA
         (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct"),
-        # Прямой запрос 2: curl UA
         (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl"),
-        # Прокси 1: allorigins
         (
             f"https://api.allorigins.win/raw?url="
             f"{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
@@ -547,7 +539,6 @@ def get_open_meteo_data():
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
         ),
-        # Прокси 2: corsproxy.io
         (
             f"https://corsproxy.io/?{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
             None,
@@ -571,7 +562,6 @@ def get_open_meteo_data():
                     print(f"⚠️ OM {label}: JSON error: {e}", flush=True)
                     continue
 
-                # Проверка, что это действительно OM-ответ
                 if not data.get("current") and not data.get("hourly"):
                     print(f"⚠️ OM {label}: невалидный ответ", flush=True)
                     continue
@@ -591,7 +581,6 @@ def get_open_meteo_data():
         except Exception as e:
             print(f"❌ OM {label}: {type(e).__name__}: {e}", flush=True)
 
-    # Все попытки провалились
     print("⛔ OM: все источники недоступны — блок 5 мин", flush=True)
     _open_meteo_cache["blocked_until"] = now + 300
     cached = load_om_cache()
@@ -950,6 +939,9 @@ def get_short_forecast():
         max_prob = max((probs[i] for i in target_indices if i < len(probs) and probs[i] is not None), default=None)
         sum_precip = sum(precs[i] for i in target_indices if i < len(precs) and precs[i] is not None)
 
+        # НОВОЕ: сумма осадков за период → в rain_total
+        sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
+
         hour_now = now_dt.hour
         if 6 <= hour_now < 12:
             title = "🌅 УТРОМ"
@@ -976,6 +968,8 @@ def get_short_forecast():
             "next_period": next_period,
             "next_period_title": title,
             "rain_prob": max_prob,
+            "rain_total": sum_precip_rounded,   # ← НОВОЕ
+            "precip_mm": sum_precip_rounded,    # ← НОВОЕ
         }
     except Exception as e:
         print(f"⚠️ short_forecast: {e}", flush=True)
@@ -1019,6 +1013,7 @@ def get_short_forecast_wttr():
         max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in target_hours if h.get("WindGustKmph")), default=None)
         max_prob = max((int(h.get("chanceofrain", 0)) for h in target_hours if h.get("chanceofrain") is not None), default=None)
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
+        sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
         hour_now = now_dt.hour
         if 6 <= hour_now < 12:
@@ -1047,6 +1042,8 @@ def get_short_forecast_wttr():
             "next_period": next_period,
             "next_period_title": title,
             "rain_prob": max_prob,
+            "rain_total": sum_precip_rounded,   # ← НОВОЕ
+            "precip_mm": sum_precip_rounded,    # ← НОВОЕ
         }
     except Exception as e:
         print(f"⚠️ short_forecast_wttr: {e}", flush=True)
@@ -1075,6 +1072,8 @@ def get_forecast_tomorrow():
         weather_code = d.get("weather_code", [0, 0])[idx]
         uv_max = d.get("uv_index_max", [0, 0])[idx]
 
+        rain_sum_rounded = round(rain_sum, 1) if rain_sum else 0
+
         cond_map = {
             0: ("Ясно", "☀️"), 1: ("Преимущественно ясно", "🌤️"),
             2: ("Переменная облачность", "⛅"), 3: ("Пасмурно", "☁️"),
@@ -1094,7 +1093,9 @@ def get_forecast_tomorrow():
             "wind_speed": wind,
             "wind_gust": gust,
             "rain_prob": rain_prob,
-            "rain_sum": round(rain_sum, 1) if rain_sum else 0,
+            "rain_sum": rain_sum_rounded,
+            "rain_total": rain_sum_rounded,   # ← НОВОЕ: алиас для analyze_risks
+            "precip_mm": rain_sum_rounded,    # ← НОВОЕ
             "condition_text": cond_text,
             "condition_emoji": cond_emoji,
             "weather_code": weather_code,
@@ -1128,6 +1129,8 @@ def get_forecast_tomorrow_wttr():
             rain_prob = None
             rain_sum = 0
 
+        rain_sum_rounded = round(rain_sum, 1) if rain_sum else 0
+
         desc = "—"
         emoji = ""
         for h in hourly:
@@ -1156,7 +1159,9 @@ def get_forecast_tomorrow_wttr():
             "wind_speed": wind,
             "wind_gust": math_round(max_gust, 0) if max_gust else None,
             "rain_prob": rain_prob,
-            "rain_sum": round(rain_sum, 1) if rain_sum else 0,
+            "rain_sum": rain_sum_rounded,
+            "rain_total": rain_sum_rounded,   # ← НОВОЕ
+            "precip_mm": rain_sum_rounded,    # ← НОВОЕ
             "condition_text": desc,
             "condition_emoji": emoji,
             "weather_code": 0,
