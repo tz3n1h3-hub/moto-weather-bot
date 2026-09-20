@@ -20,9 +20,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 NBSP = "\u00A0"
 
+
 # ============ МАТЕМАТИЧЕСКОЕ ОКРУГЛЕНИЕ ============
 def math_round(x, digits=0):
-    """Математическое округление (0.5 → вверх)."""
     if x is None:
         return None
     if digits == 0:
@@ -34,12 +34,11 @@ def math_round(x, digits=0):
     return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
-# ============ ГЛОБАЛЬНЫЙ КЭШ ============
+# ============ КЭШИ ============
 _open_meteo_cache = {"data": None, "ts": 0}
 _wttr_cache = {"data": None, "ts": 0}
 _owm_cache = {"data": None, "ts": 0}
 
-# ============ КЭШ ПОЧВЫ (24ч) ============
 SOIL_CACHE_FILE = "soil_cache.json"
 SOIL_CACHE_TTL = 24 * 3600
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
@@ -115,7 +114,6 @@ def get_minsk_month():
     return datetime.now(MINSK_TZ).month
 
 
-# ============ ОСВЕЩЁННОСТЬ ============
 def get_light_level():
     h = get_minsk_hour()
     m = get_minsk_month()
@@ -242,7 +240,7 @@ def calculate_feels_like(temp, wind_speed):
 
 
 def calculate_dew_point(temp, humidity):
-    """Точка росы по формуле Магнуса (точная)."""
+    """Формула Магнуса (точная)."""
     if temp is None or humidity is None or humidity <= 0:
         return None
     try:
@@ -259,7 +257,7 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
-# ============ ПАРСЕР METAR ============
+# ============ METAR ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
         return "☁️", "Пасмурно"
@@ -499,7 +497,6 @@ def get_open_meteo_data():
         "wind_speed_unit": "ms",
     }
 
-    # Retry: 2 попытки с разными User-Agent
     headers_variants = [
         {"User-Agent": "MotoWeather/2.0 (bot; +https://t.me/MotoWeatherMinskBot)"},
         {"User-Agent": "curl/7.68.0"},
@@ -522,7 +519,7 @@ def get_open_meteo_data():
     return None
 
 
-# ============ OPENWEATHERMAP ============
+# ============ OWM ============
 def get_owm_data():
     global _owm_cache
     if not OWM_API_KEY:
@@ -595,13 +592,12 @@ def get_weather():
             "pressure_hpa": cur.get("pressure_msl"),
             "clouds_pct": cur.get("cloud_cover"),
             "precip_mm": cur.get("precipitation"),
-            "is_rain": (cur.get("precipitation") or 0) > 0 or cur.get("rain", 0) > 0,
+            "is_rain": (cur.get("precipitation") or 0) > 0 or (cur.get("rain") or 0) > 0,
             "weather_code": cur.get("weather_code"),
             "soil_temp": None,
             "uv_index": None,
         }
 
-    # Почва — из hourly
     if om_raw and om_raw.get("hourly") and om_raw["hourly"].get("time"):
         try:
             now_iso = datetime.now(MINSK_TZ).strftime("%Y-%m-%dT%H:00")
@@ -667,7 +663,7 @@ def get_weather():
         except Exception as e:
             print(f"⚠️ OWM parse: {e}", flush=True)
 
-    # ============ ВЕРОЯТНОСТЬ ДОЖДЯ + ФАКТ ОСАДКОВ ============
+    # ============ ВЕРОЯТНОСТЬ ДОЖДЯ + ФАКТ ============
     rain_prob_now = None
     rain_prob_day = None
     om_says_rain_now = False
@@ -685,13 +681,11 @@ def get_weather():
                 idx = times.index(now_iso)
                 if idx < len(probs):
                     rain_prob_now = probs[idx]
-                # Кросс-проверка: если осадки > 0 или код дождя
                 if idx < len(precs) and (precs[idx] or 0) > 0.1:
                     om_says_rain_now = True
                 if idx < len(codes) and codes[idx] in (51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99):
                     om_says_rain_now = True
 
-            # Дневной максимум — ближайшие 6ч
             future_probs = []
             for i, t in enumerate(times):
                 try:
@@ -707,7 +701,6 @@ def get_weather():
             print(f"⚠️ rain_prob: {e}", flush=True)
 
     # ============ КРОСС-ПРОВЕРКА ОСАДКОВ ============
-    # Если хоть один источник говорит «дождь» — фиксируем
     is_rain_anywhere = om_says_rain_now
     rain_sources = []
     if m and m.get("is_rain"):
@@ -722,12 +715,10 @@ def get_weather():
     if om_says_rain_now:
         rain_sources.append("OM")
 
-    # Если вероятность ≥40%, но источника с фактом нет — считаем «возможен дождь»
     if not is_rain_anywhere and rain_prob_now and rain_prob_now >= 40:
         is_rain_anywhere = True
         rain_sources.append(f"OM ({rain_prob_now}%)")
 
-    # Солнце
     sunrise, sunset = None, None
     if om_raw and om_raw.get("daily"):
         try:
@@ -762,7 +753,7 @@ def get_weather():
     return result
 
 
-# ============ СЛИЯНИЕ ДАННЫХ ============
+# ============ СЛИЯНИЕ ============
 def merge_weather_data(w):
     if not w:
         return None
@@ -805,7 +796,6 @@ def merge_weather_data(w):
         filtered = filter_outliers(vals)
         result[key] = math_round(avg(filtered), 0) if key != "precip_mm" else round(avg(filtered), 1)
 
-    # ============ ФИКС: агрегируем осадки со всех источников ============
     result["is_rain"] = w.get("is_rain_anywhere", False)
     result["rain_sources"] = w.get("rain_sources", [])
     result["rain_prob_now"] = w.get("rain_prob_now")
@@ -813,7 +803,6 @@ def merge_weather_data(w):
 
     result["is_thunder"] = any(s.get("is_thunder") for s in sources)
     result["is_hail"] = any(s.get("is_hail") for s in sources)
-
     result["wind_direction"] = (w.get("m") or {}).get("wind_direction")
 
     uv_vals = gather("uv_index")
@@ -826,7 +815,6 @@ def merge_weather_data(w):
     result["sunset"] = w.get("sunset")
     result["is_night"] = w.get("is_night", False)
 
-    # Разбросы
     agree_values = []
     for key, unit in [("temp", "°C"), ("wind_speed", "м/с"),
                        ("humidity", "%"), ("dew_point", "°C"), ("visibility", "км")]:
