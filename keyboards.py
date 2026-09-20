@@ -2,7 +2,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def get_main_keyboard():
-    """Клавиатура для /start — только [— ПРОГНОЗ —]."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
@@ -11,7 +10,6 @@ def get_main_keyboard():
 
 
 def get_after_weather_keyboard(is_subscribed=False):
-    """Клавиатура после показа погоды — [🔄 ОБНОВИТЬ] + [ℹ️ О проекте]."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
@@ -23,7 +21,6 @@ def get_after_weather_keyboard(is_subscribed=False):
 
 
 def get_morning_keyboard():
-    """Клавиатура для утренней рассылки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🔄 ОБНОВИТЬ", callback_data="update")
@@ -35,7 +32,6 @@ def get_morning_keyboard():
 
 
 def get_about_keyboard(is_subscribed=False):
-    """Клавиатура для /about — с учётом подписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
@@ -52,7 +48,6 @@ def get_about_keyboard(is_subscribed=False):
 
 
 def get_subscribe_keyboard():
-    """Клавиатура подтверждения подписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("✅ Подписаться", callback_data="subscribe_confirm")
@@ -64,7 +59,6 @@ def get_subscribe_keyboard():
 
 
 def get_unsubscribe_keyboard():
-    """Клавиатура подтверждения отписки."""
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("❌ Да, отписаться", callback_data="unsubscribe_confirm")
