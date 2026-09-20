@@ -391,16 +391,23 @@ def _time_to_min(hhmm):
 
 
 def night_score_for_period(title, sunrise, sunset):
+    """
+    Оценка темноты периода: 0 светло, 1 частично, 2 темно.
+    Ночь (22:00–06:00) — всегда 2.
+    Вечер — до 22:00.
+    """
+    if title == "🌙 НОЧЬЮ":
+        return 2
+
     period_ranges = {
-        "🌅 УТРОМ":    (6 * 60,  12 * 60),
-        "☀️ ДНЁМ":      (12 * 60, 18 * 60),
-        "🌆 ВЕЧЕРОМ":  (18 * 60, 24 * 60),
-        "🌙 НОЧЬЮ":    (0,       6 * 60),
+        "🌅 УТРОМ":   (6 * 60,  12 * 60),
+        "☀️ ДНЁМ":     (12 * 60, 18 * 60),
+        "🌆 ВЕЧЕРОМ": (18 * 60, 22 * 60),
     }
 
     rng = period_ranges.get(title)
     if not rng:
-        return 2 if title == "🌙 НОЧЬЮ" else 0
+        return 0
 
     start, end = rng
     period_len = end - start
@@ -411,7 +418,7 @@ def night_score_for_period(title, sunrise, sunset):
     ss_min = _time_to_min(sunset) if sunset else None
 
     if sr_min is None or ss_min is None:
-        return 2 if title == "🌙 НОЧЬЮ" else 0
+        return 0
 
     dark_intervals = [(0, sr_min), (ss_min, 1440)]
 
