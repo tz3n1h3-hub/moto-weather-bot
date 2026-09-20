@@ -4,6 +4,18 @@ from config import MINSK_TZ
 from weather import get_minsk_hour
 
 
+# ============ СЕЗОН ============
+def get_season(month=None):
+    """лето: 5-9, межсезонье: 4, 10, зима: 11-12, 1-3."""
+    if month is None:
+        month = datetime.now(MINSK_TZ).month
+    if month in (5, 6, 7, 8, 9):
+        return "summer"
+    if month in (4, 10):
+        return "shoulder"
+    return "winter"
+
+
 # ============ АНАЛИЗ РИСКОВ ============
 def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
@@ -18,6 +30,7 @@ def analyze_risks(weather, is_forecast=False):
     is_hail = weather.get("is_hail", False)
     visibility = weather.get("visibility") or 10000
     dew_point = weather.get("dew_point")
+    soil_temp = weather.get("soil_temp")
 
     # ---- Град ----
     if is_hail:
@@ -25,24 +38,53 @@ def analyze_risks(weather, is_forecast=False):
         score += 4
         recommendations.append("🚫 НЕ выезжай — град бьёт по шлему и технике")
 
-    # ---- Ветер ----
+    # ---- ВЕТЕР (новая градация) ----
+    wind_score = 0
     if wind_gust > 20:
-        risks.append(f"🌪️ КРИТИЧЕСКИЙ ВЕТЕР (порывы до {wind_gust:.0f} м/с)!")
-        score += 5
-        recommendations.append("🚫 Откажитесь от поездки")
-    elif wind_gust > 15:
-        risks.append(f"💨 Сильный ветер (порывы до {wind_gust:.0f} м/с)")
-        score += 3
-        recommendations.append("🛑 Держите руль крепче, снизьте скорость")
-    elif wind_speed > 10:
-        risks.append(f"🌬️ Умеренный ветер {wind_speed:.0f} м/с")
-        score += 1
+        risks.append(f"🌪️ Штормовой ветер (порывы до {wind_gust:.0f} м/с)!")
+        wind_score = 6
+        recommendations.append("🚫 Категорически не выезжай")
+    elif wind_gust >= 18:
+        risks.append(f"🌪️ Критический ветер (порывы до {wind_gust:.0f} м/с)")
+        wind_score = 5
+        recommendations.append("🚫 Не выезжай — сорвёт с полосы")
+    elif wind_gust >= 15:
+        risks.append(f"💨 Очень сильный ветер (порывы до {wind_gust:.0f} м/с)")
+        wind_score = 4
+        recommendations.append("🛑 Рассмотри отказ от поездки")
+    elif wind_gust >= 12:
+        risks.append(f"💨 Опасные порывы (до {wind_gust:.0f} м/с)")
+        wind_score = 3
+        recommendations.append("⚠️ Осторожно на мостах и открытых участках, без обгонов фур")
+    elif wind_gust >= 9:
+        risks.append(f"🌬️ Сильные порывы (до {wind_gust:.0f} м/с)")
+        wind_score = 2
+        recommendations.append("🌬️ Держи руль крепче, снизь скорость")
+    elif wind_gust >= 6:
+        risks.append(f"💨 Свежий ветер (до {wind_gust:.0f} м/с)")
+        wind_score = 1
+        recommendations.append("💨 Руль крепче")
+
+    # Базовый ветер, если порывов нет или они слабее
+    speed_score = 0
+    if wind_speed >= 13:
+        speed_score = 3
+        if not any("ветер" in r.lower() for r in risks):
+            risks.append(f"🌬️ Сильный ветер {wind_speed:.0f} м/с")
+    elif wind_speed >= 10:
+        speed_score = 2
+        if not any("ветер" in r.lower() for r in risks):
+            risks.append(f"🌬️ Устойчивый ветер {wind_speed:.0f} м/с")
+    elif wind_speed >= 7:
+        speed_score = 1
+
+    score += max(wind_score, speed_score)  # не суммируем!
 
     # ---- Осадки ----
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
-        recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие")
+        recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие (30 м от мото)")
     elif rain_total > 5:
         rain_str = f"{rain_total:.1f}".replace(".", ",")
         risks.append(f"🌧️ СИЛЬНЫЙ ДОЖДЬ ({rain_str} мм)")
@@ -148,6 +190,12 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду")
 
+    # ---- Почва холодная ----
+    if soil_temp is not None and soil_temp < 5 and temp > 10:
+        risks.append("🧊 Почва холодная — асфальт не прогрелся")
+        score += 1
+        recommendations.append("🐢 Сцепление хуже, тормози плавно")
+
     # ---- Ночь (пропорционально) ----
     night_score = weather.get("night_score")
     if night_score is None:
@@ -196,10 +244,16 @@ def get_short_verdict(score):
     return "НЕ ВЫЕЗЖАЙ"
 
 
-# ============ РАЙДЕРСКИЙ ВЕРДИКТ ============
-def get_rider_verdict(score):
+# ============ РАЙДЕРСКИЙ ВЕРДИКТ (с учётом сезона) ============
+def get_rider_verdict(score, month=None):
     if score <= 0:
-        return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
+        season = get_season(month)
+        if season == "summer":
+            return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
+        elif season == "shoulder":
+            return "ДОРОГА ЧИСТАЯ — НО АСФАЛЬТ ХОЛОДНЫЙ"
+        else:
+            return "ЯСНО, НО АСФАЛЬТ ХОЛОДНЫЙ — ОСТОРОЖНО"
     if score <= 4:
         return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
     if score <= 6:
@@ -249,7 +303,7 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
     import random
 
     if is_thunder:
-        return "💡 Гроза — глуши мотор и в укрытие. Молния — не шутка"
+        return "💡 Гроза — глуши мотор, отойди на 30 м от мото, в укрытие"
 
     if temp < 3 and humidity and humidity > 85:
         return "💡 Мосты и эстакады — лёд там первым. Сбрось скорость заранее"
@@ -275,8 +329,11 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
     if is_night:
         return "💡 Ночь — видимость хуже. Паузы каждые два часа"
 
-    if wind_gust and wind_gust > 10:
-        return "💡 Порывы — дистанцию от фур, руль крепче"
+    if wind_gust and wind_gust >= 12:
+        return "💡 Опасные порывы — без обгонов фур, на мостах руль крепче"
+
+    if wind_gust and wind_gust >= 8:
+        return "💡 Порывы — дистанцию от фур, руль крепче, расслабь хват"
 
     if wind_speed and wind_speed > 8:
         return "💡 Боковой ветер — руль крепче, обгоны отложи"
