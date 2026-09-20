@@ -21,7 +21,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 NBSP = "\u00A0"
 
 
-# ============ МАТЕМАТИЧЕСКОЕ ОКРУГЛЕНИЕ ============
 def math_round(x, digits=0):
     if x is None:
         return None
@@ -34,7 +33,6 @@ def math_round(x, digits=0):
     return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
-# ============ КЭШИ ============
 _open_meteo_cache = {"data": None, "ts": 0}
 _wttr_cache = {"data": None, "ts": 0}
 _owm_cache = {"data": None, "ts": 0}
@@ -101,7 +99,6 @@ def load_soil_cache():
         return None, False
 
 
-# ============ ВСПОМОГАТЕЛЬНЫЕ ============
 def get_minsk_time():
     return datetime.now(MINSK_TZ).strftime("%H:%M")
 
@@ -240,7 +237,6 @@ def calculate_feels_like(temp, wind_speed):
 
 
 def calculate_dew_point(temp, humidity):
-    """Формула Магнуса (точная)."""
     if temp is None or humidity is None or humidity <= 0:
         return None
     try:
@@ -257,7 +253,6 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
-# ============ METAR ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
         return "☁️", "Пасмурно"
@@ -473,7 +468,6 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (с retry) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -519,7 +513,6 @@ def get_open_meteo_data():
     return None
 
 
-# ============ OWM ============
 def get_owm_data():
     global _owm_cache
     if not OWM_API_KEY:
@@ -545,7 +538,6 @@ def get_owm_data():
         return None
 
 
-# ============ WTTR ============
 def get_wttr_data():
     global _wttr_cache
     now = time.time()
@@ -569,7 +561,6 @@ def get_wttr_data():
         return None
 
 
-# ============ ГЛАВНАЯ СБОРКА ============
 def get_weather():
     m = get_metar_data()
     om_raw = get_open_meteo_data()
@@ -663,7 +654,6 @@ def get_weather():
         except Exception as e:
             print(f"⚠️ OWM parse: {e}", flush=True)
 
-    # ============ ВЕРОЯТНОСТЬ ДОЖДЯ + ФАКТ ============
     rain_prob_now = None
     rain_prob_day = None
     om_says_rain_now = False
@@ -700,7 +690,6 @@ def get_weather():
         except Exception as e:
             print(f"⚠️ rain_prob: {e}", flush=True)
 
-    # ============ КРОСС-ПРОВЕРКА ОСАДКОВ ============
     is_rain_anywhere = om_says_rain_now
     rain_sources = []
     if m and m.get("is_rain"):
@@ -753,7 +742,6 @@ def get_weather():
     return result
 
 
-# ============ СЛИЯНИЕ ============
 def merge_weather_data(w):
     if not w:
         return None
@@ -835,7 +823,6 @@ def merge_weather_data(w):
     return result
 
 
-# ============ КРАТКИЙ ПРОГНОЗ ============
 def get_short_forecast():
     om_raw = get_open_meteo_data()
     if not om_raw or not om_raw.get("hourly"):
@@ -901,7 +888,6 @@ def get_short_forecast():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
-# ============ ПРОГНОЗ НА ЗАВТРА ============
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
     if not om_raw or not om_raw.get("daily"):
