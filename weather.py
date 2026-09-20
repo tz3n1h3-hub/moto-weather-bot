@@ -20,6 +20,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 NBSP = "\u00A0"
 
+OM_CACHE_KEY = "om_cache"
+OM_CACHE_TTL = 1800
+
 
 def math_round(x, digits=0):
     if x is None:
@@ -33,7 +36,6 @@ def math_round(x, digits=0):
     return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
-# ============ КЭШИ ============
 _open_meteo_cache = {"data": None, "ts": 0, "blocked_until": 0}
 _wttr_cache = {"data": None, "ts": 0}
 _owm_cache = {"data": None, "ts": 0}
@@ -60,6 +62,28 @@ def _redis(cmd, *args):
         return r.json().get("result")
     except Exception:
         return None
+
+
+def save_om_cache(data):
+    if not UPSTASH_ENABLED:
+        return
+    try:
+        _redis("set", OM_CACHE_KEY, json.dumps(data))
+        _redis("expire", OM_CACHE_KEY, OM_CACHE_TTL)
+    except Exception as e:
+        print(f"⚠️ OM cache save: {e}", flush=True)
+
+
+def load_om_cache():
+    if not UPSTASH_ENABLED:
+        return None
+    try:
+        raw = _redis("get", OM_CACHE_KEY)
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        print(f"⚠️ OM cache load: {e}", flush=True)
+    return None
 
 
 def save_soil_cache(temp, ts=None):
@@ -100,7 +124,6 @@ def load_soil_cache():
         return None, False
 
 
-# ============ ВСПОМОГАТЕЛЬНЫЕ ============
 def get_minsk_time():
     return datetime.now(MINSK_TZ).strftime("%H:%M")
 
@@ -255,7 +278,6 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
-# ============ METAR ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
         return "☁️", "Пасмурно"
@@ -471,19 +493,20 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (429-safe) ============
+# ============ OPEN-METEO (429-safe + Redis cache + wttr fallback) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
 
-    # 1. Кэш 5 минут
     if _open_meteo_cache["data"] and (now - _open_meteo_cache["ts"]) < 300:
         return _open_meteo_cache["data"]
 
-    # 2. Блокировка после 429
     if _open_meteo_cache.get("blocked_until", 0) > now:
         remaining = int(_open_meteo_cache["blocked_until"] - now)
         print(f"⏸️ OM: в блоке ещё {remaining} сек", flush=True)
+        cached = load_om_cache()
+        if cached:
+            return cached
         return _open_meteo_cache["data"]
 
     params = {
@@ -518,12 +541,19 @@ def get_open_meteo_data():
                 _open_meteo_cache["data"] = data
                 _open_meteo_cache["ts"] = now
                 _open_meteo_cache["blocked_until"] = 0
+                save_om_cache(data)
                 print(f"✅ OM OK (попытка {attempt})", flush=True)
                 return data
 
             if r.status_code == 429:
                 print(f"⚠️ OM: 429 — блок на 5 минут", flush=True)
                 _open_meteo_cache["blocked_until"] = now + 300
+                cached = load_om_cache()
+                if cached:
+                    print(f"📦 OM: используем кэш из Redis", flush=True)
+                    _open_meteo_cache["data"] = cached
+                    _open_meteo_cache["ts"] = now
+                    return cached
                 if _open_meteo_cache["data"]:
                     return _open_meteo_cache["data"]
                 return None
@@ -535,7 +565,6 @@ def get_open_meteo_data():
     return None
 
 
-# ============ OWM ============
 def get_owm_data():
     global _owm_cache
     if not OWM_API_KEY:
@@ -561,7 +590,6 @@ def get_owm_data():
         return None
 
 
-# ============ WTTR ============
 def get_wttr_data():
     global _wttr_cache
     now = time.time()
@@ -585,7 +613,6 @@ def get_wttr_data():
         return None
 
 
-# ============ ГЛАВНАЯ СБОРКА ============
 def get_weather():
     m = get_metar_data()
     om_raw = get_open_meteo_data()
@@ -767,7 +794,6 @@ def get_weather():
     return result
 
 
-# ============ СЛИЯНИЕ ============
 def merge_weather_data(w):
     if not w:
         return None
@@ -849,11 +875,14 @@ def merge_weather_data(w):
     return result
 
 
-# ============ КРАТКИЙ ПРОГНОЗ ============
+# ============ КРАТКИЙ ПРОГНОЗ (OM + wttr fallback) ============
 def get_short_forecast():
     om_raw = get_open_meteo_data()
+
+    # Fallback: wttr.in hourly
     if not om_raw or not om_raw.get("hourly"):
-        return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+        print("⚠️ short_forecast: OM недоступен, fallback на wttr", flush=True)
+        return get_short_forecast_wttr()
 
     try:
         now_dt = datetime.now(MINSK_TZ)
@@ -915,11 +944,87 @@ def get_short_forecast():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
-# ============ ПРОГНОЗ НА ЗАВТРА ============
+def get_short_forecast_wttr():
+    """Fallback прогноз из wttr.in hourly."""
+    w_raw = get_wttr_data()
+    if not w_raw or not w_raw.get("weather"):
+        return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+
+    try:
+        now_dt = datetime.now(MINSK_TZ)
+        today = w_raw["weather"][0]
+        tomorrow = w_raw["weather"][1] if len(w_raw["weather"]) > 1 else None
+
+        # Берём ближайшие 6 часов из hourly
+        hourly = today.get("hourly", [])
+        target_hours = []
+        for h in hourly:
+            try:
+                h_time = int(h["time"]) // 100  # "1800" -> 18
+                h_dt = now_dt.replace(hour=h_time, minute=0, second=0, microsecond=0)
+                if now_dt < h_dt <= now_dt + timedelta(hours=6):
+                    target_hours.append(h)
+            except Exception:
+                continue
+
+        if not target_hours and tomorrow:
+            # Если сегодня уже поздно — берём завтра
+            for h in tomorrow.get("hourly", []):
+                try:
+                    h_time = int(h["time"]) // 100
+                    target_hours.append(h)
+                except Exception:
+                    continue
+
+        if not target_hours:
+            return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+
+        avg_temp = math_round(sum(float(h.get("tempC", 0)) for h in target_hours) / len(target_hours), 0)
+        avg_wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in target_hours) / len(target_hours), 0)
+        max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in target_hours if h.get("WindGustKmph")), default=None)
+        max_prob = max((int(h.get("chanceofrain", 0)) for h in target_hours if h.get("chanceofrain") is not None), default=None)
+        sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
+
+        hour_now = now_dt.hour
+        if 6 <= hour_now < 12:
+            title = "🌅 УТРОМ"
+        elif 12 <= hour_now < 18:
+            title = "☀️ ДНЁМ"
+        elif 18 <= hour_now < 24:
+            title = "🌆 ВЕЧЕРОМ"
+        else:
+            title = "🌙 НОЧЬЮ"
+
+        cond = "ясно"
+        if max_prob and max_prob >= 50:
+            cond = "дождь"
+        elif sum_precip > 0.5:
+            cond = "дождь"
+
+        text_parts = [f"{avg_temp} °C", f"{avg_wind} м/с"]
+        if max_gust and max_gust > avg_wind:
+            text_parts.append(f"(до {math_round(max_gust, 0)} м/с)")
+        text_parts.append(cond)
+        next_period = " · ".join(text_parts)
+
+        print(f"✅ short_forecast: fallback wttr OK", flush=True)
+        return {
+            "next_period": next_period,
+            "next_period_title": title,
+            "rain_prob": max_prob,
+        }
+    except Exception as e:
+        print(f"⚠️ short_forecast_wttr: {e}", flush=True)
+        return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+
+
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
+
+    # Fallback: wttr.in
     if not om_raw or not om_raw.get("daily"):
-        return None
+        print("⚠️ forecast_tomorrow: OM недоступен, fallback на wttr", flush=True)
+        return get_forecast_tomorrow_wttr()
 
     try:
         d = om_raw["daily"]
@@ -963,4 +1068,70 @@ def get_forecast_tomorrow():
         }
     except Exception as e:
         print(f"⚠️ forecast_tomorrow: {e}", flush=True)
+        return None
+
+
+def get_forecast_tomorrow_wttr():
+    """Fallback прогноз на завтра из wttr.in."""
+    w_raw = get_wttr_data()
+    if not w_raw or not w_raw.get("weather") or len(w_raw["weather"]) < 2:
+        return None
+
+    try:
+        tomorrow = w_raw["weather"][1]
+
+        tmin = math_round(float(tomorrow.get("mintempC", 0)), 0)
+        tmax = math_round(float(tomorrow.get("maxtempC", 0)), 0)
+
+        # Средние по hourly
+        hourly = tomorrow.get("hourly", [])
+        if hourly:
+            wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in hourly) / len(hourly), 0)
+            max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in hourly if h.get("WindGustKmph")), default=None)
+            rain_prob = max((int(h.get("chanceofrain", 0)) for h in hourly if h.get("chanceofrain") is not None), default=None)
+            rain_sum = sum(float(h.get("precipMM", 0)) for h in hourly)
+        else:
+            wind = 0
+            max_gust = None
+            rain_prob = None
+            rain_sum = 0
+
+        # Погодное описание — берём из полудня
+        desc = "—"
+        emoji = ""
+        for h in hourly:
+            try:
+                if int(h["time"]) == 1200:
+                    desc = h.get("weatherDesc", [{}])[0].get("value", "—")
+                    break
+            except Exception:
+                continue
+
+        # Простой маппинг emoji по описанию
+        desc_lower = desc.lower()
+        if "rain" in desc_lower or "drizzle" in desc_lower:
+            emoji = "🌧️"
+        elif "cloud" in desc_lower or "overcast" in desc_lower:
+            emoji = "☁️"
+        elif "sun" in desc_lower or "clear" in desc_lower:
+            emoji = "☀️"
+        else:
+            emoji = "⛅"
+
+        print(f"✅ forecast_tomorrow: fallback wttr OK", flush=True)
+        return {
+            "temp_min": tmin,
+            "temp_max": tmax,
+            "temp_avg": math_round((tmin + tmax) / 2, 0),
+            "wind_speed": wind,
+            "wind_gust": math_round(max_gust, 0) if max_gust else None,
+            "rain_prob": rain_prob,
+            "rain_sum": round(rain_sum, 1) if rain_sum else 0,
+            "condition_text": desc,
+            "condition_emoji": emoji,
+            "weather_code": 0,
+            "uv_index": None,
+        }
+    except Exception as e:
+        print(f"⚠️ forecast_tomorrow_wttr: {e}", flush=True)
         return None
