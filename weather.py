@@ -493,13 +493,16 @@ def get_metar_data():
         return None
 
 
+# ============ OPEN-METEO (429-safe + Redis + 2 прокси) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
 
+    # 1. Кэш 5 мин
     if _open_meteo_cache["data"] and (now - _open_meteo_cache["ts"]) < 300:
         return _open_meteo_cache["data"]
 
+    # 2. Блок после 429
     if _open_meteo_cache.get("blocked_until", 0) > now:
         remaining = int(_open_meteo_cache["blocked_until"] - now)
         print(f"⏸️ OM: в блоке ещё {remaining} сек", flush=True)
@@ -525,42 +528,80 @@ def get_open_meteo_data():
         "wind_speed_unit": "ms",
     }
 
-    headers_variants = [
-        {"User-Agent": "MotoWeather/2.0 (bot)"},
-        {"User-Agent": "curl/7.68.0"},
+    # Готовая query-строка для прокси
+    query_string = "&".join(
+        f"{k}={requests.utils.quote(str(v))}" for k, v in params.items()
+    )
+
+    # Список источников: (url, params, headers, label)
+    sources = [
+        # Прямой запрос 1: свой UA
+        (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct"),
+        # Прямой запрос 2: curl UA
+        (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl"),
+        # Прокси 1: allorigins
+        (
+            f"https://api.allorigins.win/raw?url="
+            f"{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
+            None,
+            {"User-Agent": "MotoWeather/2.0"},
+            "allorigins",
+        ),
+        # Прокси 2: corsproxy.io
+        (
+            f"https://corsproxy.io/?{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
+            None,
+            {"User-Agent": "MotoWeather/2.0"},
+            "corsproxy",
+        ),
     ]
 
-    for attempt, headers in enumerate(headers_variants, 1):
+    for url, req_params, headers, label in sources:
         try:
-            print(f"OM: попытка {attempt}", flush=True)
-            r = requests.get(OPEN_METEO_URL, params=params, headers=headers, timeout=15)
+            print(f"OM: {label}", flush=True)
+            if req_params:
+                r = requests.get(url, params=req_params, headers=headers, timeout=15)
+            else:
+                r = requests.get(url, headers=headers, timeout=25)
 
             if r.status_code == 200:
-                data = r.json()
+                try:
+                    data = r.json()
+                except Exception as e:
+                    print(f"⚠️ OM {label}: JSON error: {e}", flush=True)
+                    continue
+
+                # Проверка, что это действительно OM-ответ
+                if not data.get("current") and not data.get("hourly"):
+                    print(f"⚠️ OM {label}: невалидный ответ", flush=True)
+                    continue
+
                 _open_meteo_cache["data"] = data
                 _open_meteo_cache["ts"] = now
                 _open_meteo_cache["blocked_until"] = 0
                 save_om_cache(data)
-                print(f"✅ OM OK (попытка {attempt})", flush=True)
+                print(f"✅ OM OK ({label})", flush=True)
                 return data
 
             if r.status_code == 429:
-                print(f"⚠️ OM: 429 — блок на 5 минут", flush=True)
-                _open_meteo_cache["blocked_until"] = now + 300
-                cached = load_om_cache()
-                if cached:
-                    print(f"📦 OM: используем кэш из Redis", flush=True)
-                    _open_meteo_cache["data"] = cached
-                    _open_meteo_cache["ts"] = now
-                    return cached
-                if _open_meteo_cache["data"]:
-                    return _open_meteo_cache["data"]
-                return None
+                print(f"⚠️ OM {label}: 429", flush=True)
+                continue
 
-            print(f"⚠️ OM: {r.status_code} (попытка {attempt})", flush=True)
+            print(f"⚠️ OM {label}: {r.status_code}", flush=True)
         except Exception as e:
-            print(f"❌ OM: {type(e).__name__}: {e} (попытка {attempt})", flush=True)
+            print(f"❌ OM {label}: {type(e).__name__}: {e}", flush=True)
 
+    # Все попытки провалились
+    print("⛔ OM: все источники недоступны — блок 5 мин", flush=True)
+    _open_meteo_cache["blocked_until"] = now + 300
+    cached = load_om_cache()
+    if cached:
+        print("📦 OM: используем кэш из Redis", flush=True)
+        _open_meteo_cache["data"] = cached
+        _open_meteo_cache["ts"] = now
+        return cached
+    if _open_meteo_cache["data"]:
+        return _open_meteo_cache["data"]
     return None
 
 
@@ -874,7 +915,6 @@ def merge_weather_data(w):
     return result
 
 
-# ============ КРАТКИЙ ПРОГНОЗ (OM + wttr fallback) ============
 def get_short_forecast():
     om_raw = get_open_meteo_data()
 
@@ -926,7 +966,6 @@ def get_short_forecast():
         elif sum_precip > 0.5:
             cond = "дождь"
 
-        # Скобка (до X м/с) — в той же строке, что и скорость
         wind_str = f"{avg_wind} м/с"
         if max_gust and max_gust > avg_wind:
             wind_str += f" (до {math_round(max_gust, 0)} м/с)"
@@ -944,7 +983,6 @@ def get_short_forecast():
 
 
 def get_short_forecast_wttr():
-    """Fallback прогноз из wttr.in hourly."""
     w_raw = get_wttr_data()
     if not w_raw or not w_raw.get("weather"):
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
@@ -998,14 +1036,13 @@ def get_short_forecast_wttr():
         elif sum_precip > 0.5:
             cond = "дождь"
 
-        # Скобка в той же строке
         wind_str = f"{avg_wind} м/с"
         if max_gust and max_gust > avg_wind:
             wind_str += f" (до {math_round(max_gust, 0)} м/с)"
 
         next_period = f"{avg_temp} °C · {wind_str} · {cond}"
 
-        print(f"✅ short_forecast: fallback wttr OK", flush=True)
+        print("✅ short_forecast: fallback wttr OK", flush=True)
         return {
             "next_period": next_period,
             "next_period_title": title,
@@ -1069,7 +1106,6 @@ def get_forecast_tomorrow():
 
 
 def get_forecast_tomorrow_wttr():
-    """Fallback прогноз на завтра из wttr.in."""
     w_raw = get_wttr_data()
     if not w_raw or not w_raw.get("weather") or len(w_raw["weather"]) < 2:
         return None
@@ -1112,7 +1148,7 @@ def get_forecast_tomorrow_wttr():
         else:
             emoji = "⛅"
 
-        print(f"✅ forecast_tomorrow: fallback wttr OK", flush=True)
+        print("✅ forecast_tomorrow: fallback wttr OK", flush=True)
         return {
             "temp_min": tmin,
             "temp_max": tmax,
