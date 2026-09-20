@@ -323,17 +323,10 @@ def shorten_cond(cond):
 
 
 def build_risk_bar(score):
+    """Черепа по количеству баллов риска."""
     score = max(0, min(10, score))
     if score == 0:
         return ""
-    if score <= 2:
-        return "🟢" * max(1, score)
-    if score <= 4:
-        return "🟡" * score
-    if score <= 6:
-        return "🟠" * score
-    if score <= 8:
-        return "🔴" * score
     return "💀" * score
 
 
@@ -726,6 +719,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "wind_gust": avg_w.get("wind_gust") or 0,
             "is_rain": "дождь" in (next_period or "").lower() or avg_w.get("is_rain", False),
             "rain_prob_now": period_rain_prob,
+            "rain_total": short.get("rain_total") or 0,
+            "precip_mm": short.get("precip_mm") or 0,
             "is_thunder": avg_w.get("is_thunder", False),
             "is_hail": avg_w.get("is_hail", False),
             "visibility": avg_w.get("visibility") or 10000,
@@ -895,7 +890,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     return msg
 
 
-# ============ УТРЕННЯЯ РАССЫЛКА ============
 def run_morning_broadcast(force=False):
     now = datetime.now(MINSK_TZ)
     today_str = now.strftime("%Y-%m-%d")
@@ -972,7 +966,6 @@ def morning_broadcast_loop():
         time.sleep(60)
 
 
-# ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
     try:
         w = get_weather()
@@ -1001,7 +994,6 @@ def send_weather(chat_id):
         traceback.print_exc()
 
 
-# ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
     try:
@@ -1082,7 +1074,6 @@ def stats_cmd(m):
     )
 
 
-# ============ CALLBACK ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     try:
@@ -1154,7 +1145,6 @@ def callback(call):
         print(f"❌ callback: {type(e).__name__}: {e}", flush=True)
 
 
-# ============ FLASK ============
 @app.route("/")
 def home():
     return "🏍️ MotoWeather Bot is running!", 200
@@ -1187,7 +1177,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-# ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
 
