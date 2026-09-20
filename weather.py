@@ -33,7 +33,8 @@ def math_round(x, digits=0):
     return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
-_open_meteo_cache = {"data": None, "ts": 0}
+# ============ КЭШИ ============
+_open_meteo_cache = {"data": None, "ts": 0, "blocked_until": 0}
 _wttr_cache = {"data": None, "ts": 0}
 _owm_cache = {"data": None, "ts": 0}
 
@@ -99,6 +100,7 @@ def load_soil_cache():
         return None, False
 
 
+# ============ ВСПОМОГАТЕЛЬНЫЕ ============
 def get_minsk_time():
     return datetime.now(MINSK_TZ).strftime("%H:%M")
 
@@ -253,6 +255,7 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
+# ============ METAR ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
         return "☁️", "Пасмурно"
@@ -468,10 +471,19 @@ def get_metar_data():
         return None
 
 
+# ============ OPEN-METEO (429-safe) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
+
+    # 1. Кэш 5 минут
     if _open_meteo_cache["data"] and (now - _open_meteo_cache["ts"]) < 300:
+        return _open_meteo_cache["data"]
+
+    # 2. Блокировка после 429
+    if _open_meteo_cache.get("blocked_until", 0) > now:
+        remaining = int(_open_meteo_cache["blocked_until"] - now)
+        print(f"⏸️ OM: в блоке ещё {remaining} сек", flush=True)
         return _open_meteo_cache["data"]
 
     params = {
@@ -492,7 +504,7 @@ def get_open_meteo_data():
     }
 
     headers_variants = [
-        {"User-Agent": "MotoWeather/2.0 (bot; +https://t.me/MotoWeatherMinskBot)"},
+        {"User-Agent": "MotoWeather/2.0 (bot)"},
         {"User-Agent": "curl/7.68.0"},
     ]
 
@@ -500,12 +512,22 @@ def get_open_meteo_data():
         try:
             print(f"OM: попытка {attempt}", flush=True)
             r = requests.get(OPEN_METEO_URL, params=params, headers=headers, timeout=15)
+
             if r.status_code == 200:
                 data = r.json()
                 _open_meteo_cache["data"] = data
                 _open_meteo_cache["ts"] = now
+                _open_meteo_cache["blocked_until"] = 0
                 print(f"✅ OM OK (попытка {attempt})", flush=True)
                 return data
+
+            if r.status_code == 429:
+                print(f"⚠️ OM: 429 — блок на 5 минут", flush=True)
+                _open_meteo_cache["blocked_until"] = now + 300
+                if _open_meteo_cache["data"]:
+                    return _open_meteo_cache["data"]
+                return None
+
             print(f"⚠️ OM: {r.status_code} (попытка {attempt})", flush=True)
         except Exception as e:
             print(f"❌ OM: {type(e).__name__}: {e} (попытка {attempt})", flush=True)
@@ -513,6 +535,7 @@ def get_open_meteo_data():
     return None
 
 
+# ============ OWM ============
 def get_owm_data():
     global _owm_cache
     if not OWM_API_KEY:
@@ -538,6 +561,7 @@ def get_owm_data():
         return None
 
 
+# ============ WTTR ============
 def get_wttr_data():
     global _wttr_cache
     now = time.time()
@@ -561,6 +585,7 @@ def get_wttr_data():
         return None
 
 
+# ============ ГЛАВНАЯ СБОРКА ============
 def get_weather():
     m = get_metar_data()
     om_raw = get_open_meteo_data()
@@ -742,6 +767,7 @@ def get_weather():
     return result
 
 
+# ============ СЛИЯНИЕ ============
 def merge_weather_data(w):
     if not w:
         return None
@@ -823,6 +849,7 @@ def merge_weather_data(w):
     return result
 
 
+# ============ КРАТКИЙ ПРОГНОЗ ============
 def get_short_forecast():
     om_raw = get_open_meteo_data()
     if not om_raw or not om_raw.get("hourly"):
@@ -888,6 +915,7 @@ def get_short_forecast():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
+# ============ ПРОГНОЗ НА ЗАВТРА ============
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
     if not om_raw or not om_raw.get("daily"):
