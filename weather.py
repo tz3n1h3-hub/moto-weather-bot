@@ -18,6 +18,20 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 NBSP = "\u00A0"
 
 
+# ============ МАТЕМАТИЧЕСКОЕ ОКРУГЛЕНИЕ ============
+def math_round(x, digits=0):
+    """Математическое округление (0.5 → вверх)."""
+    if x is None:
+        return None
+    if digits == 0:
+        if x >= 0:
+            return int(x + 0.5)
+        return int(x - 0.5)
+    from decimal import Decimal, ROUND_HALF_UP
+    q = Decimal(10) ** -digits
+    return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
+
+
 # ============ ГЛОБАЛЬНЫЙ КЭШ ============
 _open_meteo_cache = {"data": None, "ts": 0}
 _wttr_cache = {"data": None, "ts": 0}
@@ -148,7 +162,7 @@ def calculate_humidity(temp, dew_point):
     try:
         a, b = 17.27, 237.7
         alpha = ((a * dew_point) / (b + dew_point)) - ((a * temp) / (b + temp))
-        return round(100 * math.exp(alpha))
+        return math_round(100 * math.exp(alpha), 0)
     except Exception:
         return None
 
@@ -157,17 +171,17 @@ def calculate_feels_like(temp, wind_speed):
     if temp <= 10 and wind_speed > 1.3:
         w = wind_speed * 3.6
         feels = 13.12 + 0.6215 * temp - 11.37 * (w ** 0.16) + 0.3965 * temp * (w ** 0.16)
-        return round(feels)
+        return math_round(feels, 0)
     elif temp >= 27:
-        return round(temp + 1)
-    return round(temp)
+        return math_round(temp + 1, 0)
+    return math_round(temp, 0)
 
 
 def calculate_dew_point(temp, humidity):
     if temp is None or humidity is None:
         return None
     try:
-        return round(temp - (100 - humidity) / 5)
+        return math_round(temp - (100 - humidity) / 5, 0)
     except Exception:
         return None
 
@@ -175,7 +189,7 @@ def calculate_dew_point(temp, humidity):
 def hpa_to_mmhg(hpa):
     if hpa is None:
         return None
-    return round(hpa * 0.750062)
+    return math_round(hpa * 0.750062, 0)
 
 
 # ============ ПАРСЕР METAR ============
@@ -247,7 +261,7 @@ def parse_wind_direction(metar_text):
     if deg == 0:
         return "штиль"
     dirs = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
-    idx = round(deg / 45) % 8
+    idx = math_round(deg / 45, 0) % 8
     return f"{dirs[idx]} ({deg}°)"
 
 
@@ -258,7 +272,7 @@ def parse_pressure_hpa(metar_text):
     match = re.search(r"\bA(\d{4})\b", metar_text)
     if match:
         inhg = int(match.group(1)) / 100
-        return round(inhg * 33.8639)
+        return math_round(inhg * 33.8639, 0)
     return None
 
 
@@ -341,10 +355,10 @@ def get_metar_data():
         if wind_match:
             unit = wind_match.group(5)
             value = int(wind_match.group(2))
-            result["wind_speed"] = round(value * 0.514444) if unit == "KT" else value
+            result["wind_speed"] = math_round(value * 0.514444, 0) if unit == "KT" else value
             if wind_match.group(4):
                 gust = int(wind_match.group(4))
-                result["wind_gust"] = round(gust * 0.514444) if unit == "KT" else gust
+                result["wind_gust"] = math_round(gust * 0.514444, 0) if unit == "KT" else gust
             else:
                 result["wind_gust"] = None
         emoji, text = parse_clouds(metar_text)
@@ -439,13 +453,16 @@ def _wttr_to_current(wttr_data):
         temp = float(cc.get("temp_C", 0))
         humidity = int(cc.get("humidity", 0))
         wind_kmph = float(cc.get("windspeedKmph", 0))
-        wind_ms = round(wind_kmph / 3.6, 1)
+        wind_ms = wind_kmph / 3.6
         pressure = float(cc.get("pressure", 1013))
         clouds = int(cc.get("cloudcover", 0))
         precip = float(cc.get("precipMM", 0))
-        visibility_m = int(cc.get("visibility", 10)) * 1000
 
-        dew = calculate_dew_point(round(temp), humidity)
+        # wttr visibility — в милях (0–10), конвертируем в метры
+        vis_miles = int(cc.get("visibility", 10))
+        visibility_m = vis_miles * 1609
+
+        dew = calculate_dew_point(temp, humidity)
 
         uv_raw = cc.get("uvIndex")
         try:
@@ -454,18 +471,18 @@ def _wttr_to_current(wttr_data):
             uv = None
 
         return {
-            "temp": round(temp),
-            "feels_like": round(float(cc.get("FeelsLikeC", temp))),
+            "temp": math_round(temp, 0),
+            "feels_like": math_round(float(cc.get("FeelsLikeC", temp)), 0),
             "humidity": humidity,
             "dew_point": dew,
-            "wind_speed": round(wind_ms),
+            "wind_speed": math_round(wind_ms, 0),
             "wind_gust": None,
             "wind_direction": cc.get("winddirDegree"),
             "visibility": visibility_m,
-            "pressure_hpa": round(pressure),
-            "pressure_mmhg": hpa_to_mmhg(round(pressure)),
+            "pressure_hpa": math_round(pressure, 0),
+            "pressure_mmhg": hpa_to_mmhg(math_round(pressure, 0)),
             "clouds_pct": clouds,
-            "precip_mm": round(precip, 1) if precip else 0,
+            "precip_mm": math_round(precip, 0) if precip else 0,
             "uv_index": uv,
             "soil_temp": None,
             "is_rain": precip > 0,
@@ -509,7 +526,7 @@ def _wttr_to_hourly(wttr_data):
                 dt_str = f"{date}T{hh}:{mm}"
                 result["time"].append(dt_str)
                 result["temperature_2m"].append(float(slot.get("tempC", 0)))
-                result["wind_speed_10m"].append(round(float(slot.get("windspeedKmph", 0)) / 3.6, 1))
+                result["wind_speed_10m"].append(math_round(float(slot.get("windspeedKmph", 0)) / 3.6, 1))
                 wttr_code = slot.get("weatherCode", "113")
                 result["weather_code"].append(code_map.get(wttr_code, 0))
                 try:
@@ -572,8 +589,8 @@ def _wttr_to_daily(wttr_data):
                 if w > max_wind:
                     max_wind = w
                 precip += float(slot.get("precipMM", 0))
-            result["wind_speed_10m_max"].append(round(max_wind))
-            result["precipitation_sum"].append(round(precip, 1))
+            result["wind_speed_10m_max"].append(math_round(max_wind, 0))
+            result["precipitation_sum"].append(math_round(precip, 1))
             max_chance = 0
             for slot in day.get("hourly", []):
                 try:
@@ -634,23 +651,23 @@ def _owm_to_current(owm_data):
         humidity = main.get("humidity")
         dew = None
         if temp is not None and humidity is not None:
-            dew = calculate_dew_point(round(temp), humidity)
+            dew = calculate_dew_point(temp, humidity)
 
         pressure_hpa = main.get("pressure")
 
         return {
-            "temp": round(temp) if temp is not None else None,
-            "feels_like": round(main.get("feels_like")) if main.get("feels_like") is not None else None,
+            "temp": math_round(temp, 0) if temp is not None else None,
+            "feels_like": math_round(main.get("feels_like"), 0) if main.get("feels_like") is not None else None,
             "humidity": humidity,
             "dew_point": dew,
-            "wind_speed": round(wind.get("speed")) if wind.get("speed") is not None else None,
-            "wind_gust": round(wind.get("gust")) if wind.get("gust") is not None else None,
+            "wind_speed": math_round(wind.get("speed"), 0) if wind.get("speed") is not None else None,
+            "wind_gust": math_round(wind.get("gust"), 0) if wind.get("gust") is not None else None,
             "wind_direction": wind.get("deg"),
             "visibility": owm_data.get("visibility"),
             "pressure_hpa": pressure_hpa,
             "pressure_mmhg": hpa_to_mmhg(pressure_hpa),
             "clouds_pct": clouds.get("all"),
-            "precip_mm": round(precip, 1) if precip else 0,
+            "precip_mm": math_round(precip, 0) if precip else 0,
             "uv_index": None,
             "soil_temp": None,
             "is_rain": precip > 0,
@@ -678,12 +695,12 @@ def _get_forecast_data():
                 "current": {
                     "temperature_2m": float(wttr["current_condition"][0]["temp_C"]),
                     "apparent_temperature": float(wttr["current_condition"][0].get("FeelsLikeC", wttr["current_condition"][0]["temp_C"])),
-                    "wind_speed_10m": round(float(wttr["current_condition"][0]["windspeedKmph"]) / 3.6, 1),
+                    "wind_speed_10m": float(wttr["current_condition"][0]["windspeedKmph"]) / 3.6,
                     "wind_direction_10m": None,
                     "relative_humidity_2m": int(wttr["current_condition"][0]["humidity"]),
                     "dew_point_2m": None,
                     "weather_code": 0,
-                    "visibility": int(wttr["current_condition"][0].get("visibility", 10)) * 1000,
+                    "visibility": int(wttr["current_condition"][0].get("visibility", 10)) * 1609,
                     "pressure_msl": float(wttr["current_condition"][0].get("pressure", 1013)),
                     "wind_gusts_10m": None,
                     "uv_index": None,
@@ -748,7 +765,6 @@ def get_weather():
         sunset = to_hm(sunset_iso)
         is_night = is_night_now(sunrise, sunset)
 
-        # ---- M ----
         m_data = None
         if metar:
             m_temp = metar.get("temp", 0)
@@ -783,30 +799,29 @@ def get_weather():
                 "obs_time": metar.get("obs_time"),
             }
 
-        # ---- OM ----
         om_data = None
         cur = (forecast_data or {}).get("current", {})
         if cur and forecast_src == "Open-Meteo":
-            om_temp = round(cur.get("temperature_2m", 0))
+            om_temp = math_round(cur.get("temperature_2m", 0), 0)
             om_dew = cur.get("dew_point_2m")
             om_pressure = cur.get("pressure_msl")
             om_visibility = cur.get("visibility")
-            om_humidity = round(cur.get("relative_humidity_2m", 0)) or None
+            om_humidity = math_round(cur.get("relative_humidity_2m", 0), 0) or None
             om_data = {
                 "temp": om_temp,
-                "dew_point": round(om_dew) if om_dew is not None else None,
+                "dew_point": math_round(om_dew, 0) if om_dew is not None else None,
                 "humidity": om_humidity,
-                "feels_like": round(cur.get("apparent_temperature", om_temp)),
-                "wind_speed": round(cur.get("wind_speed_10m", 0)),
-                "wind_gust": round(cur["wind_gusts_10m"]) if cur.get("wind_gusts_10m") else None,
+                "feels_like": math_round(cur.get("apparent_temperature", om_temp), 0),
+                "wind_speed": math_round(cur.get("wind_speed_10m", 0), 0),
+                "wind_gust": math_round(cur["wind_gusts_10m"], 0) if cur.get("wind_gusts_10m") else None,
                 "wind_direction": cur.get("wind_direction_10m"),
                 "visibility": int(om_visibility) if om_visibility else None,
-                "pressure_hpa": round(om_pressure) if om_pressure else None,
-                "pressure_mmhg": hpa_to_mmhg(round(om_pressure)) if om_pressure else None,
+                "pressure_hpa": math_round(om_pressure, 0) if om_pressure else None,
+                "pressure_mmhg": hpa_to_mmhg(math_round(om_pressure, 0)) if om_pressure else None,
                 "clouds_pct": cur.get("cloud_cover"),
-                "precip_mm": round(cur.get("precipitation", 0), 1),
-                "uv_index": round(cur.get("uv_index")) if cur.get("uv_index") is not None else None,
-                "soil_temp": round(cur["soil_temperature_6cm"]) if cur.get("soil_temperature_6cm") is not None else None,
+                "precip_mm": math_round(cur.get("precipitation", 0), 0),
+                "uv_index": math_round(cur.get("uv_index"), 0) if cur.get("uv_index") is not None else None,
+                "soil_temp": math_round(cur["soil_temperature_6cm"], 0) if cur.get("soil_temperature_6cm") is not None else None,
                 "is_rain": (cur.get("precipitation") or 0) > 0,
                 "is_thunder": cur.get("weather_code") in (95, 96, 99),
                 "is_hail": False,
@@ -814,10 +829,7 @@ def get_weather():
             if om_data["dew_point"] is None and om_humidity is not None:
                 om_data["dew_point"] = calculate_dew_point(om_temp, om_humidity)
 
-        # ---- W ----
         w_data = _wttr_to_current(wttr_raw)
-
-        # ---- OW ----
         ow_data = _owm_to_current(owm_raw)
 
         if not any([m_data, om_data, w_data, ow_data]):
@@ -865,9 +877,9 @@ def get_forecast_tomorrow():
         if len(daily.get("time", [])) < 2:
             return None
         date_iso = daily["time"][1]
-        temp_max = round(daily["temperature_2m_max"][1])
-        temp_min = round(daily["temperature_2m_min"][1])
-        temp_avg = round((temp_max + temp_min) / 2)
+        temp_max = math_round(daily["temperature_2m_max"][1], 0)
+        temp_min = math_round(daily["temperature_2m_min"][1], 0)
+        temp_avg = math_round((temp_max + temp_min) / 2, 0)
         weather_code = daily["weather_code"][1]
         precip_sum = daily.get("precipitation_sum", [0, 0])[1]
         daily_probs = daily.get("precipitation_probability_max", [])
@@ -883,12 +895,12 @@ def get_forecast_tomorrow():
             except Exception:
                 continue
         if tomorrow_winds:
-            wind_speed_avg = round(sum(tomorrow_winds) / len(tomorrow_winds))
+            wind_speed_avg = math_round(sum(tomorrow_winds) / len(tomorrow_winds), 0)
         else:
-            wind_speed_avg = round(daily["wind_speed_10m_max"][1])
+            wind_speed_avg = math_round(daily["wind_speed_10m_max"][1], 0)
         daily_gusts = daily.get("wind_gusts_10m_max", [])
         if len(daily_gusts) > 1 and daily_gusts[1] is not None:
-            wind_gust = round(daily_gusts[1])
+            wind_gust = math_round(daily_gusts[1], 0)
         else:
             wind_gust = None
         emoji, text = _wmo_emoji(weather_code)
@@ -908,7 +920,7 @@ def get_forecast_tomorrow():
             "temp_min": temp_min,
             "wind_speed": wind_speed_avg,
             "wind_gust": wind_gust,
-            "rain_total": round(precip_sum, 1) if precip_sum else 0,
+            "rain_total": math_round(precip_sum, 1) if precip_sum else 0,
             "rain_prob": rain_prob,
             "condition": f"{emoji} {text}",
             "condition_emoji": emoji,
@@ -975,7 +987,7 @@ def get_short_forecast():
                     current_idx = i
             except Exception:
                 continue
-        current_temp = round(temps[current_idx]) if current_idx < len(temps) else None
+        current_temp = math_round(temps[current_idx], 0) if current_idx < len(temps) else None
         target = now + timedelta(hours=3)
         next_idx = 0
         min_diff = float("inf")
@@ -989,8 +1001,8 @@ def get_short_forecast():
             except Exception:
                 continue
         if next_idx < len(temps):
-            t = round(temps[next_idx])
-            w = round(winds[next_idx])
+            t = math_round(temps[next_idx], 0)
+            w = math_round(winds[next_idx], 0)
             code = codes[next_idx]
             _, cond = _wmo_emoji(code)
             prob = probs[next_idx] if next_idx < len(probs) else None
@@ -1026,8 +1038,8 @@ def get_short_forecast():
             except Exception:
                 continue
         if period_temps:
-            avg_t = round(sum(period_temps) / len(period_temps))
-            avg_w = round(sum(period_winds) / len(period_winds))
+            avg_t = math_round(sum(period_temps) / len(period_temps), 0)
+            avg_w = math_round(sum(period_winds) / len(period_winds), 0)
             _, cond = _wmo_emoji(period_codes[0])
             max_prob = max(period_probs) if period_probs else None
             if max_prob is not None and max_prob > 30:
@@ -1055,7 +1067,6 @@ def get_short_forecast():
 
 # ============ УСРЕДНЕНИЕ + СОГЛАСИЕ ============
 def _filter_outliers(vals):
-    """Отбрасывает значения за 2σ. Возвращает список."""
     if len(vals) <= 2:
         return vals
     mean = statistics.mean(vals)
@@ -1067,14 +1078,16 @@ def _filter_outliers(vals):
 
 
 def _spread(vals):
-    """Разброс max-min, округлённый."""
+    """Разброс max-min, округлённый до целых."""
     if len(vals) < 2:
         return None
-    return round(max(vals) - min(vals), 1)
+    diff = max(vals) - min(vals)
+    if diff >= 0:
+        return int(diff + 0.5)
+    return int(diff - 0.5)
 
 
 def merge_weather_data(w):
-    """Среднее по живым источникам + согласие + разбросы."""
     if not w:
         return None
     m = w.get("m") or {}
@@ -1091,12 +1104,13 @@ def merge_weather_data(w):
         if not vals:
             return None
         filtered = _filter_outliers(vals)
-        return round(sum(filtered) / len(filtered), 1) if len(filtered) > 1 else filtered[0]
+        if len(filtered) > 1:
+            return math_round(sum(filtered) / len(filtered), 1)
+        return filtered[0]
 
     def merge_bool(key):
         return any(s.get(key) for s in sources)
 
-    # ---- Согласие ----
     n_live = len(sources)
     if n_live < 2:
         agreement = "нет данных (один источник)"
@@ -1115,6 +1129,8 @@ def merge_weather_data(w):
 
         def spread_of(key):
             vals = [s.get(key) for s in sources if s.get(key) is not None]
+            if key == "visibility":
+                vals = [v for v in vals if v > 0]
             return _spread(vals)
 
         agree_values = []
@@ -1132,13 +1148,12 @@ def merge_weather_data(w):
             if sp is None:
                 continue
             if sp == 0:
-                # разброс 0 — не показываем
                 continue
             if key == "visibility":
                 if sp >= 1000:
-                    agree_values.append((round(sp / 1000, 1), "км"))
+                    agree_values.append((math_round(sp / 1000, 0), "км"))
                 else:
-                    agree_values.append((round(sp, 0), "м"))
+                    agree_values.append((sp, "м"))
             else:
                 agree_values.append((sp, unit))
 
