@@ -278,7 +278,6 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
-# ============ ПЕРИОД ДНЯ ============
 def get_period_title(hour):
     if 6 <= hour < 12:
         return "🌅 УТРОМ"
@@ -505,7 +504,7 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (с 3 прокси) ============
+# ============ OPEN-METEO (без codetabs, per-source timeout) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -545,37 +544,33 @@ def get_open_meteo_data():
     full_url = f"{OPEN_METEO_URL}?{query_string}"
     encoded_url = requests.utils.quote(full_url, safe="")
 
-    # ✅ Новая цепочка: 2 прямых + 3 прокси (codetabs — самый надёжный)
+    # 2 прямых + 2 прокси. codetabs УБРАН (тормозил 20 сек → 522)
     sources = [
-        (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct"),
-        (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl"),
-        (
-            f"https://api.codetabs.com/v1/proxy?quest={encoded_url}",
-            None,
-            {"User-Agent": "MotoWeather/2.0"},
-            "codetabs",
-        ),
+        (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct", 10),
+        (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl", 10),
         (
             f"https://api.allorigins.win/raw?url={encoded_url}",
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
+            15,
         ),
         (
             f"https://corsproxy.io/?{encoded_url}",
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "corsproxy",
+            15,
         ),
     ]
 
-    for url, req_params, headers, label in sources:
+    for url, req_params, headers, label, timeout_sec in sources:
         try:
             print(f"OM: {label}", flush=True)
             if req_params:
-                r = requests.get(url, params=req_params, headers=headers, timeout=15)
+                r = requests.get(url, params=req_params, headers=headers, timeout=timeout_sec)
             else:
-                r = requests.get(url, headers=headers, timeout=25)
+                r = requests.get(url, headers=headers, timeout=timeout_sec)
 
             if r.status_code == 200:
                 try:
@@ -906,7 +901,6 @@ def merge_weather_data(w):
     result["sunset"] = w.get("sunset")
     result["is_night"] = w.get("is_night", False)
 
-    # Разброс — без видимости
     agree_values = []
     for key, unit in [("temp", "°C"), ("wind_speed", "м/с"),
                        ("humidity", "%"), ("dew_point", "°C")]:
