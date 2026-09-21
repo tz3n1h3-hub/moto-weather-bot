@@ -2,13 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.5.3"
+BOT_VERSION = "1.5.4"
 BOT_VERSION_DATE = "2026-09-21"
 
-# Флаг: уведомлять ли об этой версии
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.5.4", "21.09.2026", "Кнопка «ОБНОВИТЬ ПРОГНОЗ», всплывашка анти-спама, кэш сообщений", False),
     ("1.5.3", "21.09.2026", "Redis-кэш OM 30 мин, timeout 5 сек, убрал corsproxy", False),
     ("1.5.2", "21.09.2026", "Убрал codetabs (тормозил 20 сек), анти-спам 60 сек", False),
     ("1.5.1", "21.09.2026", "Убрал дубли про дождь в блоках НОЧЬ/ЗАВТРА", False),
@@ -48,7 +48,6 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 MINSK_LAT = 53.9045
 MINSK_LON = 27.5615
 
-# OWM использует те же координаты
 OWM_LAT = MINSK_LAT
 OWM_LON = MINSK_LON
 OWM_UNITS = "metric"
