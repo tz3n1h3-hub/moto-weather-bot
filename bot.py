@@ -4,7 +4,7 @@ import random
 import re
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 import requests
@@ -22,6 +22,7 @@ from weather import (
     get_weather, get_forecast_tomorrow,
     get_short_forecast, get_daylight_info, hpa_to_mmhg,
     merge_weather_data, get_twilight_state,
+    get_astro_night_score,
 )
 from analyzer import (
     analyze_risks, get_short_verdict, get_rider_verdict,
@@ -453,58 +454,6 @@ def wind_dir_short(full):
     return None
 
 
-def _time_to_min(hhmm):
-    try:
-        h, m = map(int, hhmm.split(":"))
-        return h * 60 + m
-    except Exception:
-        return None
-
-
-def night_score_for_period(title, sunrise, sunset):
-    if title == "🌙 НОЧЬЮ":
-        return 2
-
-    period_ranges = {
-        "🌅 УТРОМ":   (6 * 60,  12 * 60),
-        "☀️ ДНЁМ":     (12 * 60, 18 * 60),
-        "🌆 ВЕЧЕРОМ": (18 * 60, 22 * 60),
-    }
-
-    rng = period_ranges.get(title)
-    if not rng:
-        return 0
-
-    start, end = rng
-    period_len = end - start
-    if period_len <= 0:
-        return 0
-
-    sr_min = _time_to_min(sunrise) if sunrise else None
-    ss_min = _time_to_min(sunset) if sunset else None
-
-    if sr_min is None or ss_min is None:
-        return 0
-
-    dark_intervals = [(0, sr_min), (ss_min, 1440)]
-
-    dark_minutes = 0
-    for d_start, d_end in dark_intervals:
-        lo = max(start, d_start)
-        hi = min(end, d_end)
-        if hi > lo:
-            dark_minutes += (hi - lo)
-
-    ratio = dark_minutes / period_len
-
-    if ratio >= 0.75:
-        return 2
-    elif ratio >= 0.25:
-        return 1
-    else:
-        return 0
-
-
 # ============ ТЕКСТЫ ============
 START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 
@@ -524,19 +473,12 @@ START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 3. Показываю среднее значение по живым источникам.
 4. Если хоть один источник видит дождь — показываю факт осадков.
 
-<b>Что на выходе:</b>
-• Погода сейчас — средняя по источникам.
-• Прогноз на ближайшие часы.
-• Вердикт: ехать или нет — по 6 параметрам:
-  – ветер (скорость и порывы);
-  – осадки (дождь, снег, гроза, град);
-  – видимость (туман, дымка, мгла);
-  – температура (ощущаемая);
-  – влажность и точка росы;
-  – время суток.
-
-<b>Про точность:</b>
-Всё зависит от согласия источников. Если три-четыре сервиса дают близкие значения — доверия больше. Если расходятся — показываю среднее и предупреждаю.
+<b>Как определяю период дня:</b>
+По Солнцу (астрономически), а не по часам:
+• 🌅 УТРО — от рассвета до полудня
+• ☀️ ДЕНЬ — от полудня до заката
+• 🌆 ВЕЧЕР — от заката до полной темноты
+• 🌙 НОЧЬ — от полной темноты до рассвета
 
 <b>Подписки:</b>
 • 🌅 Утро — прогноз в 7:00 каждый день (кнопка ниже).
@@ -628,10 +570,6 @@ def fmt_spread(agree_values):
 
 # ============ ФИЛЬТР РИСКОВ ОТ ОСАДКОВ / ВЛАГИ ============
 def filter_rain_risks(risks):
-    """
-    Убирает дубли про дождь/осадки/морось/ливень/влагу,
-    когда rain_line уже показан выше.
-    """
     if not risks:
         return []
     keywords = ("дождь", "осадк", "морось", "ливн", "влажн", "мокро")
@@ -642,9 +580,13 @@ def filter_rain_risks(risks):
 
 
 # ============ СБОРКА БЛОКА ПЕРИОДА ============
-def build_period_block(title, verdict, score, line1, rain_line, risks_text):
+def build_period_block(title, verdict, score, line1, rain_line, risks_text, subtitle=None):
     bar = build_risk_bar(score)
-    parts = [f"<b>{title}</b>"]
+    title_full = f"<b>{title}</b>"
+    if subtitle:
+        title_full += f" <i>({subtitle})</i>"
+
+    parts = [title_full]
     parts.append(f"<b>{verdict}</b>")
     parts.append(f"РИСК: {score}/10")
     if bar:
@@ -678,6 +620,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     ow = w.get("ow") or {}
     sources_live = w.get("sources_live", [])
     formula = w.get("formula", "")
+
+    sunrise = w.get("sunrise")
+    sunset = w.get("sunset")
 
     avg_w = a_city.get("avg_w") if isinstance(a_city, dict) else None
     if not avg_w:
@@ -817,11 +762,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_lines.append(f"📊 Давление: {fmt_avg(gather('pressure_mmhg', src_map), 'мм рт. ст.')}")
 
-    twilight = get_twilight_state(w.get("sunrise"), w.get("sunset"))
+    twilight = get_twilight_state(sunrise, sunset)
     weather_lines.append(f"🌇 На улице: {twilight}")
 
-    sunrise = w.get("sunrise")
-    sunset = w.get("sunset")
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
@@ -834,16 +777,17 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
+    # ============ БЛИЖАЙШИЙ ПЕРИОД (астрономический) ============
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
+    next_period_range = short.get("next_period_range", "")
     period_rain_prob = short.get("rain_prob")
 
     forecast_block = ""
     if next_period != "нет данных":
-        period_night_score = night_score_for_period(
-            next_period_title,
-            w.get("sunrise"),
-            w.get("sunset"),
+        # Астрономический night_score для периода
+        period_night_score = get_astro_night_score(
+            now_dt.hour, now_dt.minute, sunrise, sunset
         )
 
         period_data = {
@@ -889,8 +833,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             line1=next_period,
             rain_line=rain_line,
             risks_text=period_risks_text,
+            subtitle=next_period_range,
         )
 
+    # ============ ЗАВТРА ============
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
@@ -938,6 +884,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             line1=tomorrow_line,
             rain_line=rain_line_tomorrow,
             risks_text=tomorrow_risks_text,
+            subtitle=f.get("day_range", ""),
         )
 
     tip = get_tip(
