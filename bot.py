@@ -623,17 +623,32 @@ def fmt_spread(agree_values):
     return "📊 Разброс: " + " · ".join(parts)
 
 
-# ============ СБОРКА БЛОКА ПЕРИОДА (НОВЫЙ ФОРМАТ) ============
+# ============ ФИЛЬТР РИСКОВ ОТ ОСАДКОВ ============
+def filter_rain_risks(risks):
+    """
+    Убирает из списка рисков те, что про дождь/осадки/морось/ливень.
+    Используется в блоках периода и завтра, где rain_line уже показан.
+    """
+    if not risks:
+        return []
+    keywords = ("дождь", "осадк", "морось", "ливн")
+    return [
+        r for r in risks
+        if not any(kw in r.lower() for kw in keywords)
+    ]
+
+
+# ============ СБОРКА БЛОКА ПЕРИОДА (rain_line внутри ЧТО НА ДОРОГЕ) ============
 def build_period_block(title, verdict, score, line1, rain_line, risks_text):
     """
-    Единый формат блока для НОЧЬ/ЗАВТРА:
+    Формат:
     🌙 НОЧЬЮ
     <вердикт>
     РИСК: N/10
     💀💀💀
     <строка погоды>
-    <вероятность дождя>
     ЧТО НА ДОРОГЕ
+    <rain_line>
     <риски>
     """
     bar = build_risk_bar(score)
@@ -644,11 +659,18 @@ def build_period_block(title, verdict, score, line1, rain_line, risks_text):
         parts.append(bar)
     if line1:
         parts.append(line1)
+
+    # rain_line идёт первым в ЧТО НА ДОРОГЕ
+    risk_lines = []
     if rain_line:
-        parts.append(rain_line.lstrip("\n"))
+        risk_lines.append(rain_line.lstrip("\n"))
     if risks_text:
+        risk_lines.append(risks_text)
+
+    if risk_lines:
         parts.append("<b>ЧТО НА ДОРОГЕ</b>")
-        parts.append(risks_text)
+        parts.extend(risk_lines)
+
     return "\n".join(parts)
 
 
@@ -794,7 +816,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
 
     if is_rain_anywhere and not precip_vals:
-        # Источник видит дождь, но миллиметров нет — показываем факт
         weather_lines.append(f"☔️ Осадки: идёт дождь{src_note}")
     elif precip_vals:
         avg_precip = sum(precip_vals) / len(precip_vals)
@@ -863,9 +884,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
 
         period_risks = period_risk["risks"][:4]
-        period_risks_text = "\n".join(period_risks) if period_risks else ""
 
-        # Вероятность дождя отдельной строкой
+        # Формируем rain_line ПЕРЕД фильтром
         rain_line = ""
         if period_rain_prob and period_rain_prob >= 30:
             if period_rain_prob >= 80:
@@ -874,6 +894,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 rain_line = f"🌧️ Вероятен дождь: {period_rain_prob}{NBSP}%"
             else:
                 rain_line = f"🌦️ Возможен дождь: {period_rain_prob}{NBSP}%"
+
+        # Фильтр дублей: если rain_line есть — убираем осадки из рисков
+        if rain_line:
+            period_risks = filter_rain_risks(period_risks)
+
+        period_risks_text = "\n".join(period_risks) if period_risks else ""
 
         forecast_block = build_period_block(
             title=next_period_title,
@@ -895,7 +921,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         emoji_short = f.get("condition_emoji", "")
 
         tomorrow_risks = fa["risks"][:4]
-        tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
 
         tomorrow_line = (
             f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
@@ -908,6 +933,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         else:
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
 
+        # rain_line_tomorrow формируем ПЕРЕД фильтром
         rain_line_tomorrow = ""
         if f.get("rain_prob") and f["rain_prob"] >= 30:
             rp = f["rain_prob"]
@@ -920,6 +946,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 rain_line_tomorrow = f"🌦️ Возможен дождь: {rp}{NBSP}%"
             if rain_sum > 0:
                 rain_line_tomorrow += f" · {rain_sum}{NBSP}мм"
+
+        # Фильтр дублей
+        if rain_line_tomorrow:
+            tomorrow_risks = filter_rain_risks(tomorrow_risks)
+
+        tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
 
         tomorrow_block = build_period_block(
             title="📅 ЗАВТРА",
