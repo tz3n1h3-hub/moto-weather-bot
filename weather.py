@@ -20,8 +20,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 NBSP = "\u00A0"
 
-OM_CACHE_KEY = "om_cache"
-OM_CACHE_TTL = 1800
+OM_CACHE_KEY = "om_cache_v2"
+OM_CACHE_TTL = 1800        # 30 минут — свежий кэш
+OM_CACHE_STALE_TTL = 7200  # 2 часа — старый кэш как аварийный
 
 
 def math_round(x, digits=0):
@@ -65,25 +66,44 @@ def _redis(cmd, *args):
 
 
 def save_om_cache(data):
+    """Сохраняет ответ OM в Redis с TTL 30 мин + дублирует в файл."""
     if not UPSTASH_ENABLED:
         return
     try:
         _redis("set", OM_CACHE_KEY, json.dumps(data))
-        _redis("expire", OM_CACHE_KEY, OM_CACHE_TTL)
+        _redis("expire", OM_CACHE_KEY, OM_CACHE_STALE_TTL)  # храним 2 часа, но считаем свежим 30 мин
     except Exception as e:
         print(f"⚠️ OM cache save: {e}", flush=True)
 
 
 def load_om_cache():
+    """
+    Возвращает (data, is_fresh):
+      data — данные из Redis, is_fresh — младше OM_CACHE_TTL.
+    Если кэша нет — (None, False).
+    """
     if not UPSTASH_ENABLED:
-        return None
+        return None, False
     try:
         raw = _redis("get", OM_CACHE_KEY)
-        if raw:
-            return json.loads(raw)
+        if not raw:
+            return None, False
+        parsed = json.loads(raw)
+        ts = parsed.get("_cached_at", 0)
+        data = parsed.get("_data")
+        if not data:
+            return None, False
+        age = int(time.time()) - ts
+        is_fresh = age < OM_CACHE_TTL
+        return data, is_fresh
     except Exception as e:
         print(f"⚠️ OM cache load: {e}", flush=True)
-    return None
+        return None, False
+
+
+def _wrap_om_cache(data):
+    """Оборачивает данные OM метаданными времени."""
+    return {"_data": data, "_cached_at": int(time.time())}
 
 
 def save_soil_cache(temp, ts=None):
@@ -504,20 +524,29 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (без codetabs, per-source timeout) ============
+# ============ OPEN-METEO (Redis-кэш 30 мин + timeout 5 сек) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
 
+    # 1. Кэш в памяти (5 мин)
     if _open_meteo_cache["data"] and (now - _open_meteo_cache["ts"]) < 300:
         return _open_meteo_cache["data"]
 
+    # 2. Redis-кэш (свежий, 30 мин) — берём мгновенно, без HTTP
+    cached_data, is_fresh = load_om_cache()
+    if cached_data and is_fresh:
+        _open_meteo_cache["data"] = cached_data
+        _open_meteo_cache["ts"] = now
+        print("✅ OM: из Redis-кэша (свежий)", flush=True)
+        return cached_data
+
+    # 3. Блок после полного отказа
     if _open_meteo_cache.get("blocked_until", 0) > now:
         remaining = int(_open_meteo_cache["blocked_until"] - now)
         print(f"⏸️ OM: в блоке ещё {remaining} сек", flush=True)
-        cached = load_om_cache()
-        if cached:
-            return cached
+        if cached_data:  # даже старый кэш лучше чем ничего
+            return cached_data
         return _open_meteo_cache["data"]
 
     params = {
@@ -544,23 +573,16 @@ def get_open_meteo_data():
     full_url = f"{OPEN_METEO_URL}?{query_string}"
     encoded_url = requests.utils.quote(full_url, safe="")
 
-    # 2 прямых + 2 прокси. codetabs УБРАН (тормозил 20 сек → 522)
+    # ✅ ТОЛЬКО 3 источника, timeout 5 сек. corsproxy убран (403), codetabs убран (522)
     sources = [
-        (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct", 10),
-        (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl", 10),
+        (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct", 5),
+        (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl", 5),
         (
             f"https://api.allorigins.win/raw?url={encoded_url}",
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
-            15,
-        ),
-        (
-            f"https://corsproxy.io/?{encoded_url}",
-            None,
-            {"User-Agent": "MotoWeather/2.0"},
-            "corsproxy",
-            15,
+            5,
         ),
     ]
 
@@ -586,7 +608,7 @@ def get_open_meteo_data():
                 _open_meteo_cache["data"] = data
                 _open_meteo_cache["ts"] = now
                 _open_meteo_cache["blocked_until"] = 0
-                save_om_cache(data)
+                save_om_cache(_wrap_om_cache(data))
                 print(f"✅ OM OK ({label})", flush=True)
                 return data
 
@@ -600,12 +622,11 @@ def get_open_meteo_data():
 
     print("⛔ OM: все источники недоступны — блок 5 мин", flush=True)
     _open_meteo_cache["blocked_until"] = now + 300
-    cached = load_om_cache()
-    if cached:
-        print("📦 OM: используем кэш из Redis", flush=True)
-        _open_meteo_cache["data"] = cached
+    if cached_data:  # используем старый кэш (до 2 часов)
+        print("📦 OM: используем СТАРЫЙ кэш из Redis", flush=True)
+        _open_meteo_cache["data"] = cached_data
         _open_meteo_cache["ts"] = now
-        return cached
+        return cached_data
     if _open_meteo_cache["data"]:
         return _open_meteo_cache["data"]
     return None
