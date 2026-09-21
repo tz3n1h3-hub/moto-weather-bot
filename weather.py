@@ -574,7 +574,7 @@ def get_open_meteo_data():
     encoded_url = requests.utils.quote(full_url, safe="")
 
     # ✅ ТОЛЬКО 3 источника, timeout 5 сек. corsproxy убран (403), codetabs убран (522)
-    sources = [
+        sources = [
         (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct", 5),
         (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl", 5),
         (
@@ -582,7 +582,7 @@ def get_open_meteo_data():
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
-            5,
+            3,
         ),
     ]
 
