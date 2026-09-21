@@ -68,14 +68,9 @@ NBSP = "\u00A0"
 
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
-# ============ АНТИ-СПАМ + КЭШ СООБЩЕНИЙ ============
-_user_last_weather = {}       # {chat_id: timestamp}
-_user_last_weather_msg = {}   # {chat_id: text}
-
-# Разные лимиты: «ПРОГНОЗ» 60 сек, «ОБНОВИТЬ» 30 сек
-ANTISPAM_WEATHER_SEC = 60
-ANTISPAM_UPDATE_SEC = 30
-CACHE_HIT_SEC = 10  # если < 10 сек — отдаём кэш мгновенно
+# Анти-спам: 3 секунды — только защита от случайного двойного тапа
+_user_last_weather = {}
+ANTISPAM_SEC = 3
 
 
 def _redis(cmd, *args):
@@ -1167,38 +1162,16 @@ def notify_version_update(force=False):
     return {"sent": sent, "deleted": len(failed_403), "version": BOT_VERSION}
 
 
-# ============ ОТПРАВКА ПОГОДЫ (анти-спам + кэш) ============
-def send_weather(chat_id, source="weather"):
-    """
-    source: "weather" (60 сек) или "update" (30 сек)
-    Логика:
-      1. Если < 10 сек назад — отдаём кэш сообщения МГНОВЕННО
-      2. Если < анти-спама (60/30) — возвращаем None (callback покажет всплывашку)
-      3. Иначе — делаем запрос
-    """
+# ============ ОТПРАВКА ПОГОДЫ (анти-спам 3 сек) ============
+def send_weather(chat_id):
     now = time.time()
     last = _user_last_weather.get(chat_id, 0)
-    elapsed = now - last
 
-    # 1. Быстрый повтор (< 10 сек) → отдаём кэш
-    if elapsed < CACHE_HIT_SEC and chat_id in _user_last_weather_msg:
-        cached_text = _user_last_weather_msg[chat_id]
-        try:
-            send_or_edit(chat_id, cached_text,
-                         get_after_weather_keyboard(is_subscribed(chat_id)))
-            print(f"⚡ {chat_id}: из кэша сообщения ({int(elapsed)} сек)", flush=True)
-        except Exception as e:
-            print(f"⚠️ cache send: {e}", flush=True)
-        return "cache"
+    if now - last < ANTISPAM_SEC:
+        remaining = ANTISPAM_SEC - (now - last)
+        print(f"⏸️ {chat_id}: защита от дабл-клика ({remaining:.1f} сек)", flush=True)
+        return ("antispam", int(remaining) + 1)
 
-    # 2. Анти-спам
-    limit = ANTISPAM_UPDATE_SEC if source == "update" else ANTISPAM_WEATHER_SEC
-    if elapsed < limit:
-        remaining = int(limit - elapsed)
-        print(f"⏸️ {chat_id}: анти-спам ({source}), ещё {remaining} сек", flush=True)
-        return ("antispam", remaining)
-
-    # 3. Свежий запрос
     _user_last_weather[chat_id] = now
 
     try:
@@ -1226,7 +1199,6 @@ def send_weather(chat_id, source="weather"):
         f = get_forecast_tomorrow()
 
         msg = build_weather_message(w, a_city, short, f, is_morning=False)
-        _user_last_weather_msg[chat_id] = msg
         send_or_edit(chat_id, msg, get_after_weather_keyboard(is_subscribed(chat_id)))
         return "ok"
     except Exception as e:
@@ -1260,7 +1232,7 @@ def start(message):
 def weather_cmd(m):
     try:
         save_user(m.chat.id)
-        send_weather(m.chat.id, source="weather")
+        send_weather(m.chat.id)
     except Exception as e:
         print(f"❌ /weather: {e}", flush=True)
 
@@ -1369,9 +1341,14 @@ def callback(call):
 
         chat_id = call.message.chat.id
 
-        # ⬇️ ГЛАВНЫЙ ОБРАБОТЧИК: и «ПРОГНОЗ», и «ОБНОВИТЬ ПРОГНОЗ» идут на weather
         if call.data == "weather":
-            result = send_weather(chat_id, source="weather")
+            try:
+                bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=1)
+            except Exception as e:
+                print(f"⚠️ answer_callback: {e}", flush=True)
+
+            result = send_weather(chat_id)
+
             if isinstance(result, tuple) and result[0] == "antispam":
                 try:
                     bot.answer_callback_query(
@@ -1380,22 +1357,17 @@ def callback(call):
                         show_alert=False,
                         cache_time=1
                     )
-                except Exception:
-                    pass
-            elif result == "ok":
-                try:
-                    bot.answer_callback_query(call.id, "✅ Готово", cache_time=1)
-                except Exception:
-                    pass
-            elif result == "cache":
-                try:
-                    bot.answer_callback_query(call.id, "⚡ Из кэша", cache_time=1)
                 except Exception:
                     pass
 
         elif call.data == "update":
-            # Совместимость: если где-то остался старый callback
-            result = send_weather(chat_id, source="update")
+            try:
+                bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=1)
+            except Exception as e:
+                print(f"⚠️ answer_callback: {e}", flush=True)
+
+            result = send_weather(chat_id)
+
             if isinstance(result, tuple) and result[0] == "antispam":
                 try:
                     bot.answer_callback_query(
@@ -1404,16 +1376,6 @@ def callback(call):
                         show_alert=False,
                         cache_time=1
                     )
-                except Exception:
-                    pass
-            elif result == "ok":
-                try:
-                    bot.answer_callback_query(call.id, "✅ Готово", cache_time=1)
-                except Exception:
-                    pass
-            elif result == "cache":
-                try:
-                    bot.answer_callback_query(call.id, "⚡ Из кэша", cache_time=1)
                 except Exception:
                     pass
 
