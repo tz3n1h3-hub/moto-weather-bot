@@ -517,7 +517,7 @@ def get_metar_data():
         return None
 
 
-# ============ OPEN-METEO (Redis-кэш 30 мин + timeout allorigins 3 сек) ============
+# ============ OPEN-METEO (Redis-кэш 30 мин + timeout 5/5/3 сек) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -1060,27 +1060,86 @@ def get_short_forecast_wttr():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
+# ============ ЗАВТРА — только день (sunrise–sunset), без ночи ============
 def get_forecast_tomorrow():
+    """
+    Прогноз на ЗАВТРА — только светлое время (от рассвета до заката).
+    Ночь завтра НЕ входит в этот блок — она пойдёт отдельно, когда наступит.
+    """
     om_raw = get_open_meteo_data()
 
-    if not om_raw or not om_raw.get("daily"):
+    if not om_raw or not om_raw.get("hourly") or not om_raw.get("daily"):
         print("⚠️ forecast_tomorrow: OM недоступен, fallback на wttr", flush=True)
         return get_forecast_tomorrow_wttr()
 
     try:
-        d = om_raw["daily"]
-        if len(d.get("time", [])) < 2:
+        hourly = om_raw["hourly"]
+        daily = om_raw["daily"]
+
+        if len(daily.get("time", [])) < 2:
             return None
 
-        idx = 1
-        tmin = math_round(d["temperature_2m_min"][idx], 0)
-        tmax = math_round(d["temperature_2m_max"][idx], 0)
-        wind = math_round(d["wind_speed_10m_max"][idx], 0)
-        gust = math_round(d["wind_gusts_10m_max"][idx], 0) if d.get("wind_gusts_10m_max") else None
-        rain_prob = d.get("precipitation_probability_max", [None, None])[idx]
-        rain_sum = d.get("precipitation_sum", [0, 0])[idx]
-        weather_code = d.get("weather_code", [0, 0])[idx]
-        uv_max = d.get("uv_index_max", [0, 0])[idx]
+        try:
+            sr_iso = daily["sunrise"][1]
+            ss_iso = daily["sunset"][1]
+            sunrise_h = int(sr_iso.split("T")[1][:2])
+            sunset_h = int(ss_iso.split("T")[1][:2])
+        except Exception:
+            sunrise_h = 7
+            sunset_h = 19
+
+        tomorrow_str = daily["time"][1]
+
+        times = hourly.get("time", [])
+        temps = hourly.get("temperature_2m", [])
+        winds = hourly.get("wind_speed_10m", [])
+        gusts = hourly.get("wind_gusts_10m", [])
+        probs = hourly.get("precipitation_probability", [])
+        precs = hourly.get("precipitation", [])
+        codes = hourly.get("weather_code", [])
+        uvs = hourly.get("uv_index", [])
+
+        day_indices = []
+        for i, t in enumerate(times):
+            if not t.startswith(tomorrow_str):
+                continue
+            try:
+                hour = int(t.split("T")[1][:2])
+            except Exception:
+                continue
+            if sunrise_h <= hour <= sunset_h:
+                day_indices.append(i)
+
+        if not day_indices:
+            print("⚠️ forecast_tomorrow: нет данных для дневных часов", flush=True)
+            return get_forecast_tomorrow_wttr()
+
+        def collect(vals):
+            return [vals[i] for i in day_indices if i < len(vals) and vals[i] is not None]
+
+        day_temps = collect(temps)
+        day_winds = collect(winds)
+        day_gusts = collect(gusts)
+        day_probs = collect(probs)
+        day_precs = collect(precs)
+        day_codes = collect(codes)
+        day_uvs = collect(uvs)
+
+        tmin = math_round(min(day_temps), 0) if day_temps else None
+        tmax = math_round(max(day_temps), 0) if day_temps else None
+        wind = math_round(max(day_winds), 0) if day_winds else 0
+        gust = math_round(max(day_gusts), 0) if day_gusts else None
+        rain_prob = max(day_probs) if day_probs else None
+        rain_sum = round(sum(day_precs), 1) if day_precs else 0
+        uv_max = max(day_uvs) if day_uvs else None
+
+        if day_codes:
+            priority = {95: 5, 96: 5, 99: 5, 75: 4, 73: 4, 71: 4, 65: 3, 63: 3, 61: 3,
+                        80: 3, 55: 3, 53: 3, 51: 3, 48: 2, 45: 2, 3: 2, 2: 1, 1: 1, 0: 0}
+            worst = max(day_codes, key=lambda c: priority.get(c, 0))
+            weather_code = worst
+        else:
+            weather_code = 0
 
         rain_sum_rounded = round(rain_sum, 1) if rain_sum else 0
 
@@ -1096,10 +1155,13 @@ def get_forecast_tomorrow():
         }
         cond_text, cond_emoji = cond_map.get(weather_code, ("—", ""))
 
+        tmin_safe = tmin if tmin is not None else 0
+        tmax_safe = tmax if tmax is not None else 0
+
         return {
-            "temp_min": tmin,
-            "temp_max": tmax,
-            "temp_avg": math_round((tmin + tmax) / 2, 0),
+            "temp_min": tmin_safe,
+            "temp_max": tmax_safe,
+            "temp_avg": math_round((tmin_safe + tmax_safe) / 2, 0),
             "wind_speed": wind,
             "wind_gust": gust,
             "rain_prob": rain_prob,
@@ -1110,6 +1172,8 @@ def get_forecast_tomorrow():
             "condition_emoji": cond_emoji,
             "weather_code": weather_code,
             "uv_index": math_round(uv_max, 0) if uv_max is not None else None,
+            "day_from_hour": sunrise_h,
+            "day_to_hour": sunset_h,
         }
     except Exception as e:
         print(f"⚠️ forecast_tomorrow: {e}", flush=True)
@@ -1117,6 +1181,7 @@ def get_forecast_tomorrow():
 
 
 def get_forecast_tomorrow_wttr():
+    """Fallback прогноз на завтра из wttr.in — только день (08:00–20:00)."""
     w_raw = get_wttr_data()
     if not w_raw or not w_raw.get("weather") or len(w_raw["weather"]) < 2:
         return None
@@ -1128,11 +1193,20 @@ def get_forecast_tomorrow_wttr():
         tmax = math_round(float(tomorrow.get("maxtempC", 0)), 0)
 
         hourly = tomorrow.get("hourly", [])
-        if hourly:
-            wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in hourly) / len(hourly), 0)
-            max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in hourly if h.get("WindGustKmph")), default=None)
-            rain_prob = max((int(h.get("chanceofrain", 0)) for h in hourly if h.get("chanceofrain") is not None), default=None)
-            rain_sum = sum(float(h.get("precipMM", 0)) for h in hourly)
+        day_hours = []
+        for h in hourly:
+            try:
+                h_time = int(h["time"]) // 100
+                if 8 <= h_time <= 20:
+                    day_hours.append(h)
+            except Exception:
+                continue
+
+        if day_hours:
+            wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in day_hours) / len(day_hours), 0)
+            max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in day_hours if h.get("WindGustKmph")), default=None)
+            rain_prob = max((int(h.get("chanceofrain", 0)) for h in day_hours if h.get("chanceofrain") is not None), default=None)
+            rain_sum = sum(float(h.get("precipMM", 0)) for h in day_hours)
         else:
             wind = 0
             max_gust = None
@@ -1143,7 +1217,7 @@ def get_forecast_tomorrow_wttr():
 
         desc = "—"
         emoji = ""
-        for h in hourly:
+        for h in day_hours:
             try:
                 if int(h["time"]) == 1200:
                     desc = h.get("weatherDesc", [{}])[0].get("value", "—")
