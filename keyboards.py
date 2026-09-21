@@ -31,19 +31,36 @@ def get_morning_keyboard():
     return markup
 
 
-def get_about_keyboard(is_subscribed=False):
+def get_about_keyboard(is_subscribed=False, is_updater=False):
+    """
+    is_subscribed — подписка на утреннюю рассылку 7:00
+    is_updater    — подписка на уведомления о новых версиях
+    """
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
     )
+
+    # Подписка на утро
     if is_subscribed:
         markup.row(
-            InlineKeyboardButton("❌ Отписаться", callback_data="unsubscribe")
+            InlineKeyboardButton("❌ Отписаться от утра", callback_data="unsubscribe")
         )
     else:
         markup.row(
-            InlineKeyboardButton("✅ Подписаться", callback_data="subscribe")
+            InlineKeyboardButton("✅ Подписаться на утро", callback_data="subscribe")
         )
+
+    # Подписка на обновления
+    if is_updater:
+        markup.row(
+            InlineKeyboardButton("🔕 Не уведомлять об обновлениях", callback_data="updates_off")
+        )
+    else:
+        markup.row(
+            InlineKeyboardButton("🔔 Уведомлять об обновлениях", callback_data="updates_on")
+        )
+
     return markup
 
 
