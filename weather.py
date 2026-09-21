@@ -252,7 +252,6 @@ def calculate_humidity(temp, dew_point):
 
 
 def calculate_feels_like(temp, wind_speed):
-    """Wind chill до 15°C (расширено), жара от 27°C."""
     if temp <= 15 and wind_speed > 1.3:
         w = wind_speed * 3.6
         feels = 13.12 + 0.6215 * temp - 11.37 * (w ** 0.16) + 0.3965 * temp * (w ** 0.16)
@@ -279,11 +278,8 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
-# ============ ПЕРИОД ДНЯ (с ночью от 22:00) ============
+# ============ ПЕРИОД ДНЯ ============
 def get_period_title(hour):
-    """
-    УТРО: 06–11, ДЕНЬ: 12–17, ВЕЧЕР: 18–21, НОЧЬ: 22–05.
-    """
     if 6 <= hour < 12:
         return "🌅 УТРОМ"
     elif 12 <= hour < 18:
@@ -509,6 +505,7 @@ def get_metar_data():
         return None
 
 
+# ============ OPEN-METEO (с 3 прокси) ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -545,18 +542,27 @@ def get_open_meteo_data():
         f"{k}={requests.utils.quote(str(v))}" for k, v in params.items()
     )
 
+    full_url = f"{OPEN_METEO_URL}?{query_string}"
+    encoded_url = requests.utils.quote(full_url, safe="")
+
+    # ✅ Новая цепочка: 2 прямых + 3 прокси (codetabs — самый надёжный)
     sources = [
         (OPEN_METEO_URL, params, {"User-Agent": "MotoWeather/2.0 (bot)"}, "direct"),
         (OPEN_METEO_URL, params, {"User-Agent": "curl/7.68.0"}, "direct-curl"),
         (
-            f"https://api.allorigins.win/raw?url="
-            f"{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
+            f"https://api.codetabs.com/v1/proxy?quest={encoded_url}",
+            None,
+            {"User-Agent": "MotoWeather/2.0"},
+            "codetabs",
+        ),
+        (
+            f"https://api.allorigins.win/raw?url={encoded_url}",
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
         ),
         (
-            f"https://corsproxy.io/?{requests.utils.quote(OPEN_METEO_URL + '?' + query_string, safe='')}",
+            f"https://corsproxy.io/?{encoded_url}",
             None,
             {"User-Agent": "MotoWeather/2.0"},
             "corsproxy",
@@ -900,7 +906,7 @@ def merge_weather_data(w):
     result["sunset"] = w.get("sunset")
     result["is_night"] = w.get("is_night", False)
 
-    # Разброс — БЕЗ видимости (единицы разные, шум)
+    # Разброс — без видимости
     agree_values = []
     for key, unit in [("temp", "°C"), ("wind_speed", "м/с"),
                        ("humidity", "%"), ("dew_point", "°C")]:
@@ -958,7 +964,6 @@ def get_short_forecast():
 
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        # ✅ Период с учётом ночи от 22:00
         title = get_period_title(now_dt.hour)
 
         cond = "ясно"
@@ -1024,7 +1029,6 @@ def get_short_forecast_wttr():
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        # ✅ Период с учётом ночи от 22:00
         title = get_period_title(now_dt.hour)
 
         cond = "ясно"
