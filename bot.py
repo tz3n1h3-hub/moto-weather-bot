@@ -9,13 +9,14 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import requests
 import telebot
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from telebot.apihelper import ApiTelegramException
 
 from config import (
     BOT_TOKEN, MY_BOT_USERNAME,
-    USERS_FILE, SUBSCRIBERS_FILE, ADMIN_ID, MINSK_TZ,
+    USERS_FILE, SUBSCRIBERS_FILE, UPDATERS_FILE, ADMIN_ID, MINSK_TZ,
     UPSTASH_URL, UPSTASH_TOKEN, OWM_API_KEY,
+    BOT_VERSION, BOT_VERSION_DATE, BOT_VERSION_NOTIFY, BOT_CHANGELOG,
 )
 from weather import (
     get_weather, get_forecast_tomorrow,
@@ -46,6 +47,8 @@ def math_round(x, digits=0):
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!", flush=True)
     exit(1)
+
+print(f"🏍️ MotoWeather v{BOT_VERSION} ({BOT_VERSION_DATE})", flush=True)
 
 if UPSTASH_URL and UPSTASH_TOKEN:
     print("✅ Хранилище: Upstash Redis", flush=True)
@@ -87,6 +90,7 @@ def _redis(cmd, *args):
         return None
 
 
+# ============ ПОЛЬЗОВАТЕЛИ ============
 def load_users():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "users")
@@ -126,6 +130,7 @@ def get_users_count():
     return len(load_users())
 
 
+# ============ ПОДПИСЧИКИ НА УТРО ============
 def load_subscribers():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "subscribers")
@@ -186,6 +191,68 @@ def get_subscribers_count():
     return len(load_subscribers())
 
 
+# ============ ПОДПИСЧИКИ НА ОБНОВЛЕНИЯ ============
+def load_updaters():
+    if UPSTASH_ENABLED:
+        result = _redis("smembers", "updaters")
+        if result is None:
+            return []
+        try:
+            return [int(x) for x in result]
+        except (ValueError, TypeError):
+            return []
+    if os.path.exists(UPDATERS_FILE):
+        try:
+            with open(UPDATERS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+
+def save_updater(user_id):
+    if UPSTASH_ENABLED:
+        _redis("sadd", "updaters", user_id)
+        return
+    ups = load_updaters()
+    if user_id not in ups:
+        ups.append(user_id)
+        try:
+            with open(UPDATERS_FILE, "w") as f:
+                json.dump(ups, f)
+        except Exception as e:
+            print(f"⚠️ updater save: {e}", flush=True)
+
+
+def remove_updater(user_id):
+    if UPSTASH_ENABLED:
+        _redis("srem", "updaters", user_id)
+        return
+    ups = load_updaters()
+    if user_id in ups:
+        ups.remove(user_id)
+        try:
+            with open(UPDATERS_FILE, "w") as f:
+                json.dump(ups, f)
+        except Exception as e:
+            print(f"⚠️ updater remove: {e}", flush=True)
+
+
+def is_updater(user_id):
+    if UPSTASH_ENABLED:
+        result = _redis("sismember", "updaters", user_id)
+        return result == 1
+    return user_id in load_updaters()
+
+
+def get_updaters_count():
+    if UPSTASH_ENABLED:
+        result = _redis("scard", "updaters")
+        return int(result) if result else 0
+    return len(load_updaters())
+
+
+# ============ УТРЕННИЙ СТАТУС ============
 LAST_MORNING_FILE = "last_morning.txt"
 
 
@@ -323,7 +390,6 @@ def shorten_cond(cond):
 
 
 def build_risk_bar(score):
-    """Черепа по количеству баллов риска."""
     score = max(0, min(10, score))
     if score == 0:
         return ""
@@ -391,11 +457,6 @@ def _time_to_min(hhmm):
 
 
 def night_score_for_period(title, sunrise, sunset):
-    """
-    Оценка темноты периода: 0 светло, 1 частично, 2 темно.
-    Ночь (22:00–06:00) — всегда 2.
-    Вечер — до 22:00.
-    """
     if title == "🌙 НОЧЬЮ":
         return 2
 
@@ -439,7 +500,7 @@ def night_score_for_period(title, sunrise, sunset):
         return 0
 
 
-START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
+START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 
 <b>Что это?</b>
 Погодный ориентир для райдеров Минска.
@@ -471,10 +532,15 @@ START_TEXT = """🌤 <b>MOTOWEATHER · МИНСК</b>
 <b>Про точность:</b>
 Всё зависит от согласия источников. Если три-четыре сервиса дают близкие значения — доверия больше. Если расходятся — показываю среднее и предупреждаю.
 
+<b>Подписки:</b>
+• 🌅 Утро — прогноз в 7:00 каждый день (кнопка ниже).
+• 🔔 Обновления — уведомления о новых версиях бота.
+
 Нажми ПРОГНОЗ — и вперёд.
 
 —
-👨‍💻 Разработчик: <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>"""
+👨‍💻 Разработчик: <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>
+🏍️ v{BOT_VERSION}"""
 
 
 SUBSCRIBE_TEXT = """🌅 <b>Подписка на утро</b>
@@ -511,6 +577,16 @@ UNSUBSCRIBE_CANCELED = """✅ <b>Остаёмся!</b>
 ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
 
 Отписаться можно в «О проекте»."""
+
+UPDATES_ON_TEXT = """🔔 <b>Уведомления об обновлениях</b>
+
+Теперь ты будешь получать сообщения о новых версиях MotoWeather — что добавили, что поправили.
+
+Отключить можно в «О проекте»."""
+
+UPDATES_OFF_TEXT = """🔕 <b>Уведомления отключены</b>
+
+Больше не будем присылать обновления. Включить обратно — в «О проекте»."""
 
 
 def send_or_edit(chat_id, text, reply_markup=None):
@@ -887,7 +963,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 —————
 {tip}
 
-🏍️ <b>Ровной дороги!</b>"""
+🏍️ <b>Ровной дороги!</b>
+<i>v{BOT_VERSION}</i>"""
 
     if is_morning:
         alcohol = get_alcohol_warning()
@@ -973,6 +1050,69 @@ def morning_broadcast_loop():
         time.sleep(60)
 
 
+# ============ РАССЫЛКА ОБНОВЛЕНИЙ ============
+def notify_version_update(force=False):
+    """
+    Уведомляет всех, кто подписан на обновления (updaters), о новой версии.
+    Запускается один раз при старте, если версия сменилась.
+    force=True — игнорировать флаг notify и last_notified.
+    """
+    if not UPSTASH_ENABLED and not force:
+        # Без Redis не можем надёжно отследить last_notified — пропускаем,
+        # чтобы не спамить при каждом рестарте
+        return {"skipped": "no_redis"}
+
+    if not BOT_VERSION_NOTIFY and not force:
+        return {"skipped": "notify_disabled"}
+
+    last_notified = _redis("get", "last_notified_version") if UPSTASH_ENABLED else None
+    if last_notified == BOT_VERSION and not force:
+        return {"skipped": "already_notified", "version": BOT_VERSION}
+
+    # Ищем changelog для текущей версии
+    desc = ""
+    date = BOT_VERSION_DATE
+    for ver, d, txt, *rest in BOT_CHANGELOG:
+        if ver == BOT_VERSION:
+            date = d
+            desc = txt
+            break
+
+    updaters = load_updaters()
+    if not updaters:
+        if UPSTASH_ENABLED:
+            _redis("set", "last_notified_version", BOT_VERSION)
+        return {"skipped": "no_updaters", "version": BOT_VERSION}
+
+    text = (
+        f"🎉 <b>MotoWeather обновился до v{BOT_VERSION}</b>\n\n"
+        f"<b>Что нового:</b>\n{desc}\n\n"
+        f"<i>Отключить уведомления — /about → «🔕 Не уведомлять»</i>\n"
+        f"<i>Посмотреть прогноз — /start</i>"
+    )
+
+    sent, failed_403 = 0, []
+    for uid in updaters:
+        try:
+            bot.send_message(uid, text, parse_mode="HTML")
+            sent += 1
+            time.sleep(0.05)
+        except ApiTelegramException as e:
+            if e.error_code == 403:
+                failed_403.append(uid)
+        except Exception:
+            pass
+
+    for uid in failed_403:
+        remove_updater(uid)
+
+    if UPSTASH_ENABLED:
+        _redis("set", "last_notified_version", BOT_VERSION)
+
+    print(f"📢 Уведомление v{BOT_VERSION}: {sent} ок, {len(failed_403)} удалено", flush=True)
+    return {"sent": sent, "deleted": len(failed_403), "version": BOT_VERSION}
+
+
 def send_weather(chat_id):
     try:
         w = get_weather()
@@ -1001,6 +1141,7 @@ def send_weather(chat_id):
         traceback.print_exc()
 
 
+# ============ КОМАНДЫ ============
 @bot.message_handler(commands=['start'])
 def start(message):
     try:
@@ -1033,7 +1174,10 @@ def weather_cmd(m):
 def about_cmd(m):
     try:
         save_user(m.chat.id)
-        kb = get_about_keyboard(is_subscribed(m.chat.id))
+        kb = get_about_keyboard(
+            is_subscribed=is_subscribed(m.chat.id),
+            is_updater=is_updater(m.chat.id),
+        )
         send_or_edit(m.chat.id, START_TEXT, kb)
     except Exception as e:
         print(f"❌ /about: {e}", flush=True)
@@ -1044,7 +1188,10 @@ def subscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if is_subscribed(m.chat.id):
-            kb = get_about_keyboard(is_subscribed=True)
+            kb = get_about_keyboard(
+                is_subscribed=True,
+                is_updater=is_updater(m.chat.id),
+            )
             send_or_edit(m.chat.id, ALREADY_SUBSCRIBED, kb)
             return
         send_or_edit(m.chat.id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
@@ -1057,7 +1204,10 @@ def unsubscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if not is_subscribed(m.chat.id):
-            kb = get_about_keyboard(is_subscribed=False)
+            kb = get_about_keyboard(
+                is_subscribed=False,
+                is_updater=is_updater(m.chat.id),
+            )
             send_or_edit(m.chat.id, "ℹ️ Ты не подписан.", kb)
             return
         send_or_edit(m.chat.id, UNSUBSCRIBE_PROMPT, get_unsubscribe_keyboard())
@@ -1065,22 +1215,55 @@ def unsubscribe_cmd(m):
         print(f"❌ /unsubscribe: {e}", flush=True)
 
 
+@bot.message_handler(commands=['updates'])
+def updates_cmd(m):
+    """Подписка/отписка на уведомления об обновлениях."""
+    try:
+        save_user(m.chat.id)
+        if is_updater(m.chat.id):
+            remove_updater(m.chat.id)
+            text = UPDATES_OFF_TEXT
+        else:
+            save_updater(m.chat.id)
+            text = UPDATES_ON_TEXT
+
+        kb = get_about_keyboard(
+            is_subscribed=is_subscribed(m.chat.id),
+            is_updater=is_updater(m.chat.id),
+        )
+        send_or_edit(m.chat.id, text, kb)
+    except Exception as e:
+        print(f"❌ /updates: {e}", flush=True)
+
+
 @bot.message_handler(commands=['stats'])
 def stats_cmd(m):
     if not ADMIN_ID or m.chat.id != ADMIN_ID:
         bot.reply_to(m, "❌ Нет прав.")
         return
+
+    changelog_lines = []
+    for item in BOT_CHANGELOG[:5]:
+        ver, date, desc = item[0], item[1], item[2]
+        marker = "▶️" if ver == BOT_VERSION else "  "
+        changelog_lines.append(f"{marker} <b>v{ver}</b> ({date}) — {desc}")
+    changelog_text = "\n".join(changelog_lines)
+
     bot.reply_to(
         m,
-        f"📊 <b>Статистика</b>\n"
+        f"📊 <b>Статистика MotoWeather</b>\n"
+        f"🏍️ Версия: <b>v{BOT_VERSION}</b> ({BOT_VERSION_DATE})\n\n"
         f"👥 Юзеров: {get_users_count()}\n"
-        f"🌅 Подписчиков: {get_subscribers_count()}\n"
+        f"🌅 Подписчиков на утро: {get_subscribers_count()}\n"
+        f"🔔 Подписчиков на обновления: {get_updaters_count()}\n"
         f"💾 Хранилище: {'Upstash' if UPSTASH_ENABLED else 'файлы'}\n"
-        f"📅 {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}",
+        f"📅 {datetime.now(MINSK_TZ).strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"<b>История версий:</b>\n{changelog_text}",
         parse_mode="HTML"
     )
 
 
+# ============ CALLBACK ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     try:
@@ -1102,13 +1285,16 @@ def callback(call):
 
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅", cache_time=3)
-            kb = get_about_keyboard(is_subscribed(chat_id))
+            kb = get_about_keyboard(
+                is_subscribed=is_subscribed(chat_id),
+                is_updater=is_updater(chat_id),
+            )
             send_or_edit(chat_id, START_TEXT, kb)
 
         elif call.data == "subscribe":
             if is_subscribed(chat_id):
                 bot.answer_callback_query(call.id, "ℹ️ Уже подписан", cache_time=3)
-                kb = get_about_keyboard(is_subscribed=True)
+                kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(chat_id))
                 send_or_edit(chat_id, ALREADY_SUBSCRIBED, kb)
             else:
                 bot.answer_callback_query(call.id, "✅", cache_time=3)
@@ -1117,18 +1303,18 @@ def callback(call):
         elif call.data == "subscribe_confirm":
             save_subscriber(chat_id)
             bot.answer_callback_query(call.id, "✅ Подписка", cache_time=3)
-            kb = get_about_keyboard(is_subscribed=True)
+            kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(chat_id))
             send_or_edit(chat_id, SUBSCRIBE_CONFIRMED, kb)
 
         elif call.data == "subscribe_cancel":
             bot.answer_callback_query(call.id, "❌", cache_time=3)
-            kb = get_about_keyboard(is_subscribed(chat_id))
+            kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=is_updater(chat_id))
             send_or_edit(chat_id, SUBSCRIBE_CANCELED, kb)
 
         elif call.data == "unsubscribe":
             if not is_subscribed(chat_id):
                 bot.answer_callback_query(call.id, "ℹ️ Не подписан", cache_time=3)
-                kb = get_about_keyboard(is_subscribed=False)
+                kb = get_about_keyboard(is_subscribed=False, is_updater=is_updater(chat_id))
                 send_or_edit(chat_id, "ℹ️ Ты не подписан.", kb)
             else:
                 bot.answer_callback_query(call.id, "❌", cache_time=3)
@@ -1137,13 +1323,26 @@ def callback(call):
         elif call.data == "unsubscribe_confirm":
             remove_subscriber(chat_id)
             bot.answer_callback_query(call.id, "❌ Отписан", cache_time=3)
-            kb = get_about_keyboard(is_subscribed=False)
+            kb = get_about_keyboard(is_subscribed=False, is_updater=is_updater(chat_id))
             send_or_edit(chat_id, UNSUBSCRIBED, kb)
 
         elif call.data == "unsubscribe_cancel":
             bot.answer_callback_query(call.id, "✅ Остаёмся", cache_time=3)
-            kb = get_about_keyboard(is_subscribed=True)
+            kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(chat_id))
             send_or_edit(chat_id, UNSUBSCRIBE_CANCELED, kb)
+
+        # ---- Подписка на обновления ----
+        elif call.data == "updates_on":
+            save_updater(chat_id)
+            bot.answer_callback_query(call.id, "🔔 Включено", cache_time=3)
+            kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=True)
+            send_or_edit(chat_id, UPDATES_ON_TEXT, kb)
+
+        elif call.data == "updates_off":
+            remove_updater(chat_id)
+            bot.answer_callback_query(call.id, "🔕 Отключено", cache_time=3)
+            kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=False)
+            send_or_edit(chat_id, UPDATES_OFF_TEXT, kb)
 
         else:
             bot.answer_callback_query(call.id, "❓", cache_time=3)
@@ -1152,6 +1351,7 @@ def callback(call):
         print(f"❌ callback: {type(e).__name__}: {e}", flush=True)
 
 
+# ============ FLASK ============
 @app.route("/")
 def home():
     return "🏍️ MotoWeather Bot is running!", 200
@@ -1172,11 +1372,40 @@ def health():
     return jsonify({
         "status": "ok",
         "bot": "MotoWeather Minsk",
+        "version": BOT_VERSION,
+        "version_date": BOT_VERSION_DATE,
         "storage": "upstash" if UPSTASH_ENABLED else "files",
         "users": get_users_count(),
         "subscribers": get_subscribers_count(),
+        "updaters": get_updaters_count(),
         "time": datetime.now(MINSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
     }), 200
+
+
+@app.route("/cron/morning")
+def cron_morning():
+    """Внешний триггер утренней рассылки. Защищён секретом."""
+    secret = os.getenv("CRON_SECRET", "")
+    if not secret:
+        return jsonify({"error": "CRON_SECRET not configured"}), 500
+    if request.args.get("secret") != secret:
+        return jsonify({"error": "forbidden"}), 403
+
+    result = run_morning_broadcast(force=True)
+    return jsonify(result), 200
+
+
+@app.route("/cron/version")
+def cron_version():
+    """Ручной триггер рассылки обновления (для теста)."""
+    secret = os.getenv("CRON_SECRET", "")
+    if not secret:
+        return jsonify({"error": "CRON_SECRET not configured"}), 500
+    if request.args.get("secret") != secret:
+        return jsonify({"error": "forbidden"}), 403
+
+    result = notify_version_update(force=True)
+    return jsonify(result), 200
 
 
 def run_flask():
@@ -1184,6 +1413,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
+# ============ ЗАПУСК ============
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
 
@@ -1195,6 +1425,12 @@ if __name__ == "__main__":
 
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=morning_broadcast_loop, daemon=True).start()
+
+    # Уведомление о новой версии (1 раз при смене)
+    try:
+        notify_version_update()
+    except Exception as e:
+        print(f"⚠️ notify_version_update: {e}", flush=True)
 
     print("🔄 Polling...", flush=True)
     while True:
