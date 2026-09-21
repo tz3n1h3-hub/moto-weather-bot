@@ -294,6 +294,7 @@ def set_last_bot_msg(chat_id, message_id):
         _redis("set", f"last_msg:{chat_id}", message_id)
 
 
+# ============ ЦИТАТЫ ============
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
     "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
@@ -335,6 +336,7 @@ def get_alcohol_warning():
         return "🚫 За рулём — трезвый. Алкоголь = реакция ×3 хуже."
 
 
+# ============ ФОРМАТИРОВАНИЕ ============
 WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -500,6 +502,7 @@ def night_score_for_period(title, sunrise, sunset):
         return 0
 
 
+# ============ ТЕКСТЫ ============
 START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 
 <b>Что это?</b>
@@ -589,6 +592,7 @@ UPDATES_OFF_TEXT = """🔕 <b>Уведомления отключены</b>
 Больше не будем присылать обновления. Включить обратно — в «О проекте»."""
 
 
+# ============ ЕДИНАЯ ТОЧКА ОТПРАВКИ ============
 def send_or_edit(chat_id, text, reply_markup=None):
     last_id = get_last_bot_msg(chat_id)
     if last_id:
@@ -605,11 +609,13 @@ def send_or_edit(chat_id, text, reply_markup=None):
         return None
 
 
+# ============ РАЗБРОС (≥2 параметра) ============
 def fmt_spread(agree_values):
     if not agree_values:
         return None
     filtered = [(v, u) for v, u in agree_values if v and v >= 2]
-    if not filtered:
+    # Показываем только если ≥2 параметра — иначе шум
+    if len(filtered) < 2:
         return None
     parts = []
     for v, unit in filtered:
@@ -618,6 +624,7 @@ def fmt_spread(agree_values):
     return "📊 Разброс: " + " · ".join(parts)
 
 
+# ============ СБОРКА СООБЩЕНИЯ ============
 def build_weather_message(w, a_city, short, f, is_morning=False):
     if not isinstance(short, dict):
         print(f"⚠️ short не dict: type={type(short).__name__}", flush=True)
@@ -635,6 +642,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if not avg_w:
         avg_w = {}
 
+    # ============ ШАПКА ============
     weekday = WEEKDAYS_RU[now_dt.weekday()]
     date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
     time_str = now_dt.strftime("%H:%M")
@@ -648,6 +656,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     header_line1 = f"{header_icon} <b>MOTOWEATHER · МИНСК</b>"
     header_line2 = f"{weekday} · {date_str} · {time_str}"
 
+    # ============ РИСК / ВЕРДИКТ ============
     score = a_city["score"]
     verdict = get_rider_verdict(score, now_dt.month)
     bar = build_risk_bar(score)
@@ -656,6 +665,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if bar:
         verdict_block += f"\n{bar}"
 
+    # ============ ЧТО НА ДОРОГЕ + РЕКОМЕНДАЦИИ ============
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
@@ -664,6 +674,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if score >= 3 and recs:
         rec_text = "\n\n<i>" + "\n".join(recs[:3]) + "</i>"
 
+    # ============ НА СЕБЯ ============
     gear = get_gear_short(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
@@ -672,6 +683,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
     gear_block = "\n".join(gear)
 
+    # ============ ПЕРЕД ВЫЕЗДОМ ============
     tech = get_tech_check(
         a_city.get("feels_like", m.get("feels_like") or 0),
         w.get("is_night", False),
@@ -680,6 +692,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     )
     tech_block = "\n".join(f"✅ {t}" for t in tech)
 
+    # ============ ТЕКУЩАЯ ПОГОДА ============
     def gather(key, sources_keys):
         return [src.get(key) for code, src in sources_keys if src]
 
@@ -712,6 +725,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
+    # Видимость
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         avg_vis_m = sum(vis_vals) / len(vis_vals)
@@ -729,6 +743,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
+    # Облачность — большинство
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     if cloud_vals:
@@ -744,6 +759,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
+    # ============ ОСАДКИ (фикс: слабый дождь при мизерных мм) ============
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -751,10 +767,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     if precip_vals:
         avg_precip = sum(precip_vals) / len(precip_vals)
-        precip_line = f"🌧️ Осадки: {math_round(avg_precip, 0)}{NBSP}мм"
-        if rain_prob_now and rain_prob_now >= 30:
-            precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
-        weather_lines.append(precip_line)
+        if avg_precip < 0.1 and is_rain_anywhere:
+            # Источник видит дождь, но мм мизерные — показываем факт
+            src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
+            weather_lines.append(f"🌧️ Осадки: слабый дождь{src_note}")
+        else:
+            precip_line = f"🌧️ Осадки: {math_round(avg_precip, 0)}{NBSP}мм"
+            if rain_prob_now and rain_prob_now >= 30:
+                precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
+            weather_lines.append(precip_line)
     elif is_rain_anywhere:
         src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
         prob_note = f" · вероятность {rain_prob_now}{NBSP}%" if rain_prob_now and rain_prob_now >= 30 else ""
@@ -774,6 +795,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
+    # UV с пояснением
     uv = avg_uv([m.get("uv_index"), om.get("uv_index"),
                  ww.get("uv_index"), ow.get("uv_index")])
     if uv is not None:
@@ -783,6 +805,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
+    # ============ БЛИЖАЙШИЙ ПЕРИОД ============
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     period_rain_prob = short.get("rain_prob")
@@ -836,6 +859,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if period_risks_text:
             forecast_block += f"\n{period_risks_text}"
 
+    # ============ ЗАВТРА ============
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
@@ -881,6 +905,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if tomorrow_risks_text:
             tomorrow_block += f"\n{tomorrow_risks_text}"
 
+    # ============ СОВЕТ ============
     tip = get_tip(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("humidity") or m.get("humidity"),
@@ -893,6 +918,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         uv_index=(uv if uv is not None else 0),
     )
 
+    # ============ ИСТОЧНИКИ ============
     def src_marker(code):
         return code if code in sources_live else f"{code}*"
 
@@ -915,6 +941,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if agree_values:
         values_line = fmt_spread(agree_values) or ""
 
+    # ============ СБОРКА ============
     msg = f"""{header_line1}
 {header_line2}
 
@@ -974,6 +1001,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     return msg
 
 
+# ============ УТРЕННЯЯ РАССЫЛКА ============
 def run_morning_broadcast(force=False):
     now = datetime.now(MINSK_TZ)
     today_str = now.strftime("%Y-%m-%d")
@@ -1058,8 +1086,6 @@ def notify_version_update(force=False):
     force=True — игнорировать флаг notify и last_notified.
     """
     if not UPSTASH_ENABLED and not force:
-        # Без Redis не можем надёжно отследить last_notified — пропускаем,
-        # чтобы не спамить при каждом рестарте
         return {"skipped": "no_redis"}
 
     if not BOT_VERSION_NOTIFY and not force:
@@ -1069,13 +1095,12 @@ def notify_version_update(force=False):
     if last_notified == BOT_VERSION and not force:
         return {"skipped": "already_notified", "version": BOT_VERSION}
 
-    # Ищем changelog для текущей версии
     desc = ""
     date = BOT_VERSION_DATE
-    for ver, d, txt, *rest in BOT_CHANGELOG:
-        if ver == BOT_VERSION:
-            date = d
-            desc = txt
+    for item in BOT_CHANGELOG:
+        if item[0] == BOT_VERSION:
+            date = item[1]
+            desc = item[2]
             break
 
     updaters = load_updaters()
@@ -1113,6 +1138,7 @@ def notify_version_update(force=False):
     return {"sent": sent, "deleted": len(failed_403), "version": BOT_VERSION}
 
 
+# ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
     try:
         w = get_weather()
@@ -1384,7 +1410,7 @@ def health():
 
 @app.route("/cron/morning")
 def cron_morning():
-    """Внешний триггер утренней рассылки. Защищён секретом."""
+    """Внешний триггер утренней рассылки."""
     secret = os.getenv("CRON_SECRET", "")
     if not secret:
         return jsonify({"error": "CRON_SECRET not configured"}), 500
