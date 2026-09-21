@@ -614,7 +614,6 @@ def fmt_spread(agree_values):
     if not agree_values:
         return None
     filtered = [(v, u) for v, u in agree_values if v and v >= 2]
-    # Показываем только если ≥2 параметра — иначе шум
     if len(filtered) < 2:
         return None
     parts = []
@@ -622,6 +621,35 @@ def fmt_spread(agree_values):
         v_str = str(math_round(v, 0)) if v == int(v) else f"{v:.1f}".replace(".", ",")
         parts.append(f"±{v_str}{NBSP}{unit}")
     return "📊 Разброс: " + " · ".join(parts)
+
+
+# ============ СБОРКА БЛОКА ПЕРИОДА (НОВЫЙ ФОРМАТ) ============
+def build_period_block(title, verdict, score, line1, rain_line, risks_text):
+    """
+    Единый формат блока для НОЧЬ/ЗАВТРА:
+    🌙 НОЧЬЮ
+    <вердикт>
+    РИСК: N/10
+    💀💀💀
+    <строка погоды>
+    <вероятность дождя>
+    ЧТО НА ДОРОГЕ
+    <риски>
+    """
+    bar = build_risk_bar(score)
+    parts = [f"<b>{title}</b>"]
+    parts.append(f"<b>{verdict}</b>")
+    parts.append(f"РИСК: {score}/10")
+    if bar:
+        parts.append(bar)
+    if line1:
+        parts.append(line1)
+    if rain_line:
+        parts.append(rain_line.lstrip("\n"))
+    if risks_text:
+        parts.append("<b>ЧТО НА ДОРОГЕ</b>")
+        parts.append(risks_text)
+    return "\n".join(parts)
 
 
 # ============ СБОРКА СООБЩЕНИЯ ============
@@ -665,7 +693,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if bar:
         verdict_block += f"\n{bar}"
 
-    # ============ ЧТО НА ДОРОГЕ + РЕКОМЕНДАЦИИ ============
+    # ============ ЧТО НА ДОРОГЕ ============
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
@@ -725,7 +753,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    # Видимость
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         avg_vis_m = sum(vis_vals) / len(vis_vals)
@@ -743,7 +770,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # Облачность — большинство
     cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     if cloud_vals:
@@ -759,27 +785,26 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # ============ ОСАДКИ (фикс: слабый дождь при мизерных мм) ============
+    # ============ ОСАДКИ (усиленный фикс) ============
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
     rain_sources = w.get("rain_sources", [])
 
-    if precip_vals:
+    src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
+
+    if is_rain_anywhere and not precip_vals:
+        # Источник видит дождь, но миллиметров нет — показываем факт
+        weather_lines.append(f"☔️ Осадки: идёт дождь{src_note}")
+    elif precip_vals:
         avg_precip = sum(precip_vals) / len(precip_vals)
         if avg_precip < 0.1 and is_rain_anywhere:
-            # Источник видит дождь, но мм мизерные — показываем факт
-            src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
-            weather_lines.append(f"🌧️ Осадки: слабый дождь{src_note}")
+            weather_lines.append(f"☔️ Осадки: слабый дождь{src_note}")
         else:
             precip_line = f"🌧️ Осадки: {math_round(avg_precip, 0)}{NBSP}мм"
             if rain_prob_now and rain_prob_now >= 30:
                 precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
             weather_lines.append(precip_line)
-    elif is_rain_anywhere:
-        src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
-        prob_note = f" · вероятность {rain_prob_now}{NBSP}%" if rain_prob_now and rain_prob_now >= 30 else ""
-        weather_lines.append(f"🌧️ Осадки: идёт дождь{prob_note}{src_note}")
     elif rain_prob_now and rain_prob_now >= 40:
         weather_lines.append(f"🌦️ Осадки: 0{NBSP}мм · вероятность {rain_prob_now}{NBSP}%")
     elif m.get("is_rain"):
@@ -795,7 +820,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if sunrise and sunset:
         weather_lines.append(f"🌅 Рассвет: {sunrise} · 🌇 Закат: {sunset}")
 
-    # UV с пояснением
     uv = avg_uv([m.get("uv_index"), om.get("uv_index"),
                  ww.get("uv_index"), ow.get("uv_index")])
     if uv is not None:
@@ -836,28 +860,29 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "night_score": period_night_score,
         }
         period_risk = analyze_risks(period_data, is_forecast=True)
-        period_bar = build_risk_bar(period_risk["score"])
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
 
         period_risks = period_risk["risks"][:4]
         period_risks_text = "\n".join(period_risks) if period_risks else ""
 
+        # Вероятность дождя отдельной строкой
         rain_line = ""
         if period_rain_prob and period_rain_prob >= 30:
             if period_rain_prob >= 80:
-                rain_line = f"\n☔ Дождь почти наверняка: {period_rain_prob}{NBSP}%"
+                rain_line = f"☔️ Дождь почти наверняка: {period_rain_prob}{NBSP}%"
             elif period_rain_prob >= 50:
-                rain_line = f"\n🌧️ Вероятен дождь: {period_rain_prob}{NBSP}%"
+                rain_line = f"🌧️ Вероятен дождь: {period_rain_prob}{NBSP}%"
             else:
-                rain_line = f"\n🌦️ Возможен дождь: {period_rain_prob}{NBSP}%"
+                rain_line = f"🌦️ Возможен дождь: {period_rain_prob}{NBSP}%"
 
-        if period_bar:
-            forecast_block = f"{next_period_title} | {period_bar}\n{next_period}{rain_line}\n{period_verdict}"
-        else:
-            forecast_block = f"{next_period_title}\n{next_period}{rain_line}\n{period_verdict}"
-
-        if period_risks_text:
-            forecast_block += f"\n{period_risks_text}"
+        forecast_block = build_period_block(
+            title=next_period_title,
+            verdict=period_verdict,
+            score=period_risk["score"],
+            line1=next_period,
+            rain_line=rain_line,
+            risks_text=period_risks_text,
+        )
 
     # ============ ЗАВТРА ============
     tomorrow_block = ""
@@ -868,7 +893,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         fa_verdict = get_rider_verdict(fa["score"], now_dt.month)
         cond_low = shorten_cond(f.get("condition_text", ""))
         emoji_short = f.get("condition_emoji", "")
-        tomorrow_bar = build_risk_bar(fa["score"])
 
         tomorrow_risks = fa["risks"][:4]
         tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
@@ -889,21 +913,22 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             rp = f["rain_prob"]
             rain_sum = f.get("rain_sum") or 0
             if rp >= 80:
-                rain_line_tomorrow = f"\n☔ Дождь почти наверняка: {rp}{NBSP}%"
+                rain_line_tomorrow = f"☔️ Дождь почти наверняка: {rp}{NBSP}%"
             elif rp >= 50:
-                rain_line_tomorrow = f"\n🌧️ Вероятен дождь: {rp}{NBSP}%"
+                rain_line_tomorrow = f"🌧️ Вероятен дождь: {rp}{NBSP}%"
             else:
-                rain_line_tomorrow = f"\n🌦️ Возможен дождь: {rp}{NBSP}%"
+                rain_line_tomorrow = f"🌦️ Возможен дождь: {rp}{NBSP}%"
             if rain_sum > 0:
                 rain_line_tomorrow += f" · {rain_sum}{NBSP}мм"
 
-        if tomorrow_bar:
-            tomorrow_block = f"📅 ЗАВТРА | {tomorrow_bar}\n{tomorrow_line}{rain_line_tomorrow}\n{fa_verdict}"
-        else:
-            tomorrow_block = f"📅 ЗАВТРА\n{tomorrow_line}{rain_line_tomorrow}\n{fa_verdict}"
-
-        if tomorrow_risks_text:
-            tomorrow_block += f"\n{tomorrow_risks_text}"
+        tomorrow_block = build_period_block(
+            title="📅 ЗАВТРА",
+            verdict=fa_verdict,
+            score=fa["score"],
+            line1=tomorrow_line,
+            rain_line=rain_line_tomorrow,
+            risks_text=tomorrow_risks_text,
+        )
 
     # ============ СОВЕТ ============
     tip = get_tip(
@@ -1080,11 +1105,6 @@ def morning_broadcast_loop():
 
 # ============ РАССЫЛКА ОБНОВЛЕНИЙ ============
 def notify_version_update(force=False):
-    """
-    Уведомляет всех, кто подписан на обновления (updaters), о новой версии.
-    Запускается один раз при старте, если версия сменилась.
-    force=True — игнорировать флаг notify и last_notified.
-    """
     if not UPSTASH_ENABLED and not force:
         return {"skipped": "no_redis"}
 
@@ -1243,7 +1263,6 @@ def unsubscribe_cmd(m):
 
 @bot.message_handler(commands=['updates'])
 def updates_cmd(m):
-    """Подписка/отписка на уведомления об обновлениях."""
     try:
         save_user(m.chat.id)
         if is_updater(m.chat.id):
@@ -1357,7 +1376,6 @@ def callback(call):
             kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(chat_id))
             send_or_edit(chat_id, UNSUBSCRIBE_CANCELED, kb)
 
-        # ---- Подписка на обновления ----
         elif call.data == "updates_on":
             save_updater(chat_id)
             bot.answer_callback_query(call.id, "🔔 Включено", cache_time=3)
@@ -1410,7 +1428,6 @@ def health():
 
 @app.route("/cron/morning")
 def cron_morning():
-    """Внешний триггер утренней рассылки."""
     secret = os.getenv("CRON_SECRET", "")
     if not secret:
         return jsonify({"error": "CRON_SECRET not configured"}), 500
@@ -1423,7 +1440,6 @@ def cron_morning():
 
 @app.route("/cron/version")
 def cron_version():
-    """Ручной триггер рассылки обновления (для теста)."""
     secret = os.getenv("CRON_SECRET", "")
     if not secret:
         return jsonify({"error": "CRON_SECRET not configured"}), 500
@@ -1452,7 +1468,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=morning_broadcast_loop, daemon=True).start()
 
-    # Уведомление о новой версии (1 раз при смене)
     try:
         notify_version_update()
     except Exception as e:
