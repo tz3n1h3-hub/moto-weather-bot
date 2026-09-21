@@ -152,7 +152,6 @@ def get_minsk_month():
 
 # ============ АСТРОНОМИЧЕСКИЕ ПЕРИОДЫ ============
 def _time_to_minutes(hhmm):
-    """'06:10' → 370."""
     if not hhmm:
         return None
     try:
@@ -163,22 +162,19 @@ def _time_to_minutes(hhmm):
 
 
 def _min_to_time(m):
-    """370 → '06:10'."""
     m = m % 1440
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
 def get_solar_noon(sunrise, sunset):
-    """Полдень = середина светового дня (астрономически)."""
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
-        return 13 * 60  # fallback 13:00
+        return 13 * 60
     return (sr + ss) // 2
 
 
 def get_twilight_start(sunrise):
-    """Начало утренних сумерек = восход − TWILIGHT_OFFSET_MIN."""
     sr = _time_to_minutes(sunrise)
     if sr is None:
         return 5 * 60
@@ -186,7 +182,6 @@ def get_twilight_start(sunrise):
 
 
 def get_darkness_start(sunset):
-    """Полная темнота = закат + TWILIGHT_OFFSET_MIN."""
     ss = _time_to_minutes(sunset)
     if ss is None:
         return 21 * 60
@@ -202,7 +197,6 @@ def get_period_title(hour, minute=0, sunrise=None, sunset=None):
       НОЧЬ   — от полной темноты до рассвета
     """
     if not sunrise or not sunset:
-        # Fallback по часам
         if 6 <= hour < 12:
             return "🌅 УТРОМ"
         elif 12 <= hour < 18:
@@ -220,9 +214,7 @@ def get_period_title(hour, minute=0, sunrise=None, sunset=None):
 
     noon = (sr + ss) // 2
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
-    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
 
-    # Полночь делит ночь на 2 части
     if now_min >= dark_start or now_min < sr:
         return "🌙 НОЧЬЮ"
     elif sr <= now_min < noon:
@@ -264,10 +256,7 @@ def get_period_range(hour, minute=0, sunrise=None, sunset=None):
 
 def get_astro_night_score(hour, minute=0, sunrise=None, sunset=None):
     """
-    Астрономическая оценка темноты:
-      0 — светло
-      1 — сумерки (утренние/вечерние)
-      2 — полная темнота
+    0 — светло, 1 — сумерки, 2 — полная темнота.
     """
     if not sunrise or not sunset:
         return 2 if hour >= 22 or hour < 6 else 0
@@ -281,21 +270,18 @@ def get_astro_night_score(hour, minute=0, sunrise=None, sunset=None):
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
 
-    # Полная ночь
     if now_min >= dark_start or now_min < twilight_start:
         return 2
 
-    # Сумерки (до рассвета или после заката)
     if twilight_start <= now_min < sr:
         return 1
     if ss <= now_min < dark_start:
         return 1
 
-    # Светло
     return 0
 
 
-# ============ ОСВЕЩЁННОСТЬ (для старых вызовов) ============
+# ============ ОСВЕЩЁННОСТЬ ============
 def get_light_level():
     h = get_minsk_hour()
     m = get_minsk_month()
@@ -312,6 +298,7 @@ def is_night_time():
 
 
 def _calc_sun_times():
+    """Астрономический расчёт sunrise/sunset на СЕГОДНЯ."""
     try:
         now = datetime.now(MINSK_TZ)
         n = now.timetuple().tm_yday
@@ -333,6 +320,33 @@ def _calc_sun_times():
         return f"{sh:02d}:{sm:02d}", f"{eh:02d}:{em:02d}"
     except Exception as e:
         print(f"⚠️ Астро-расчёт: {e}", flush=True)
+        return None, None
+
+
+def _calc_sun_times_tomorrow():
+    """Астрономический расчёт sunrise/sunset на ЗАВТРА."""
+    try:
+        now = datetime.now(MINSK_TZ)
+        tomorrow = now + timedelta(days=1)
+        n = tomorrow.timetuple().tm_yday
+        lat = MINSK_LAT
+        lon = MINSK_LON
+        tz_offset = 3
+        decl = -23.44 * math.cos(math.radians(360 / 365 * (n + 10)))
+        cos_ha = -math.tan(math.radians(lat)) * math.tan(math.radians(decl))
+        if cos_ha > 1 or cos_ha < -1:
+            return None, None
+        ha = math.degrees(math.acos(cos_ha))
+        b = math.radians(360 / 364 * (n - 81))
+        eot = 9.87 * math.sin(2 * b) - 7.53 * math.cos(b) - 1.5 * math.sin(b)
+        solar_noon_utc_min = 720 - 4 * lon - eot
+        sunrise_min = int(solar_noon_utc_min - 4 * ha + tz_offset * 60) % 1440
+        sunset_min = int(solar_noon_utc_min + 4 * ha + tz_offset * 60) % 1440
+        sh, sm = sunrise_min // 60, sunrise_min % 60
+        eh, em = sunset_min // 60, sunset_min % 60
+        return f"{sh:02d}:{sm:02d}", f"{eh:02d}:{em:02d}"
+    except Exception as e:
+        print(f"⚠️ Астро-расчёт на завтра: {e}", flush=True)
         return None, None
 
 
@@ -1103,7 +1117,6 @@ def get_short_forecast():
 
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        # Астрономический период
         sunrise_today = None
         sunset_today = None
         if om_raw and om_raw.get("daily"):
@@ -1180,9 +1193,10 @@ def get_short_forecast_wttr():
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        # Астрономический период без daily — fallback на часы
-        title = get_period_title(now_dt.hour, now_dt.minute, None, None)
-        period_range = ""  # нет daily → нет точного диапазона
+        # Астрономический расчёт sunrise/sunset — локально, без OM
+        sunrise_today, sunset_today = _calc_sun_times()
+        title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
         cond = "ясно"
         if max_prob and max_prob >= 50:
@@ -1196,7 +1210,7 @@ def get_short_forecast_wttr():
 
         next_period = f"{avg_temp} °C · {wind_str} · {cond}"
 
-        print("✅ short_forecast: fallback wttr OK", flush=True)
+        print(f"✅ short_forecast: fallback wttr OK ({title} {period_range})", flush=True)
         return {
             "next_period": next_period,
             "next_period_title": title,
@@ -1210,7 +1224,6 @@ def get_short_forecast_wttr():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
-# ============ ЗАВТРА — световой день (рассвет–закат) ============
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
 
@@ -1225,7 +1238,6 @@ def get_forecast_tomorrow():
         if len(daily.get("time", [])) < 2:
             return None
 
-        # Точный восход/закат завтра
         try:
             sr_iso = daily["sunrise"][1]
             ss_iso = daily["sunset"][1]
@@ -1341,12 +1353,23 @@ def get_forecast_tomorrow_wttr():
         tmin = math_round(float(tomorrow.get("mintempC", 0)), 0)
         tmax = math_round(float(tomorrow.get("maxtempC", 0)), 0)
 
+        # Астрономический расчёт sunrise/sunset на завтра — локально
+        sunrise_tomorrow, sunset_tomorrow = _calc_sun_times_tomorrow()
+        if sunrise_tomorrow and sunset_tomorrow:
+            sr_h = int(sunrise_tomorrow.split(":")[0])
+            ss_h = int(sunset_tomorrow.split(":")[0])
+            day_range_str = f"{sunrise_tomorrow}–{sunset_tomorrow}"
+        else:
+            sr_h = 8
+            ss_h = 20
+            day_range_str = "08:00–20:00"
+
         hourly = tomorrow.get("hourly", [])
         day_hours = []
         for h in hourly:
             try:
                 h_time = int(h["time"]) // 100
-                if 8 <= h_time <= 20:
+                if sr_h <= h_time <= ss_h:
                     day_hours.append(h)
             except Exception:
                 continue
@@ -1384,7 +1407,7 @@ def get_forecast_tomorrow_wttr():
         else:
             emoji = "⛅"
 
-        print("✅ forecast_tomorrow: fallback wttr OK", flush=True)
+        print(f"✅ forecast_tomorrow: fallback wttr OK ({day_range_str})", flush=True)
         return {
             "temp_min": tmin,
             "temp_max": tmax,
@@ -1399,7 +1422,7 @@ def get_forecast_tomorrow_wttr():
             "condition_emoji": emoji,
             "weather_code": 0,
             "uv_index": None,
-            "day_range": "08:00–20:00",
+            "day_range": day_range_str,
         }
     except Exception as e:
         print(f"⚠️ forecast_tomorrow_wttr: {e}", flush=True)
