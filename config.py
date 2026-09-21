@@ -2,15 +2,19 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.3.0"
+BOT_VERSION = "1.4.0"
 BOT_VERSION_DATE = "2026-09-21"
 
-# Что нового в этой версии (кратко, для /stats)
+# Флаг: уведомлять ли об этой версии (True для minor/major, False для patch)
+BOT_VERSION_NOTIFY = True
+
+# Что нового (кратко, для /stats и /updates)
 BOT_CHANGELOG = [
-    ("1.3.0", "21.09.2026", "Ночь с 22:00, фикс rain_total, wind chill до 15 °C"),
-    ("1.2.0", "20.09.2026", "Fallback wttr, прокси OM, кэш Redis"),
-    ("1.1.0", "20.09.2026", "Кросс-проверка дождя, новая градация ветра"),
-    ("1.0.0", "19.09.2026", "Первый релиз: 4 источника, риск 0–10"),
+    ("1.4.0", "21.09.2026", "Подписка на обновления бота", True),
+    ("1.3.0", "21.09.2026", "Ночь с 22:00, фикс rain_total, wind chill до 15 °C", False),
+    ("1.2.0", "20.09.2026", "Fallback wttr, прокси OM, кэш Redis", False),
+    ("1.1.0", "20.09.2026", "Кросс-проверка дождя, новая градация ветра", False),
+    ("1.0.0", "19.09.2026", "Первый релиз: 4 источника, риск 0–10", False),
 ]
 
 # ============ ТОКЕНЫ ============
@@ -21,6 +25,7 @@ MY_BOT_USERNAME = os.getenv("MY_BOT_USERNAME", "MotoWeatherMinskBot")
 MINSK_TZ = timezone(timedelta(hours=3))
 USERS_FILE = "users.json"
 SUBSCRIBERS_FILE = "subscribers.json"
+UPDATERS_FILE = "updaters.json"
 ADMIN_ID = int(os.getenv("ADMIN_ID") or 0)
 
 # ============ UPSTASH REDIS ============
