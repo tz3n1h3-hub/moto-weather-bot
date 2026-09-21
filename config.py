@@ -2,7 +2,7 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.4.0"
+BOT_VERSION = "1.5.0"
 BOT_VERSION_DATE = "2026-09-21"
 
 # Флаг: уведомлять ли об этой версии (True для minor/major, False для patch)
@@ -10,6 +10,7 @@ BOT_VERSION_NOTIFY = True
 
 # Что нового (кратко, для /stats и /updates)
 BOT_CHANGELOG = [
+    ("1.5.0", "21.09.2026", "Новый формат блоков НОЧЬ/ЗАВТРА, фикс отображения дождя", True),
     ("1.4.0", "21.09.2026", "Подписка на обновления бота", True),
     ("1.3.0", "21.09.2026", "Ночь с 22:00, фикс rain_total, wind chill до 15 °C", False),
     ("1.2.0", "20.09.2026", "Fallback wttr, прокси OM, кэш Redis", False),
