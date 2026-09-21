@@ -31,13 +31,11 @@ def analyze_risks(weather, is_forecast=False):
     dew_point = weather.get("dew_point")
     soil_temp = weather.get("soil_temp")
 
-    # ---- Град ----
     if is_hail:
         risks.append("🧊 ГРАД — опасно для райдера и техники")
         score += 4
         recommendations.append("🚫 НЕ выезжай — град бьёт по шлему и технике")
 
-    # ---- ВЕТЕР ----
     wind_score = 0
     if wind_gust > 20:
         risks.append(f"🌪️ Штормовой ветер (порывы до {wind_gust:.0f} м/с)!")
@@ -78,7 +76,6 @@ def analyze_risks(weather, is_forecast=False):
 
     score += max(wind_score, speed_score)
 
-    # ---- ОСАДКИ (без дублирования процента) ----
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -94,7 +91,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     elif is_rain:
-        # Источник есть — процент уже показан в прогнозе, тут не дублируем
         src_note = ""
         if rain_sources:
             src_note = f" [{', '.join(rain_sources[:2])}]"
@@ -106,7 +102,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("☔ Возьми дождевик — может накрыть")
 
-    # ---- ВИДИМОСТЬ ----
     visibility_alerted = False
     if not is_forecast:
         if visibility < 500:
@@ -125,7 +120,6 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("💡 Включите ближний свет")
             visibility_alerted = True
 
-    # ---- ТУМАН / ВЛАГА ----
     if dew_point is not None:
         diff = temp - dew_point
         humidity = weather.get("humidity") or 0
@@ -161,7 +155,6 @@ def analyze_risks(weather, is_forecast=False):
                     risks.append(f"💧 Повышенная влажность {int(humidity)} %")
                 score += 1
 
-    # ---- ПРОГНОЗ: код погоды ----
     if is_forecast:
         weather_code = weather.get("weather_code")
         if weather_code in (45, 48):
@@ -173,7 +166,6 @@ def analyze_risks(weather, is_forecast=False):
             score += 1
             recommendations.append("🐢 Скользко — увеличивайте дистанцию")
 
-    # ---- ТЕМПЕРАТУРА ----
     if is_forecast:
         feels_like = weather.get("temp_avg", temp)
     else:
@@ -196,13 +188,11 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💧 Пейте воду")
 
-    # ---- ХОЛОДНАЯ ПОЧВА ----
     if soil_temp is not None and soil_temp < 5 and temp > 10:
         risks.append("🧊 Почва холодная — асфальт не прогрелся")
         score += 1
         recommendations.append("🐢 Сцепление хуже, тормози плавно")
 
-    # ---- НОЧЬ ----
     night_score = weather.get("night_score")
     if night_score is None:
         night_score = 2 if weather.get("is_night", False) else 0
@@ -216,7 +206,6 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("💡 Включите свет заранее")
 
-    # ---- ШКАЛА ----
     if score >= 9:
         color = "💀"
     elif score >= 7:
@@ -249,22 +238,27 @@ def get_short_verdict(score):
     return "НЕ ВЫЕЗЖАЙ"
 
 
-def get_rider_verdict(score, month=None):
+def get_rider_verdict(score, month=None, is_tomorrow=False):
+    """
+    Вердикт для райдера. Если is_tomorrow=True — формулировки для ЗАВТРА,
+    чтобы не путать с текущим днём.
+    """
     if score <= 0:
         season = get_season(month)
         if season == "summer":
-            return "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
+            return "ЗАВТРА ДОРОГА ЧИСТАЯ — ГАЗУЙ" if is_tomorrow else "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
         elif season == "shoulder":
-            return "ДОРОГА ЧИСТАЯ — НО АСФАЛЬТ ХОЛОДНЫЙ"
+            return "ЗАВТРА ЧИСТО — НО АСФАЛЬТ ХОЛОДНЫЙ" if is_tomorrow else "ДОРОГА ЧИСТАЯ — НО АСФАЛЬТ ХОЛОДНЫЙ"
         else:
-            return "ЯСНО, НО АСФАЛЬТ ХОЛОДНЫЙ — ОСТОРОЖНО"
+            return "ЗАВТРА ЯСНО — АСФАЛЬТ ХОЛОДНЫЙ" if is_tomorrow else "ЯСНО, НО АСФАЛЬТ ХОЛОДНЫЙ — ОСТОРОЖНО"
+
     if score <= 4:
-        return "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
+        return "ЗАВТРА МОЖНО ЕХАТЬ" if is_tomorrow else "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
     if score <= 6:
-        return "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
+        return "ЗАВТРА — С ОСТОРОЖНОСТЬЮ" if is_tomorrow else "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
-        return "НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО"
-    return "НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
+        return "ЗАВТРА — НЕ САДИСЬ ЗА РУЛЬ" if is_tomorrow else "НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО"
+    return "ЗАВТРА НЕ ВЫЕЗЖАЙ — ОПАСНО" if is_tomorrow else "НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
 
 
 def get_gear_short(temp, is_rain, is_night, wind_speed):
