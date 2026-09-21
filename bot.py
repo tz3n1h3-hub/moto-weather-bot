@@ -68,7 +68,6 @@ NBSP = "\u00A0"
 
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
-# Анти-спам: 3 секунды — только защита от случайного двойного тапа
 _user_last_weather = {}
 ANTISPAM_SEC = 3
 
@@ -627,11 +626,15 @@ def fmt_spread(agree_values):
     return "📊 Разброс: " + " · ".join(parts)
 
 
-# ============ ФИЛЬТР РИСКОВ ОТ ОСАДКОВ ============
+# ============ ФИЛЬТР РИСКОВ ОТ ОСАДКОВ / ВЛАГИ ============
 def filter_rain_risks(risks):
+    """
+    Убирает дубли про дождь/осадки/морось/ливень/влагу,
+    когда rain_line уже показан выше.
+    """
     if not risks:
         return []
-    keywords = ("дождь", "осадк", "морось", "ливн")
+    keywords = ("дождь", "осадк", "морось", "ливн", "влажн", "мокро")
     return [
         r for r in risks
         if not any(kw in r.lower() for kw in keywords)
@@ -893,7 +896,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         f["night_score"] = 0
 
         fa = analyze_risks(f, is_forecast=True)
-        fa_verdict = get_rider_verdict(fa["score"], now_dt.month)
+        fa_verdict = get_rider_verdict(fa["score"], now_dt.month, is_tomorrow=True)
         cond_low = shorten_cond(f.get("condition_text", ""))
         emoji_short = f.get("condition_emoji", "")
 
@@ -1162,7 +1165,7 @@ def notify_version_update(force=False):
     return {"sent": sent, "deleted": len(failed_403), "version": BOT_VERSION}
 
 
-# ============ ОТПРАВКА ПОГОДЫ (анти-спам 3 сек) ============
+# ============ ОТПРАВКА ПОГОДЫ ============
 def send_weather(chat_id):
     now = time.time()
     last = _user_last_weather.get(chat_id, 0)
