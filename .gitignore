@@ -22,6 +22,7 @@ ENV/
 # Data files
 users.json
 subscribers.json
+updaters.json
 soil_cache.json
 last_morning.txt
 *.log
