@@ -2,13 +2,14 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.5.2"
+BOT_VERSION = "1.5.3"
 BOT_VERSION_DATE = "2026-09-21"
 
 # Флаг: уведомлять ли об этой версии
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.5.3", "21.09.2026", "Redis-кэш OM 30 мин, timeout 5 сек, убрал corsproxy", False),
     ("1.5.2", "21.09.2026", "Убрал codetabs (тормозил 20 сек), анти-спам 60 сек", False),
     ("1.5.1", "21.09.2026", "Убрал дубли про дождь в блоках НОЧЬ/ЗАВТРА", False),
     ("1.5.0", "21.09.2026", "Новый формат блоков НОЧЬ/ЗАВТРА, фикс отображения дождя", True),
