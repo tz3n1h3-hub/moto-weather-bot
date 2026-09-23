@@ -2,12 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.7.2"
+BOT_VERSION = "1.7.3"
 BOT_VERSION_DATE = "2026-09-23"
 
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.7.3", "23.09.2026", "Фикс feels_like для прогноза + влага в периоде как «сейчас»", False),
     ("1.7.2", "23.09.2026", "Фикс дубля влажности в analyzer.py (10/10 → 7/10)", False),
     ("1.7.1", "23.09.2026", "Cloudflare Worker для OM — обход 429", False),
     ("1.7.0", "23.09.2026", "14 фиксов: туман, мокрая дорога, дождь 2+, РАССВЕТ/СУМЕРКИ, фидбэк", True),
