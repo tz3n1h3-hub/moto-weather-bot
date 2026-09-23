@@ -30,8 +30,11 @@ from analyzer import (
 )
 from keyboards import (
     get_main_keyboard, get_after_weather_keyboard, get_morning_keyboard,
-    get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard
+    get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard,
+    get_feedback_params_keyboard, get_feedback_direction_keyboard,
+    get_feedback_skip_keyboard, get_feedback_cancel_keyboard,
 )
+import feedback as fb
 
 
 def math_round(x, digits=0):
@@ -71,6 +74,9 @@ UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
 _user_last_weather = {}
 ANTISPAM_SEC = 3
+
+# Временный стейт фидбэка: {chat_id: {"param": "...", "direction": "...", "weather": {...}}}
+_feedback_state = {}
 
 
 def _redis(cmd, *args):
@@ -395,6 +401,24 @@ def shorten_cond(cond):
     return cond_lower
 
 
+def classify_clouds(avg_cloud_pct, metar_text):
+    """
+    Облачность: классификация по среднему %, а не по METAR-тексту.
+    Убирает противоречие «облачно (67%)».
+    """
+    if avg_cloud_pct is None:
+        return metar_text or "—"
+    if avg_cloud_pct >= 85:
+        return "пасмурно"
+    if avg_cloud_pct >= 70:
+        return "облачно"
+    if avg_cloud_pct >= 40:
+        return "переменно"
+    if avg_cloud_pct >= 15:
+        return "малооблачно"
+    return "ясно"
+
+
 def build_risk_bar(score):
     score = max(0, min(10, score))
     if score == 0:
@@ -463,28 +487,30 @@ START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 ехать сегодня или нет.
 
 <b>Откуда беру данные:</b>
-• METAR аэропорта Минск (UMMS) — фактическая погода «здесь и сейчас». Аэропорт стоит на открытой равнине в 20 км от центра — там ветренее и холоднее, чем в городе. Поэтому данные METAR учитываю как один из источников, а не как истину.
+• METAR аэропорта Минск (UMMS) — фактическая погода «здесь и сейчас». Аэропорт стоит на открытой равнине в 20 км от центра — там ветренее и холоднее, чем в городе.
 
-• Open-Meteo, OpenWeatherMap и wttr — три прогнозных сервиса. Каждый показывает погоду не для твоей улицы, а для квадрата на карте. Размер квадрата у всех разный — иногда меньше километра, иногда больше десяти. Внутри квадрата погода может отличаться, но это не учитывается.
+• Open-Meteo, OpenWeatherMap и wttr — три прогнозных сервиса. Каждый показывает погоду не для твоей улицы, а для квадрата на карте. Размер квадрата у всех разный — иногда меньше километра, иногда больше десяти.
 
 <b>Как считаю:</b>
 1. Собираю данные со всех четырёх источников.
 2. Убираю выбросы: если один источник сильно отличается от остальных — не учитываю его.
 3. Показываю среднее значение по живым источникам.
-4. Если хоть один источник видит дождь — показываю факт осадков.
+4. Осадки — голосование источников. Если <b>wttr</b> один говорит «дождь», а METAR/OM/OWM — «сухо», я не доверяю wttr.
+5. Видимость — беру <b>минимум</b> из источников (безопаснее).
 
-<b>Как определяю период дня:</b>
-По Солнцу (астрономически), а не по часам:
-• 🌅 УТРО — от рассвета до полудня
-• ☀️ ДЕНЬ — от полудня до заката
-• 🌆 ВЕЧЕР — от заката до полной темноты
-• 🌙 НОЧЬ — от полной темноты до рассвета
+<b>Периоды дня — по Солнцу (астрономически):</b>
+• 🌙 НОЧЬ — от полной темноты до начала рассвета
+• 🌄 РАССВЕТ — от первых признаков света до восхода
+• 🌅 УТРО — от восхода до полудня
+• ☀️ ДЕНЬ — от полудня до начала сумерек (за 60 мин до заката)
+• 🌆 ВЕЧЕР — от сумерек до полной темноты
 
 <b>Подписки:</b>
-• 🌅 Утро — прогноз в 7:00 каждый день (кнопка ниже).
+• 🌅 Утро — прогноз в 7:00 каждый день.
 • 🔔 Обновления — уведомления о новых версиях бота.
 
-Нажми ПРОГНОЗ — и вперёд.
+<b>Заметили ошибку в прогнозе?</b>
+Жмите «❗️ ЧТО-ТО НЕ ТАК?» — это помогает улучшать бота.
 
 —
 👨‍💻 Разработчик: <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>
@@ -554,7 +580,7 @@ def send_or_edit(chat_id, text, reply_markup=None):
         return None
 
 
-# ============ РАЗБРОС (≥2 параметра) ============
+# ============ РАЗБРОС ============
 def fmt_spread(agree_values):
     if not agree_values:
         return None
@@ -705,15 +731,18 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
+    # Видимость — МИНИМУМ (безопаснее для райдера)
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
-        avg_vis_m = sum(vis_vals) / len(vis_vals)
-        if avg_vis_m >= 1000:
-            km_int = math_round(avg_vis_m / 1000, 0)
+        min_vis_m = min(vis_vals)
+        if min_vis_m >= 10000:
+            vis_str = f"10+{NBSP}км"
+        elif min_vis_m >= 1000:
+            km_int = math_round(min_vis_m / 1000, 0)
             vis_str = f"{km_int}{NBSP}км"
         else:
-            vis_str = f"{math_round(avg_vis_m, 0)}{NBSP}м"
-        if min(vis_vals) < 500:
+            vis_str = f"{int(min_vis_m)}{NBSP}м"
+        if min_vis_m < 500:
             vis_str = "⚠️" + vis_str
         weather_lines.append(f"👁️ Видимость: {vis_str}")
     else:
@@ -722,21 +751,23 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    cloud_text = shorten_cond(m.get("cloud_text")) if m.get("cloud_text") else None
+    # Облачность — классификация по среднему %
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
+    metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
+
     if cloud_vals:
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
+        cloud_label = classify_clouds(avg_cloud, metar_cloud)
         if avg_cloud >= 70:
             weather_lines.append(f"🌥️ Облачность: {avg_cloud}{NBSP}%")
-        elif cloud_text:
-            weather_lines.append(f"🌥️ Облачность: {cloud_text} ({avg_cloud}{NBSP}%)")
         else:
-            weather_lines.append(f"🌥️ Облачность: {avg_cloud}{NBSP}%")
-    elif cloud_text:
-        weather_lines.append(f"🌥️ Облачность: {cloud_text}")
+            weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
+    elif metar_cloud:
+        weather_lines.append(f"🌥️ Облачность: {metar_cloud}")
     else:
         weather_lines.append("🌥️ Облачность: —")
 
+    # Осадки
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -777,7 +808,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     weather_block = "\n".join(weather_lines)
 
-    # ============ БЛИЖАЙШИЙ ПЕРИОД (астрономический) ============
+    # ============ БЛИЖАЙШИЙ ПЕРИОД ============
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     next_period_range = short.get("next_period_range", "")
@@ -785,7 +816,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     forecast_block = ""
     if next_period != "нет данных":
-        # Астрономический night_score для периода
         period_night_score = get_astro_night_score(
             now_dt.hour, now_dt.minute, sunrise, sunset
         )
@@ -795,7 +825,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "feels_like": avg_w.get("feels_like") or (m.get("feels_like") or 0),
             "wind_speed": avg_w.get("wind_speed") or (m.get("wind_speed") or 0),
             "wind_gust": avg_w.get("wind_gust") or 0,
-            "is_rain": "дождь" in (next_period or "").lower() or avg_w.get("is_rain", False),
+            "is_rain": avg_w.get("is_rain", False),
             "rain_prob_now": period_rain_prob,
             "rain_total": short.get("rain_total") or 0,
             "precip_mm": short.get("precip_mm") or 0,
@@ -806,15 +836,19 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "humidity": avg_w.get("humidity"),
             "soil_temp": avg_w.get("soil_temp"),
             "night_score": period_night_score,
+            "twilight": twilight,
         }
         period_risk = analyze_risks(period_data, is_forecast=True)
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
 
         period_risks = period_risk["risks"][:4]
 
+        # Дождь 95%+ → «идёт»
         rain_line = ""
         if period_rain_prob and period_rain_prob >= 30:
-            if period_rain_prob >= 80:
+            if period_rain_prob >= 95:
+                rain_line = f"🌧️ Дождь идёт: {period_rain_prob}{NBSP}%"
+            elif period_rain_prob >= 80:
                 rain_line = f"☔️ Дождь почти наверняка: {period_rain_prob}{NBSP}%"
             elif period_rain_prob >= 50:
                 rain_line = f"🌧️ Вероятен дождь: {period_rain_prob}{NBSP}%"
@@ -863,7 +897,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if f.get("rain_prob") and f["rain_prob"] >= 30:
             rp = f["rain_prob"]
             rain_sum = f.get("rain_sum") or 0
-            if rp >= 80:
+            if rp >= 95:
+                rain_line_tomorrow = f"🌧️ Дождь идёт: {rp}{NBSP}%"
+            elif rp >= 80:
                 rain_line_tomorrow = f"☔️ Дождь почти наверняка: {rp}{NBSP}%"
             elif rp >= 50:
                 rain_line_tomorrow = f"🌧️ Вероятен дождь: {rp}{NBSP}%"
@@ -1070,10 +1106,8 @@ def notify_version_update(force=False):
         return {"skipped": "already_notified", "version": BOT_VERSION}
 
     desc = ""
-    date = BOT_VERSION_DATE
     for item in BOT_CHANGELOG:
         if item[0] == BOT_VERSION:
-            date = item[1]
             desc = item[2]
             break
 
@@ -1150,6 +1184,17 @@ def send_weather(chat_id):
 
         msg = build_weather_message(w, a_city, short, f, is_morning=False)
         send_or_edit(chat_id, msg, get_after_weather_keyboard(is_subscribed(chat_id)))
+
+        # Сохраняем снимок для фидбэка
+        _feedback_state[chat_id] = {
+            "weather_snapshot": fb.build_weather_snapshot(w, a_city),
+            "shown_values": {
+                "visibility": (avg_w or {}).get("visibility"),
+                "wind": (avg_w or {}).get("wind_speed"),
+                "rain": (avg_w or {}).get("precip_mm"),
+                "temp": (avg_w or {}).get("temp"),
+            },
+        }
         return "ok"
     except Exception as e:
         print(f"❌ send_weather: {type(e).__name__}: {e}", flush=True)
@@ -1205,10 +1250,7 @@ def subscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if is_subscribed(m.chat.id):
-            kb = get_about_keyboard(
-                is_subscribed=True,
-                is_updater=is_updater(m.chat.id),
-            )
+            kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(m.chat.id))
             send_or_edit(m.chat.id, ALREADY_SUBSCRIBED, kb)
             return
         send_or_edit(m.chat.id, SUBSCRIBE_TEXT, get_subscribe_keyboard())
@@ -1221,10 +1263,7 @@ def unsubscribe_cmd(m):
     try:
         save_user(m.chat.id)
         if not is_subscribed(m.chat.id):
-            kb = get_about_keyboard(
-                is_subscribed=False,
-                is_updater=is_updater(m.chat.id),
-            )
+            kb = get_about_keyboard(is_subscribed=False, is_updater=is_updater(m.chat.id))
             send_or_edit(m.chat.id, "ℹ️ Ты не подписан.", kb)
             return
         send_or_edit(m.chat.id, UNSUBSCRIBE_PROMPT, get_unsubscribe_keyboard())
@@ -1279,6 +1318,34 @@ def stats_cmd(m):
     )
 
 
+@bot.message_handler(commands=['feedback'])
+def feedback_cmd(m):
+    """Админская команда — сводка фидбэка."""
+    if not ADMIN_ID or m.chat.id != ADMIN_ID:
+        bot.reply_to(m, "❌ Нет прав.")
+        return
+    report = fb.format_feedback_report(days=7, limit=5)
+    bot.reply_to(m, report, parse_mode="HTML")
+
+
+@bot.message_handler(commands=['feedback_detail'])
+def feedback_detail_cmd(m):
+    """Админ — детали последней жалобы от юзера. /feedback_detail 123456"""
+    if not ADMIN_ID or m.chat.id != ADMIN_ID:
+        bot.reply_to(m, "❌ Нет прав.")
+        return
+    try:
+        parts = m.text.split()
+        if len(parts) < 2:
+            bot.reply_to(m, "Использование: /feedback_detail <user_id>")
+            return
+        uid = int(parts[1])
+        detail = fb.format_feedback_detail(uid)
+        bot.reply_to(m, detail, parse_mode="HTML")
+    except Exception as e:
+        bot.reply_to(m, f"⚠️ Ошибка: {e}")
+
+
 # ============ CALLBACK ============
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
@@ -1291,6 +1358,7 @@ def callback(call):
 
         chat_id = call.message.chat.id
 
+        # ============ ПОГОДА ============
         if call.data == "weather":
             try:
                 bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=1)
@@ -1310,25 +1378,7 @@ def callback(call):
                 except Exception:
                     pass
 
-        elif call.data == "update":
-            try:
-                bot.answer_callback_query(call.id, "⏳ Смотрю...", cache_time=1)
-            except Exception as e:
-                print(f"⚠️ answer_callback: {e}", flush=True)
-
-            result = send_weather(chat_id)
-
-            if isinstance(result, tuple) and result[0] == "antispam":
-                try:
-                    bot.answer_callback_query(
-                        call.id,
-                        f"⏳ Подожди {result[1]} сек",
-                        show_alert=False,
-                        cache_time=1
-                    )
-                except Exception:
-                    pass
-
+        # ============ О ПРОЕКТЕ ============
         elif call.data == "about":
             bot.answer_callback_query(call.id, "✅", cache_time=3)
             kb = get_about_keyboard(
@@ -1337,6 +1387,7 @@ def callback(call):
             )
             send_or_edit(chat_id, START_TEXT, kb)
 
+        # ============ ПОДПИСКИ ============
         elif call.data == "subscribe":
             if is_subscribed(chat_id):
                 bot.answer_callback_query(call.id, "ℹ️ Уже подписан", cache_time=3)
@@ -1377,6 +1428,7 @@ def callback(call):
             kb = get_about_keyboard(is_subscribed=True, is_updater=is_updater(chat_id))
             send_or_edit(chat_id, UNSUBSCRIBE_CANCELED, kb)
 
+        # ============ ОБНОВЛЕНИЯ ============
         elif call.data == "updates_on":
             save_updater(chat_id)
             bot.answer_callback_query(call.id, "🔔 Включено", cache_time=3)
@@ -1389,11 +1441,174 @@ def callback(call):
             kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=False)
             send_or_edit(chat_id, UPDATES_OFF_TEXT, kb)
 
+        # ============ ФИДБЭК ============
+        elif call.data == "feedback_start":
+            can, remaining = fb.check_antispam(chat_id)
+            if not can:
+                bot.answer_callback_query(
+                    call.id,
+                    f"⏳ Подожди {remaining // 60} мин",
+                    show_alert=True,
+                    cache_time=1
+                )
+                return
+            bot.answer_callback_query(call.id, "Что неверно?", cache_time=3)
+            send_or_edit(
+                chat_id,
+                "❓ <b>Что неверно в прогнозе?</b>\n\n"
+                "Выбери параметр — это поможет улучшить бота.",
+                get_feedback_params_keyboard()
+            )
+
+        elif call.data.startswith("feedback_param:"):
+            param = call.data.split(":", 1)[1]
+            meta = fb.FEEDBACK_PARAMS.get(param, {"emoji": "❓", "label": param})
+            bot.answer_callback_query(call.id, f"{meta['emoji']} {meta['label']}", cache_time=3)
+            send_or_edit(
+                chat_id,
+                f"{meta['emoji']} <b>{meta['label']}</b>\n\n"
+                f"Как на самом деле?",
+                get_feedback_direction_keyboard(param)
+            )
+
+        elif call.data.startswith("feedback_dir:"):
+            parts = call.data.split(":", 2)
+            param = parts[1]
+            direction = parts[2]
+
+            state = _feedback_state.get(chat_id, {})
+            state["param"] = param
+            state["direction"] = direction
+            _feedback_state[chat_id] = state
+
+            meta = fb.FEEDBACK_PARAMS.get(param, {"emoji": "❓", "label": param})
+            dir_meta = fb.FEEDBACK_DIRECTIONS.get(direction, {"emoji": "?", "label": "?"})
+
+            bot.answer_callback_query(call.id, f"{dir_meta['emoji']} {dir_meta['label']}", cache_time=3)
+
+            shown = ""
+            if "shown_values" in state:
+                sv = state["shown_values"]
+                shown_val = sv.get(param)
+                if shown_val is not None:
+                    shown = f"\nБот показал: <b>{shown_val}</b>"
+
+            send_or_edit(
+                chat_id,
+                f"✅ Записал:{shown}\n"
+                f"{meta['emoji']} {meta['label']} — {dir_meta['emoji']} {dir_meta['label']}\n\n"
+                f"Добавить комментарий?",
+                get_feedback_skip_keyboard(param, direction)
+            )
+
+        elif call.data.startswith("feedback_send:"):
+            parts = call.data.split(":", 2)
+            param = parts[1]
+            direction = parts[2]
+
+            state = _feedback_state.get(chat_id, {})
+            snapshot = state.get("weather_snapshot", {})
+
+            ok = fb.save_feedback(
+                user_id=chat_id,
+                param=param,
+                direction=direction,
+                user_comment="",
+                weather_snapshot=snapshot,
+                shown_value="",
+            )
+
+            bot.answer_callback_query(call.id, "✅ Спасибо!", cache_time=3)
+            _feedback_state.pop(chat_id, None)
+
+            if ok:
+                send_or_edit(
+                    chat_id,
+                    "✅ <b>Спасибо за жалобу!</b>\n\n"
+                    "Мы сохранили данные и учтём это для улучшения прогноза. 🙏",
+                    get_after_weather_keyboard(is_subscribed(chat_id))
+                )
+            else:
+                send_or_edit(
+                    chat_id,
+                    "⚠️ Не удалось сохранить. Попробуй позже.",
+                    get_after_weather_keyboard(is_subscribed(chat_id))
+                )
+
+        elif call.data.startswith("feedback_comment:"):
+            parts = call.data.split(":", 2)
+            param = parts[1]
+            direction = parts[2]
+
+            state = _feedback_state.get(chat_id, {})
+            state["param"] = param
+            state["direction"] = direction
+            state["awaiting_comment"] = True
+            _feedback_state[chat_id] = state
+
+            bot.answer_callback_query(call.id, "💬 Напиши комментарий", cache_time=3)
+
+            msg = bot.send_message(
+                chat_id,
+                "💬 Напиши комментарий одним сообщением:",
+                reply_markup=get_feedback_cancel_keyboard()
+            )
+            bot.register_next_step_handler(msg, handle_feedback_comment)
+
+        elif call.data == "feedback_cancel":
+            _feedback_state.pop(chat_id, None)
+            bot.answer_callback_query(call.id, "❌ Отменено", cache_time=3)
+            send_or_edit(
+                chat_id,
+                "❌ Отменено. Если что-то ещё — жми «🔄 ОБНОВИТЬ ПРОГНОЗ».",
+                get_after_weather_keyboard(is_subscribed(chat_id))
+            )
+
         else:
             bot.answer_callback_query(call.id, "❓", cache_time=3)
 
     except Exception as e:
         print(f"❌ callback: {type(e).__name__}: {e}", flush=True)
+
+
+def handle_feedback_comment(message):
+    """Обработчик текстового комментария."""
+    chat_id = message.chat.id
+    state = _feedback_state.get(chat_id, {})
+
+    if not state.get("awaiting_comment"):
+        return
+
+    param = state.get("param", "other")
+    direction = state.get("direction", "wrong")
+    comment = (message.text or "")[:200]
+    snapshot = state.get("weather_snapshot", {})
+
+    ok = fb.save_feedback(
+        user_id=chat_id,
+        param=param,
+        direction=direction,
+        user_comment=comment,
+        weather_snapshot=snapshot,
+        shown_value="",
+    )
+
+    _feedback_state.pop(chat_id, None)
+
+    if ok:
+        send_or_edit(
+            chat_id,
+            f"✅ <b>Спасибо!</b>\n\n"
+            f"Записал: {comment}\n\n"
+            f"Учтём для улучшения прогноза. 🙏",
+            get_after_weather_keyboard(is_subscribed(chat_id))
+        )
+    else:
+        send_or_edit(
+            chat_id,
+            "⚠️ Не удалось сохранить. Попробуй позже.",
+            get_after_weather_keyboard(is_subscribed(chat_id))
+        )
 
 
 # ============ FLASK ============
