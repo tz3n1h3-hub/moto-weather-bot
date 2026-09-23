@@ -14,7 +14,8 @@ from config import (
     MINSK_LAT, MINSK_LON,
     OWM_API_KEY, OWM_URL, OWM_LAT, OWM_LON, OWM_UNITS, OWM_LANG,
     UPSTASH_URL, UPSTASH_TOKEN,
-    TWILIGHT_OFFSET_MIN,
+    TWILIGHT_OFFSET_MIN, EVENING_BEFORE_SUNSET_MIN,
+    RAIN_VOTE_WEIGHTS, RAIN_VOTE_THRESHOLD,
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -188,13 +189,22 @@ def get_darkness_start(sunset):
     return min(1439, ss + TWILIGHT_OFFSET_MIN)
 
 
+def get_evening_start(sunset):
+    """Вечер начинается за EVENING_BEFORE_SUNSET_MIN до заката."""
+    ss = _time_to_minutes(sunset)
+    if ss is None:
+        return 18 * 60
+    return max(0, ss - EVENING_BEFORE_SUNSET_MIN)
+
+
 def get_period_title(hour, minute=0, sunrise=None, sunset=None):
     """
     Астрономический период:
-      УТРО   — от рассвета до полудня
-      ДЕНЬ   — от полудня до заката
-      ВЕЧЕР  — от заката до полной темноты
-      НОЧЬ   — от полной темноты до рассвета
+      НОЧЬ   — от dark_start до рассвета (RAССВЕТ)
+      РАССВЕТ — от twilight_start до sunrise
+      УТРО   — от sunrise до полудня
+      ДЕНЬ   — от полудня до evening_start (закат-60мин)
+      ВЕЧЕР  — от evening_start до dark_start (закат+90мин)
     """
     if not sunrise or not sunset:
         if 6 <= hour < 12:
@@ -214,14 +224,27 @@ def get_period_title(hour, minute=0, sunrise=None, sunset=None):
 
     noon = (sr + ss) // 2
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
+    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
+    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
-    if now_min >= dark_start or now_min < sr:
+    # НОЧЬ: от dark_start (или twilight_start) до рассвета
+    if now_min >= dark_start or now_min < twilight_start:
         return "🌙 НОЧЬЮ"
-    elif sr <= now_min < noon:
+
+    # РАССВЕТ: twilight_start → sunrise (первые признаки света)
+    if twilight_start <= now_min < sr:
+        return "🌄 РАССВЕТ"
+
+    # УТРО: sunrise → полдень
+    if sr <= now_min < noon:
         return "🌅 УТРОМ"
-    elif noon <= now_min < ss:
+
+    # ДЕНЬ: полдень → evening_start
+    if noon <= now_min < evening_start:
         return "☀️ ДНЁМ"
-    elif ss <= now_min < dark_start:
+
+    # ВЕЧЕР: evening_start → dark_start
+    if evening_start <= now_min < dark_start:
         return "🌆 ВЕЧЕРОМ"
 
     return "🌙 НОЧЬЮ"
@@ -229,7 +252,7 @@ def get_period_title(hour, minute=0, sunrise=None, sunset=None):
 
 def get_period_range(hour, minute=0, sunrise=None, sunset=None):
     """
-    Диапазон текущего астрономического периода, e.g. '06:10–13:00'.
+    Диапазон текущего астрономического периода.
     """
     if not sunrise or not sunset:
         return ""
@@ -241,15 +264,19 @@ def get_period_range(hour, minute=0, sunrise=None, sunset=None):
 
     noon = (sr + ss) // 2
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
+    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
+    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
     title = get_period_title(hour, minute, sunrise, sunset)
 
-    if title == "🌅 УТРОМ":
+    if title == "🌄 РАССВЕТ":
+        return f"{_min_to_time(twilight_start)}–{_min_to_time(sr)}"
+    elif title == "🌅 УТРОМ":
         return f"{_min_to_time(sr)}–{_min_to_time(noon)}"
     elif title == "☀️ ДНЁМ":
-        return f"{_min_to_time(noon)}–{_min_to_time(ss)}"
+        return f"{_min_to_time(noon)}–{_min_to_time(evening_start)}"
     elif title == "🌆 ВЕЧЕРОМ":
-        return f"{_min_to_time(ss)}–{_min_to_time(dark_start)}"
+        return f"{_min_to_time(evening_start)}–{_min_to_time(dark_start)}"
     else:  # НОЧЬЮ
         return f"{_min_to_time(dark_start)}–{_min_to_time(sr)}"
 
@@ -269,13 +296,14 @@ def get_astro_night_score(hour, minute=0, sunrise=None, sunset=None):
 
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
+    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
     if now_min >= dark_start or now_min < twilight_start:
         return 2
 
     if twilight_start <= now_min < sr:
         return 1
-    if ss <= now_min < dark_start:
+    if evening_start <= now_min < dark_start:
         return 1
 
     return 0
@@ -452,6 +480,7 @@ def hpa_to_mmhg(hpa):
     return math_round(hpa * 0.750062, 0)
 
 
+# ============ METAR ПАРСЕР ============
 def parse_clouds(metar_text):
     if "OVC" in metar_text:
         return "☁️", "Пасмурно"
@@ -667,6 +696,7 @@ def get_metar_data():
         return None
 
 
+# ============ OPEN-METEO ============
 def get_open_meteo_data():
     global _open_meteo_cache
     now = time.time()
@@ -721,6 +751,20 @@ def get_open_meteo_data():
             {"User-Agent": "MotoWeather/2.0"},
             "allorigins",
             3,
+        ),
+        (
+            f"https://corsproxy.org/?{encoded_url}",
+            None,
+            {"User-Agent": "MotoWeather/2.0"},
+            "corsproxy-org",
+            4,
+        ),
+        (
+            f"https://proxy.cors.sh/{full_url}",
+            None,
+            {"User-Agent": "MotoWeather/2.0", "x-cors-api-key": "temp_test"},
+            "cors-sh",
+            4,
         ),
     ]
 
@@ -947,23 +991,36 @@ def get_weather():
         except Exception as e:
             print(f"⚠️ rain_prob: {e}", flush=True)
 
-    is_rain_anywhere = om_says_rain_now
+    # ============ ВЗВЕШЕННОЕ ГОЛОСОВАНИЕ ПО ДОЖДЮ ============
+    weighted_votes = 0.0
     rain_sources = []
-    if m and m.get("is_rain"):
-        is_rain_anywhere = True
-        rain_sources.append("METAR")
-    if w and w.get("is_rain"):
-        is_rain_anywhere = True
-        rain_sources.append("wttr")
-    if ow and ow.get("is_rain"):
-        is_rain_anywhere = True
-        rain_sources.append("OWM")
-    if om_says_rain_now:
-        rain_sources.append("OM")
 
-    if not is_rain_anywhere and rain_prob_now and rain_prob_now >= 40:
-        is_rain_anywhere = True
+    w_metar = RAIN_VOTE_WEIGHTS.get("METAR", 2.0)
+    w_om = RAIN_VOTE_WEIGHTS.get("OM", 2.0)
+    w_owm = RAIN_VOTE_WEIGHTS.get("OWM", 1.5)
+    w_wttr = RAIN_VOTE_WEIGHTS.get("wttr", 1.0)
+
+    if m and m.get("is_rain"):
+        weighted_votes += w_metar
+        rain_sources.append("METAR")
+    if om_says_rain_now:
+        weighted_votes += w_om
+        rain_sources.append("OM")
+    if ow and ow.get("is_rain"):
+        weighted_votes += w_owm
+        rain_sources.append("OWM")
+    if w and w.get("is_rain"):
+        weighted_votes += w_wttr
+        rain_sources.append("wttr")
+
+    # Если высокая вероятность от OM — добавляем голос
+    if not rain_sources and rain_prob_now and rain_prob_now >= 40:
+        weighted_votes += w_om * 0.5
         rain_sources.append(f"OM ({rain_prob_now}%)")
+
+    is_rain_anywhere = weighted_votes >= RAIN_VOTE_THRESHOLD
+
+    print(f"🌧️ rain votes: {weighted_votes:.1f} (порог {RAIN_VOTE_THRESHOLD}) → {is_rain_anywhere} [{', '.join(rain_sources)}]", flush=True)
 
     sunrise, sunset = None, None
     if om_raw and om_raw.get("daily"):
@@ -988,6 +1045,7 @@ def get_weather():
         "rain_prob_day": rain_prob_day,
         "is_rain_anywhere": is_rain_anywhere,
         "rain_sources": rain_sources,
+        "rain_votes": weighted_votes,
         "sources_live": [],
         "formula": "(M + OM + W + OW) / 4",
     }
@@ -1041,10 +1099,22 @@ def merge_weather_data(w):
         filtered = filter_outliers(vals)
         result[key] = math_round(avg(filtered), 0) if key != "precip_mm" else round(avg(filtered), 1)
 
+    # ============ ВИДИМОСТЬ = МИНИМУМ (безопаснее) ============
+    vis_vals = gather("visibility")
+    if vis_vals:
+        result["visibility"] = min(vis_vals)
+        result["visibility_min"] = min(vis_vals)
+        result["visibility_max"] = max(vis_vals)
+    else:
+        result["visibility"] = None
+        result["visibility_min"] = None
+        result["visibility_max"] = None
+
     result["is_rain"] = w.get("is_rain_anywhere", False)
     result["rain_sources"] = w.get("rain_sources", [])
     result["rain_prob_now"] = w.get("rain_prob_now")
     result["rain_prob_day"] = w.get("rain_prob_day")
+    result["rain_votes"] = w.get("rain_votes", 0)
 
     result["is_thunder"] = any(s.get("is_thunder") for s in sources)
     result["is_hail"] = any(s.get("is_hail") for s in sources)
@@ -1193,7 +1263,6 @@ def get_short_forecast_wttr():
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
-        # Астрономический расчёт sunrise/sunset — локально, без OM
         sunrise_today, sunset_today = _calc_sun_times()
         title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
@@ -1224,6 +1293,7 @@ def get_short_forecast_wttr():
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
 
+# ============ ЗАВТРА (световой день) ============
 def get_forecast_tomorrow():
     om_raw = get_open_meteo_data()
 
@@ -1353,7 +1423,6 @@ def get_forecast_tomorrow_wttr():
         tmin = math_round(float(tomorrow.get("mintempC", 0)), 0)
         tmax = math_round(float(tomorrow.get("maxtempC", 0)), 0)
 
-        # Астрономический расчёт sunrise/sunset на завтра — локально
         sunrise_tomorrow, sunset_tomorrow = _calc_sun_times_tomorrow()
         if sunrise_tomorrow and sunset_tomorrow:
             sr_h = int(sunrise_tomorrow.split(":")[0])
