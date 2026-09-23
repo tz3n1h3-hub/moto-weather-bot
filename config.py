@@ -2,16 +2,16 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.7.0"
+BOT_VERSION = "1.7.1"
 BOT_VERSION_DATE = "2026-09-23"
 
-BOT_VERSION_NOTIFY = True
+BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.7.1", "23.09.2026", "Cloudflare Worker для OM — обход 429", False),
     ("1.7.0", "23.09.2026", "14 фиксов: туман, мокрая дорога, дождь 2+, РАССВЕТ/СУМЕРКИ, фидбэк", True),
     ("1.6.0", "21.09.2026", "Астрономические периоды (по Солнцу), диапазоны", True),
     ("1.5.5", "21.09.2026", "Вердикт для ЗАВТРА, фильтр влажности", False),
-    ("1.5.4", "21.09.2026", "Кнопка «ОБНОВИТЬ ПРОГНОЗ», анти-спам 3 сек", False),
     ("1.5.0", "21.09.2026", "Новый формат блоков НОЧЬ/ЗАВТРА", True),
     ("1.4.0", "21.09.2026", "Подписка на обновления бота", True),
     ("1.0.0", "19.09.2026", "Первый релиз: 4 источника, риск 0–10", False),
@@ -36,10 +36,22 @@ UPSTASH_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN")
 OWM_API_KEY = os.getenv("OWM_API_KEY")
 OWM_URL = "https://api.openweathermap.org/data/2.5/weather"
 
+# ============ OPEN-METEO через Cloudflare Worker (если настроен) ============
+# Если в Render → Environment есть OPEN_METEO_PROXY_URL — используем его.
+# Иначе — прямой запрос к api.open-meteo.com.
+OPEN_METEO_DIRECT_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_PROXY_URL = os.getenv("OPEN_METEO_PROXY_URL", "").strip()
+
+if OPEN_METEO_PROXY_URL:
+    OPEN_METEO_URL = OPEN_METEO_PROXY_URL
+    _OM_MODE = "Cloudflare Worker"
+else:
+    OPEN_METEO_URL = OPEN_METEO_DIRECT_URL
+    _OM_MODE = "прямой api.open-meteo.com"
+
 # ============ API URLs ============
 METAR_URL = "https://metar.vatsim.net/UMMS"
 METAR_FALLBACK_URL = "https://aviationweather.gov/api/data/metar?ids=UMMS&format=raw&hours=0&taf=false"
-OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ============ КООРДИНАТЫ МИНСКА ============
 MINSK_LAT = 53.9045
@@ -51,10 +63,10 @@ OWM_UNITS = "metric"
 OWM_LANG = "ru"
 
 # ============ АСТРОНОМИЧЕСКИЕ ПЕРИОДЫ ============
-TWILIGHT_OFFSET_MIN = 90          # сумерки: ±90 мин от восхода/заката
-EVENING_BEFORE_SUNSET_MIN = 60    # вечер начинается за 60 мин до заката
+TWILIGHT_OFFSET_MIN = 90
+EVENING_BEFORE_SUNSET_MIN = 60
 
-# ============ ВЕСА ИСТОЧНИКОВ (для голосования по дождю) ============
+# ============ ВЕСА ИСТОЧНИКОВ ============
 RAIN_VOTE_WEIGHTS = {
     "METAR": 2.0,
     "OM": 2.0,
@@ -68,3 +80,8 @@ FEEDBACK_ENABLED = True
 FEEDBACK_TTL_DAYS = 30
 FEEDBACK_ANTISPAM_SEC = 3600
 FEEDBACK_PREFIX = "feedback:"
+
+# ============ ЛОГ ПРИ СТАРТЕ ============
+print(f"ℹ️ OM режим: {_OM_MODE}", flush=True)
+if OPEN_METEO_PROXY_URL:
+    print(f"ℹ️ OM URL: {OPEN_METEO_URL}", flush=True)
