@@ -33,9 +33,8 @@ def analyze_risks(weather, is_forecast=False):
     soil_temp = weather.get("soil_temp")
     twilight = weather.get("twilight") or ""
 
-    # ============ ФЛАГИ, чтобы не дублировать ============
-    humidity_handled = False     # влага уже учтена
-    twilight_handled = False     # twilight уже учтён
+    humidity_handled = False
+    twilight_handled = False
 
     # ============ ГРАД ============
     if is_hail:
@@ -135,62 +134,48 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("💡 Включите противотуманки, снизьте скорость")
             visibility_alerted = True
 
-    # ============ ТУМАН / ВЛАГА / МОКРАЯ ДОРОГА (один раз!) ============
+    # ============ ТУМАН / ВЛАГА / МОКРАЯ ДОРОГА ============
+    # Логика ОДИНАКОВАЯ для «сейчас» и «прогноза»:
+    # если точка росы близка к температуре и влажность высокая — мокрая дорога
     if dew_point is not None:
         diff = temp - dew_point
 
-        # Точка росы = температуре (насыщение)
         if diff <= 1:
-            if not is_forecast:
-                # 1) Туман — видимость < 5 км (уже обработано в видимости)
-                if visibility < 5000:
-                    if not visibility_alerted:
-                        risks.append(f"🌫️ ТУМАН — видимость {int(visibility)} м (точка росы = темп)")
-                        score += 4
-                        recommendations.append("🚫 Осторожно — туман, минимальная скорость, противотуманки")
-                    humidity_handled = True
-                # 2) Мокрая дорога / роса — если не туман, но влажность высокая
-                elif humidity >= 90:
-                    if is_rain:
-                        risks.append(f"💧 Мокрая дорога + лужи (влаг. {int(humidity)}%)")
-                    else:
-                        risks.append(f"💧 Мокрая дорога / роса (влаг. {int(humidity)}%, роса)")
-                    score += 3
-                    recommendations.append("🐢 Тормози плавно, дистанцию ×2, осторожно на разметке")
-                    humidity_handled = True
+            # Насыщение — туман, мокрая дорога или лёгкая влажность
+            if visibility < 5000:
+                if not visibility_alerted:
+                    risks.append(f"🌫️ ТУМАН — видимость {int(visibility)} м (точка росы = темп)")
+                    score += 4
+                    recommendations.append("🚫 Осторожно — туман, минимальная скорость, противотуманки")
+                humidity_handled = True
+            elif humidity >= 90:
+                # Мокрая дорога / роса — ОДИНАКОВО для сейчас и прогноза
+                if is_rain:
+                    risks.append(f"💧 Мокрая дорога + лужи (влаг. {int(humidity)}%)")
                 else:
-                    # Лёгкая влажность — мини-риск
-                    risks.append(f"💧 Повышенная влажность {int(humidity)} %")
-                    score += 1
-                    humidity_handled = True
-            else:
-                # Прогноз — влага в воздухе
-                if humidity >= 90:
-                    risks.append(f"💧 Влажно — дорога может быть мокрой ({int(humidity)} %)")
-                    score += 2
-                    recommendations.append("🐢 Осторожно на разметке и в поворотах")
-                    humidity_handled = True
+                    risks.append(f"💧 Мокрая дорога / роса (влаг. {int(humidity)}%, роса)")
+                score += 3
+                recommendations.append("🐢 Тормози плавно, дистанцию ×2, осторожно на разметке")
+                humidity_handled = True
+            elif humidity >= 80:
+                risks.append(f"💧 Повышенная влажность {int(humidity)} %")
+                score += 1
+                humidity_handled = True
 
-        # Влажно, но не насыщение (diff 2-4)
         elif diff <= 4:
+            # Влажно, но не насыщение
             if humidity >= 90:
-                if is_forecast:
-                    risks.append(f"🌫️ Влажно {int(humidity)} % — воздух близок к туману")
-                else:
-                    risks.append(f"🌫️ Влажность {int(humidity)} % — воздух близок к туману")
+                risks.append(f"🌫️ Влажность {int(humidity)} % — воздух близок к туману")
                 score += 2
                 recommendations.append("🌫️ Возможен туман — противотуманки, снизьте скорость")
                 humidity_handled = True
             elif humidity >= 85:
-                if is_forecast:
-                    risks.append(f"💧 Влажно — дорога может быть мокрой ({int(humidity)} %)")
-                else:
-                    risks.append(f"💧 Высокая влажность {int(humidity)} %")
+                risks.append(f"💧 Высокая влажность {int(humidity)} %")
                 score += 1
                 recommendations.append("🐢 Осторожно на разметке и в поворотах")
                 humidity_handled = True
 
-        # Изморозь — только при морозе, независимо от влаги
+        # Изморозь — только при морозе
         if temp >= -3 and temp <= 3 and humidity >= 95:
             risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
             score += 4
@@ -218,8 +203,9 @@ def analyze_risks(weather, is_forecast=False):
             recommendations.append("🐢 Скользко — увеличивайте дистанцию")
 
     # ============ ОЩУЩАЕМАЯ ТЕМПЕРАТУРА ============
+    # ВАЖНО: для прогноза тоже сначала берём feels_like, если он есть
     if is_forecast:
-        feels_like = weather.get("temp_avg", temp)
+        feels_like = weather.get("feels_like") or weather.get("temp_avg") or temp
     else:
         feels_like = weather.get("feels_like", temp)
 
