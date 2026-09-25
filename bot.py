@@ -661,7 +661,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     recs = a_city.get("recommendations", [])
     if score >= 3 and recs:
         rec_lines = recs[:3]
-        # Рекомендации с префиксом ➡️ и курсивом — чтобы отличались от рисков
         recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
         block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
 
@@ -887,10 +886,17 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_bar = build_risk_bar(period_risk["score"])
         title_line = f"{next_period_title} ({next_period_range})" if next_period_range else next_period_title
 
+        # === ФИКС 1.8.2: если глобальный вердикт — дождь/морось, но OM говорит "ясно" — подменяем
+        shown_period = next_period
+        if avg_w.get("is_rain") and "· ясно" in shown_period:
+            shown_period = shown_period.replace("· ясно", "· дождь")
+        elif avg_w.get("is_drizzle") and "· ясно" in shown_period:
+            shown_period = shown_period.replace("· ясно", "· морось")
+
         p_inner = [f"<b>{period_verdict}</b>", f"РИСК: {period_risk['score']}/10"]
         if period_bar:
             p_inner.append(period_bar)
-        p_inner.append(next_period)
+        p_inner.append(shown_period)
         if rain_line:
             p_inner.append(rain_line)
         if period_risks_text:
@@ -903,7 +909,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
-        # Прокидываем rain_prob в analyzer, чтобы риск учитывал вероятность дождя
         f["rain_prob_now"] = f.get("rain_prob")
         f["rain_prob_day"] = f.get("rain_prob")
 
