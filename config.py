@@ -2,12 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.8.0"
+BOT_VERSION = "1.8.1"
 BOT_VERSION_DATE = "2026-09-25"
 
-BOT_VERSION_NOTIFY = True
+BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.8.1", "25.09.2026", "Убрано дублирование рисков: дождь ≠ мокрая дорога", False),
     ("1.8.0", "25.09.2026", "Блоки 【A】-【J】, многоточечный OM (5 точек), фидбэк по блокам", True),
     ("1.7.5", "24.09.2026", "Морось ≠ дождь, единый блок видимости, night_score везде", False),
     ("1.7.4", "24.09.2026", "METAR-туман в аэропорту ≠ городской туман", False),
