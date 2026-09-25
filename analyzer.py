@@ -36,7 +36,6 @@ def analyze_risks(weather, is_forecast=False):
     soil_temp = weather.get("soil_temp")
     twilight = weather.get("twilight") or ""
 
-    # Флаги анти-дубля
     humidity_handled = False
     visibility_alerted = False
     twilight_handled = False
@@ -88,7 +87,7 @@ def analyze_risks(weather, is_forecast=False):
 
     score += max(wind_score, speed_score)
 
-    # ============ ОСАДКИ (дождь / морось / вероятность) ============
+    # ============ ОСАДКИ (с градацией вероятности) ============
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -104,25 +103,33 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     elif is_rain:
-        src_note = ""
-        if rain_sources:
-            src_note = f" [{', '.join(rain_sources[:2])}]"
+        src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
         risks.append(f"🌧️ Дождь{src_note} — дорога скользкая")
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, тормози плавно")
     elif is_drizzle:
-        src_note = ""
-        if rain_sources:
-            src_note = f" [{', '.join(rain_sources[:2])}]"
+        src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
         risks.append(f"🌦️ Морось{src_note} — скользко")
         score += 1
         recommendations.append("🐢 Осторожно на разметке, тормози плавно")
+    elif rain_prob_now and rain_prob_now >= 80:
+        risks.append(f"☔️ Дождь почти наверняка ({rain_prob_now}%)")
+        score += 3
+        recommendations.append("☔ Дождевик обязателен")
+    elif rain_prob_now and rain_prob_now >= 50:
+        risks.append(f"🌧️ Вероятен дождь ({rain_prob_now}%)")
+        score += 2
+        recommendations.append("☔ Возьми дождевик")
     elif rain_prob_now and rain_prob_now >= 40:
         risks.append(f"🌦️ Возможен дождь ({rain_prob_now}%)")
         score += 1
         recommendations.append("☔ Возьми дождевик")
-    elif rain_prob_day and rain_prob_day >= 40:
-        risks.append(f"🌦️ Возможен дождь в ближайшие часы ({rain_prob_day}%)")
+    elif rain_prob_day and rain_prob_day >= 80:
+        risks.append(f"☔️ Дождь почти наверняка в ближайшие часы ({rain_prob_day}%)")
+        score += 2
+        recommendations.append("☔ Дождевик обязателен")
+    elif rain_prob_day and rain_prob_day >= 50:
+        risks.append(f"🌧️ Вероятен дождь ({rain_prob_day}%)")
         score += 1
         recommendations.append("☔ Возьми дождевик")
 
@@ -131,48 +138,38 @@ def analyze_risks(weather, is_forecast=False):
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
 
-    # Случай METAR-аэропорт (туман локально в аэропорту, а в городе нормально)
     if big_spread and vis_min < 1000 and vis_max > 5000:
         km_max = int(vis_max / 1000) if vis_max >= 1000 else 0
         risks.append(f"🌫️ Туман в аэропорту ({int(vis_min)} м), в городе — {km_max} км")
         score += 2
         recommendations.append("💡 Возможна дымка — включите противотуманки")
         visibility_alerted = True
-
-    # Критическая видимость
     elif visibility < 500:
         risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({int(visibility)} м)!")
         score += 5
         recommendations.append("🚫 Остановитесь в безопасном месте")
         visibility_alerted = True
-
-    # Туман (порог 1000 м)
     elif visibility < 1000:
         risks.append(f"🌫️ ТУМАН ({int(visibility)} м)")
         score += 3
         recommendations.append("🌫️ Противотуманки, минимальная скорость")
         visibility_alerted = True
-
-    # Дымка (1000–2000 м)
     elif visibility < 2000:
         risks.append(f"🌫️ Плохая видимость ({int(visibility)} м)")
         score += 2
         recommendations.append("💡 Включите противотуманки")
         visibility_alerted = True
-
-    # Дымка/туман возможен (2000–5000 м + влага)
     elif visibility < 5000 and humidity >= 90:
         risks.append(f"🌫️ Дымка/туман возможен (видимость {int(visibility)} м)")
         score += 2
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
 
-    # ============ МОКРАЯ ДОРОГА (ВСЕГДА, не пропускается!) ============
+    # ============ МОКРАЯ ДОРОГА (ВСЕГДА) ============
     if dew_point is not None:
         diff = temp - dew_point
 
         if diff <= 1:
-            # Насыщение
             if humidity >= 90:
                 if is_rain:
                     risks.append(f"💧 Мокрая дорога + лужи (влаг. {int(humidity)}%)")
@@ -187,9 +184,7 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append(f"💧 Возможна влага на дороге (влаг. {int(humidity)}%)")
                 score += 1
                 humidity_handled = True
-
         elif diff <= 2:
-            # Близко к насыщению
             if humidity >= 90:
                 risks.append(f"🌫️ Влажность {int(humidity)} % — воздух близок к туману")
                 score += 2
@@ -199,15 +194,12 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append(f"💧 Высокая влажность {int(humidity)} %")
                 score += 1
                 humidity_handled = True
-
         elif diff <= 3:
-            # Влажно, но не критично
             if humidity >= 80:
                 risks.append(f"💧 Возможна влага на дороге (влаг. {int(humidity)}%)")
                 score += 1
                 humidity_handled = True
 
-        # Изморозь — только при морозе, независимо
         if temp >= -3 and temp <= 3 and humidity >= 95:
             risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
             score += 4
@@ -220,7 +212,7 @@ def analyze_risks(weather, is_forecast=False):
             score += 1
             recommendations.append("☔ На всякий случай возьми дождевик")
 
-    # ============ СИНХРОНИЗАЦИЯ twilight vs period ============
+    # ============ twilight ============
     if not is_forecast:
         if twilight in ("смеркается", "темнеет"):
             risks.append("🌆 Смеркается — видимость хуже")
@@ -271,7 +263,7 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("🐢 Сцепление хуже, тормози плавно")
 
-    # ============ НОЧЬ / ТЕМНОТА (везде одинаково) ============
+    # ============ НОЧЬ ============
     night_score = weather.get("night_score")
     if night_score is None:
         night_score = 2 if weather.get("is_night", False) else 0
