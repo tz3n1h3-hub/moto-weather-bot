@@ -84,22 +84,34 @@ def get_unsubscribe_keyboard():
 
 
 # ============ ФИДБЭК-КЛАВИАТУРЫ ============
-def get_feedback_params_keyboard():
+
+def get_feedback_blocks_keyboard():
+    """
+    Меню выбора БЛОКА (【A】–【K】) — первый шаг фидбэка.
+    """
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🌫️ Видимость", callback_data="feedback_param:visibility"),
-        InlineKeyboardButton("💨 Ветер", callback_data="feedback_param:wind"),
+        InlineKeyboardButton("【A】 Шапка", callback_data="feedback_block:A"),
+        InlineKeyboardButton("【B】 Вердикт", callback_data="feedback_block:B"),
     )
     markup.row(
-        InlineKeyboardButton("🌧️ Осадки", callback_data="feedback_param:rain"),
-        InlineKeyboardButton("🌡️ Температура", callback_data="feedback_param:temp"),
+        InlineKeyboardButton("【C】 Что на дороге", callback_data="feedback_block:C"),
+        InlineKeyboardButton("【D】 На себя", callback_data="feedback_block:D"),
     )
     markup.row(
-        InlineKeyboardButton("💧 Дорога", callback_data="feedback_param:road"),
-        InlineKeyboardButton("🌫️ Туман (не показан)", callback_data="feedback_param:fog"),
+        InlineKeyboardButton("【E】 Перед выездом", callback_data="feedback_block:E"),
+        InlineKeyboardButton("【F】 Погода", callback_data="feedback_block:F"),
     )
     markup.row(
-        InlineKeyboardButton("❓ Другое", callback_data="feedback_param:other"),
+        InlineKeyboardButton("【G】 Период", callback_data="feedback_block:G"),
+        InlineKeyboardButton("【H】 Завтра", callback_data="feedback_block:H"),
+    )
+    markup.row(
+        InlineKeyboardButton("【I】 Источники", callback_data="feedback_block:I"),
+        InlineKeyboardButton("【J】 Совет", callback_data="feedback_block:J"),
+    )
+    markup.row(
+        InlineKeyboardButton("【K】 Другое", callback_data="feedback_block:K"),
     )
     markup.row(
         InlineKeyboardButton("❌ Отмена", callback_data="feedback_cancel"),
@@ -107,17 +119,25 @@ def get_feedback_params_keyboard():
     return markup
 
 
-def get_feedback_direction_keyboard(param):
+def get_feedback_params_keyboard(block=""):
+    """
+    Меню параметров — второй шаг фидбэка (после выбора блока).
+    """
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🔽 Реально МЕНЬШЕ", callback_data=f"feedback_dir:{param}:less"),
-        InlineKeyboardButton("🔼 Реально БОЛЬШЕ", callback_data=f"feedback_dir:{param}:more"),
+        InlineKeyboardButton("🌫️ Видимость", callback_data=f"feedback_param:{block}:visibility"),
+        InlineKeyboardButton("💨 Ветер", callback_data=f"feedback_param:{block}:wind"),
     )
     markup.row(
-        InlineKeyboardButton("❌ НЕ ПОКАЗАНО, а есть", callback_data=f"feedback_dir:{param}:not_shown"),
+        InlineKeyboardButton("🌧️ Осадки", callback_data=f"feedback_param:{block}:rain"),
+        InlineKeyboardButton("🌡️ Температура", callback_data=f"feedback_param:{block}:temp"),
     )
     markup.row(
-        InlineKeyboardButton("⚠️ Другое", callback_data=f"feedback_dir:{param}:wrong"),
+        InlineKeyboardButton("💧 Дорога", callback_data=f"feedback_param:{block}:road"),
+        InlineKeyboardButton("🌫️ Туман (не показан)", callback_data=f"feedback_param:{block}:fog"),
+    )
+    markup.row(
+        InlineKeyboardButton("❓ Другое", callback_data=f"feedback_param:{block}:other"),
     )
     markup.row(
         InlineKeyboardButton("↩️ Назад", callback_data="feedback_start"),
@@ -125,13 +145,31 @@ def get_feedback_direction_keyboard(param):
     return markup
 
 
-def get_feedback_skip_keyboard(param, direction):
+def get_feedback_direction_keyboard(block, param):
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("💬 Добавить комментарий", callback_data=f"feedback_comment:{param}:{direction}"),
+        InlineKeyboardButton("🔽 Реально МЕНЬШЕ", callback_data=f"feedback_dir:{block}:{param}:less"),
+        InlineKeyboardButton("🔼 Реально БОЛЬШЕ", callback_data=f"feedback_dir:{block}:{param}:more"),
     )
     markup.row(
-        InlineKeyboardButton("✅ Отправить без комментария", callback_data=f"feedback_send:{param}:{direction}"),
+        InlineKeyboardButton("❌ НЕ ПОКАЗАНО, а есть", callback_data=f"feedback_dir:{block}:{param}:not_shown"),
+    )
+    markup.row(
+        InlineKeyboardButton("⚠️ Другое", callback_data=f"feedback_dir:{block}:{param}:wrong"),
+    )
+    markup.row(
+        InlineKeyboardButton("↩️ Назад", callback_data=f"feedback_block:{block}"),
+    )
+    return markup
+
+
+def get_feedback_skip_keyboard(block, param, direction):
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("💬 Добавить комментарий", callback_data=f"feedback_comment:{block}:{param}:{direction}"),
+    )
+    markup.row(
+        InlineKeyboardButton("✅ Отправить без комментария", callback_data=f"feedback_send:{block}:{param}:{direction}"),
     )
     markup.row(
         InlineKeyboardButton("❌ Отмена", callback_data="feedback_cancel"),
