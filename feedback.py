@@ -11,6 +11,7 @@ from config import (
 
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
+# Параметры (детально)
 FEEDBACK_PARAMS = {
     "visibility": {"emoji": "🌫️", "label": "Видимость"},
     "wind":       {"emoji": "💨", "label": "Ветер"},
@@ -21,11 +22,27 @@ FEEDBACK_PARAMS = {
     "other":      {"emoji": "❓", "label": "Другое"},
 }
 
+# Направление
 FEEDBACK_DIRECTIONS = {
     "less":      {"emoji": "🔽", "label": "Реально меньше"},
     "more":      {"emoji": "🔼", "label": "Реально больше"},
     "not_shown": {"emoji": "❌", "label": "Не показано, а есть"},
     "wrong":     {"emoji": "⚠️", "label": "Другое"},
+}
+
+# Блоки сообщения 【A】–【J】
+FEEDBACK_BLOCKS = {
+    "A": {"emoji": "【A】", "label": "Шапка"},
+    "B": {"emoji": "【B】", "label": "Вердикт СЕЙЧАС"},
+    "C": {"emoji": "【C】", "label": "ЧТО НА ДОРОГЕ"},
+    "D": {"emoji": "【D】", "label": "НА СЕБЯ"},
+    "E": {"emoji": "【E】", "label": "ПЕРЕД ВЫЕЗДОМ"},
+    "F": {"emoji": "【F】", "label": "ТЕКУЩАЯ ПОГОДА"},
+    "G": {"emoji": "【G】", "label": "Ближайший период"},
+    "H": {"emoji": "【H】", "label": "ЗАВТРА"},
+    "I": {"emoji": "【I】", "label": "Источники"},
+    "J": {"emoji": "【J】", "label": "Совет"},
+    "K": {"emoji": "【K】", "label": "Другое"},
 }
 
 
@@ -52,7 +69,8 @@ def _feedback_key(ts, user_id):
     return f"{FEEDBACK_PREFIX}{ts}:{user_id}"
 
 
-def save_feedback(user_id, param, direction, user_comment, weather_snapshot, shown_value=""):
+def save_feedback(user_id, param, direction, user_comment, weather_snapshot,
+                  shown_value="", block=""):
     if not UPSTASH_ENABLED:
         print("⚠️ feedback: Redis отключён, жалоба не сохранена", flush=True)
         return False
@@ -62,6 +80,7 @@ def save_feedback(user_id, param, direction, user_comment, weather_snapshot, sho
 
     data = {
         "user_id": user_id,
+        "block": block,
         "param": param,
         "direction": direction,
         "shown_value": shown_value,
@@ -74,7 +93,7 @@ def save_feedback(user_id, param, direction, user_comment, weather_snapshot, sho
     try:
         _redis("set", key, json.dumps(data, ensure_ascii=False))
         _redis("expire", key, FEEDBACK_TTL_DAYS * 24 * 3600)
-        print(f"📝 feedback saved: {param}/{direction} от {user_id}", flush=True)
+        print(f"📝 feedback saved: block={block} {param}/{direction} от {user_id}", flush=True)
         return True
     except Exception as e:
         print(f"❌ feedback save: {e}", flush=True)
@@ -149,22 +168,26 @@ def get_all_feedback(days=7):
 
 def get_feedback_stats(days=7):
     items = get_all_feedback(days)
-    stats = {}
+    stats_params = {}
+    stats_blocks = {}
 
     for item in items:
         param = item.get("param", "other")
         direction = item.get("direction", "wrong")
+        block = item.get("block", "") or "K"
 
-        if param not in stats:
-            stats[param] = {"total": 0, "less": 0, "more": 0,
-                            "not_shown": 0, "wrong": 0, "last": None}
+        if param not in stats_params:
+            stats_params[param] = {"total": 0, "less": 0, "more": 0,
+                                    "not_shown": 0, "wrong": 0}
+        stats_params[param]["total"] += 1
+        if direction in stats_params[param]:
+            stats_params[param][direction] += 1
 
-        stats[param]["total"] += 1
-        if direction in stats[param]:
-            stats[param][direction] += 1
-        stats[param]["last"] = item.get("time")
+        if block not in stats_blocks:
+            stats_blocks[block] = 0
+        stats_blocks[block] += 1
 
-    return stats
+    return {"params": stats_params, "blocks": stats_blocks}
 
 
 def format_feedback_report(days=7, limit=5):
@@ -173,30 +196,48 @@ def format_feedback_report(days=7, limit=5):
         return f"📊 <b>Фидбэк за {days} дней</b>\n\n<i>Пока нет жалоб.</i>"
 
     stats = get_feedback_stats(days)
-    sorted_params = sorted(stats.items(), key=lambda x: -x[1]["total"])
-
     lines = [f"📊 <b>Фидбэк за {days} дней</b>\n"]
     lines.append(f"Всего жалоб: <b>{len(items)}</b>\n")
 
-    for param, s in sorted_params[:5]:
-        meta = FEEDBACK_PARAMS.get(param, {"emoji": "❓", "label": param})
-        lines.append(f"{meta['emoji']} <b>{meta['label']}</b>: {s['total']}")
-        if s["less"] > 0:
-            lines.append(f"   🔽 меньше: {s['less']}")
-        if s["more"] > 0:
-            lines.append(f"   🔼 больше: {s['more']}")
-        if s["not_shown"] > 0:
-            lines.append(f"   ❌ не показано: {s['not_shown']}")
+    # По блокам
+    blocks_sorted = sorted(stats["blocks"].items(), key=lambda x: -x[1])
+    if blocks_sorted:
+        lines.append("<b>🔤 По блокам:</b>")
+        for block, cnt in blocks_sorted[:6]:
+            meta = FEEDBACK_BLOCKS.get(block, {"emoji": "【?】", "label": "?"})
+            lines.append(f"{meta['emoji']} {meta['label']}: {cnt}")
         lines.append("")
 
+    # По параметрам
+    params_sorted = sorted(stats["params"].items(), key=lambda x: -x[1]["total"])
+    if params_sorted:
+        lines.append("<b>❓ По параметрам:</b>")
+        for param, s in params_sorted[:6]:
+            meta = FEEDBACK_PARAMS.get(param, {"emoji": "❓", "label": param})
+            line = f"{meta['emoji']} <b>{meta['label']}</b>: {s['total']}"
+            sub = []
+            if s["less"] > 0:
+                sub.append(f"🔽{s['less']}")
+            if s["more"] > 0:
+                sub.append(f"🔼{s['more']}")
+            if s["not_shown"] > 0:
+                sub.append(f"❌{s['not_shown']}")
+            if sub:
+                line += " (" + " ".join(sub) + ")"
+            lines.append(line)
+        lines.append("")
+
+    # Последние
     lines.append(f"<b>Последние {min(limit, len(items))}:</b>")
     for item in items[:limit]:
         t = item.get("time", "?")[:16].replace("T", " ")
+        block = item.get("block", "") or "K"
+        block_meta = FEEDBACK_BLOCKS.get(block, {"emoji": "【?】"})
         meta = FEEDBACK_PARAMS.get(item.get("param"), {"emoji": "❓", "label": "?"})
         dir_meta = FEEDBACK_DIRECTIONS.get(item.get("direction"), {"emoji": "?", "label": "?"})
         comment = item.get("user_comment", "")
         comment_str = f" — «{comment}»" if comment else ""
-        lines.append(f"• {t} {meta['emoji']} {meta['label']} {dir_meta['emoji']}{comment_str}")
+        lines.append(f"• {t} {block_meta['emoji']} {meta['emoji']} {dir_meta['emoji']}{comment_str}")
 
     return "\n".join(lines)
 
@@ -221,6 +262,8 @@ def format_feedback_detail(user_id):
         all_items.sort(key=lambda x: x.get("ts", 0), reverse=True)
         item = all_items[0]
 
+        block = item.get("block", "") or "?"
+        block_meta = FEEDBACK_BLOCKS.get(block, {"emoji": "【?】", "label": "?"})
         meta = FEEDBACK_PARAMS.get(item.get("param"), {"emoji": "❓", "label": "?"})
         dir_meta = FEEDBACK_DIRECTIONS.get(item.get("direction"), {"emoji": "?", "label": "?"})
         wd = item.get("weather_data", {}) or {}
@@ -228,6 +271,7 @@ def format_feedback_detail(user_id):
         lines = [
             f"📋 <b>Жалоба от {user_id}</b>",
             f"⏰ {item.get('time', '?')[:16].replace('T', ' ')}",
+            f"🔤 Блок: {block_meta['emoji']} {block_meta['label']}",
             f"❓ {meta['emoji']} {meta['label']} — {dir_meta['emoji']} {dir_meta['label']}",
         ]
 
@@ -241,6 +285,8 @@ def format_feedback_detail(user_id):
             if isinstance(vals, dict):
                 vals_str = ", ".join(f"{k}={v}" for k, v in vals.items() if v is not None)
                 lines.append(f"• {src}: {vals_str}")
+            elif isinstance(vals, list):
+                lines.append(f"• {src}: {vals}")
             else:
                 lines.append(f"• {src}: {vals}")
 
@@ -261,7 +307,7 @@ def build_weather_snapshot(w, a_city):
                     "visibility", "dew_point", "precip_mm", "clouds_pct"]
             return {k: d.get(k) for k in keys if d.get(k) is not None}
 
-        return {
+        snapshot = {
             "METAR": short(m),
             "OM": short(om),
             "wttr": short(ww),
@@ -271,8 +317,17 @@ def build_weather_snapshot(w, a_city):
             "sunset": w.get("sunset"),
             "rain_prob_now": w.get("rain_prob_now"),
             "is_rain_anywhere": w.get("is_rain_anywhere"),
+            "is_drizzle_anywhere": w.get("is_drizzle_anywhere"),
             "rain_sources": w.get("rain_sources"),
+            "rain_votes": w.get("rain_votes"),
         }
+
+        # Многоточечный прогноз
+        multi = w.get("precipitation_by_districts")
+        if multi:
+            snapshot["districts"] = multi
+
+        return snapshot
     except Exception as e:
         print(f"⚠️ snapshot: {e}", flush=True)
         return {}
