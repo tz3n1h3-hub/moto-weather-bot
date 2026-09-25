@@ -655,18 +655,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
-    recs = a_city.get("recommendations", [])
-    rec_text = ""
-    if score >= 3 and recs:
-        rec_text = "\n\n<i>" + "\n".join(recs[:3]) + "</i>"
-
     block_c = f"""【C】<b>ЧТО НА ДОРОГЕ</b>
 {indent_multiline(risk_text)}"""
 
-    if rec_text:
-        # добавляем рекомендации с отступом
+    recs = a_city.get("recommendations", [])
+    if score >= 3 and recs:
         rec_lines = recs[:3]
-        block_c += "\n" + indent_multiline("\n".join(rec_lines))
+        # Рекомендации с префиксом ➡️ и курсивом — чтобы отличались от рисков
+        recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
+        block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
 
     # ============ БЛОК 【D】 — НА СЕБЯ ============
     gear = get_gear_short(
@@ -983,7 +980,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if vs:
             i_inner.append(vs)
 
-    block_i = "【I】" + indent_multiline("\n".join(i_inner)).lstrip()
+    block_i = "【I】" + indent_multiline("\n".join(i_inner))
 
     # ============ БЛОК 【J】 — СОВЕТ ============
     tip = get_tip(
@@ -1003,7 +1000,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
-    block_j = "【J】" + indent_multiline("\n".join(j_lines)).lstrip()
+    block_j = "【J】" + indent_multiline("\n".join(j_lines))
 
     # ============ СБОРКА ============
     msg = f"""{block_a}
