@@ -165,18 +165,16 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
 
-    # ============ МОКРАЯ ДОРОГА (ВСЕГДА) ============
-    if dew_point is not None:
+    # ============ МОКРАЯ ДОРОГА / ВЛАГА ============
+    # Если уже идёт дождь или морось — дорога и так мокрая, дублировать не нужно.
+    rain_or_drizzle = is_rain or is_drizzle
+
+    if dew_point is not None and not rain_or_drizzle:
         diff = temp - dew_point
 
         if diff <= 1:
             if humidity >= 90:
-                if is_rain:
-                    risks.append(f"💧 Мокрая дорога + лужи (влаг. {int(humidity)}%)")
-                elif is_drizzle:
-                    risks.append(f"💧 Мокрая дорога (морось, влаг. {int(humidity)}%)")
-                else:
-                    risks.append(f"💧 Мокрая дорога / роса (влаг. {int(humidity)}%, роса)")
+                risks.append(f"💧 Мокрая дорога / роса (влаг. {int(humidity)}%, роса)")
                 score += 3
                 recommendations.append("🐢 Тормози плавно, дистанцию ×2, осторожно на разметке")
                 humidity_handled = True
@@ -200,10 +198,11 @@ def analyze_risks(weather, is_forecast=False):
                 score += 1
                 humidity_handled = True
 
-        if temp >= -3 and temp <= 3 and humidity >= 95:
-            risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
-            score += 4
-            recommendations.append("🧊 Осторожно на мостах и эстакадах, не тормози резко")
+    # ============ ИЗМОРОЗЬ (отдельное явление — всегда) ============
+    if temp >= -3 and temp <= 3 and humidity >= 95:
+        risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
+        score += 4
+        recommendations.append("🧊 Осторожно на мостах и эстакадах, не тормози резко")
 
     # ============ ОБЛАЧНОСТЬ + возможный дождь ============
     if not is_rain and not is_drizzle and rain_total == 0 and clouds_pct >= 80:
