@@ -761,7 +761,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-        # --- Видимость ---
+          # --- Видимость ---
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         min_vis_m = min(vis_vals)
@@ -779,7 +779,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             shown_vis = min_vis_m
             suffix = ""
 
-        # NEW: пометка "дымка" при 5-8 км и высокой влажности
+        # Пометка "дымка" при 5-8 км и высокой влажности + точке росы близко
         humidity_now = avg_w.get("humidity") or m.get("humidity")
         dew_now = avg_w.get("dew_point")
         temp_now = avg_w.get("temp") or m.get("temp")
