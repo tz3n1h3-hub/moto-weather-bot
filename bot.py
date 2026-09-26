@@ -813,10 +813,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if cloud_vals:
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
         cloud_label = classify_clouds(avg_cloud, metar_cloud)
-        if avg_cloud >= 70:
-            weather_lines.append(f"🌥️ Облачность: {avg_cloud}{NBSP}%")
-        else:
-            weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
+        weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
     elif metar_cloud:
         weather_lines.append(f"🌥️ Облачность: {metar_cloud}")
     else:
