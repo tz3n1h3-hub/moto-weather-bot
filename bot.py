@@ -761,7 +761,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    # --- Видимость ---
+        # --- Видимость ---
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         min_vis_m = min(vis_vals)
@@ -779,6 +779,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             shown_vis = min_vis_m
             suffix = ""
 
+        # NEW: пометка "дымка" при 5-8 км и высокой влажности
+        humidity_now = avg_w.get("humidity") or m.get("humidity")
+        dew_now = avg_w.get("dew_point")
+        temp_now = avg_w.get("temp") or m.get("temp")
+        haze_suffix = ""
+        if shown_vis < 8000 and humidity_now and humidity_now >= 90:
+            if dew_now is not None and temp_now is not None and (temp_now - dew_now) <= 2:
+                haze_suffix = " · дымка"
+
         if shown_vis >= 10000:
             vis_str = f"10+{NBSP}км"
         elif shown_vis >= 1000:
@@ -790,7 +799,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if shown_vis < 500:
             vis_str = "⚠️" + vis_str
 
-        weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}")
+        weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}{haze_suffix}")
     else:
         weather_lines.append("👁️ Видимость: —")
 
@@ -862,25 +871,57 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_F2 — Осадки по районам ───────────────────
+    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость по районам ───────
     # ═══════════════════════════════════════════════════════════
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
+        # Осадки по районам
         max_precip = max((d.get("precip_mm", 0) or 0) for d in districts)
-        # Показываем только если где-то заметный дождь (≥ 0.3 мм) — иначе шум
+        precip_lines = []
         if max_precip >= 0.3:
-            lines = []
             for d in districts:
                 p = d.get("precip_mm", 0) or 0
                 name = d.get("name", "?")
                 if p >= 0.3:
                     p_str = f"{p:.1f}".replace(".", ",")
-                    lines.append(f"• {name}: {p_str} мм 🌧️")
+                    precip_lines.append(f"• {name}: {p_str} мм 🌧️")
                 else:
                     p_str = f"{p:.1f}".replace(".", ",") if p > 0 else "0"
-                    lines.append(f"• {name}: {p_str} мм")
-            districts_block = "【F2】🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(lines))
+                    precip_lines.append(f"• {name}: {p_str} мм")
+
+        # Видимость по районам (показываем, если есть данные)
+        vis_lines = []
+        vis_values = [d.get("visibility") for d in districts if d.get("visibility") is not None]
+        if vis_values:
+            min_vis = min(vis_values)
+            max_vis = max(vis_values)
+            # Показываем, если есть заметный разброс (≥2x) или где-то < 5 км
+            show_vis = (max_vis / min_vis >= 2.0) if min_vis > 0 else False
+            if show_vis or min_vis < 5000:
+                for d in districts:
+                    v = d.get("visibility")
+                    name = d.get("name", "?")
+                    if v is None:
+                        vis_lines.append(f"• {name}: —")
+                    elif v >= 10000:
+                        vis_lines.append(f"• {name}: 10+ км")
+                    elif v >= 1000:
+                        km = math_round(v / 1000, 0)
+                        marker = " 🌫️" if v < 5000 else ""
+                        vis_lines.append(f"• {name}: {km} км{marker}")
+                    else:
+                        vis_lines.append(f"• {name}: {int(v)} м 🌫️")
+
+        # Собираем блок
+        f2_parts = []
+        if precip_lines:
+            f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
+        if vis_lines:
+            f2_parts.append("👁️ <b>ВИДИМОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(vis_lines)))
+
+        if f2_parts:
+            districts_block = "【F2】" + "\n".join(f2_parts)
     # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
