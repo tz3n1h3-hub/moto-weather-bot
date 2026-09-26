@@ -1,14 +1,21 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_MAIN ────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_main_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("— ПРОГНОЗ —", callback_data="weather")
     )
     return markup
+# ─── КОНЕЦ KB_MAIN ─────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_AFTER_WEATHER ───────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_after_weather_keyboard(is_subscribed=False):
     markup = InlineKeyboardMarkup()
     markup.row(
@@ -35,8 +42,12 @@ def get_morning_keyboard():
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
+# ─── КОНЕЦ KB_AFTER_WEATHER ────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_ABOUT ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_about_keyboard(is_subscribed=False, is_updater=False):
     markup = InlineKeyboardMarkup()
     markup.row(
@@ -59,8 +70,12 @@ def get_about_keyboard(is_subscribed=False, is_updater=False):
             InlineKeyboardButton("🔔 Уведомлять об обновлениях", callback_data="updates_on")
         )
     return markup
+# ─── КОНЕЦ KB_ABOUT ────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_SUBSCRIBE ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_subscribe_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
@@ -81,10 +96,12 @@ def get_unsubscribe_keyboard():
         InlineKeyboardButton("↩️ Остаться", callback_data="unsubscribe_cancel")
     )
     return markup
+# ─── КОНЕЦ KB_SUBSCRIBE ────────────────────────────────────
 
 
-# ============ ФИДБЭК-КЛАВИАТУРЫ ============
-
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_FEEDBACK ────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_feedback_blocks_keyboard():
     """
     Меню выбора БЛОКА (【A】–【K】) — первый шаг фидбэка.
@@ -183,3 +200,4 @@ def get_feedback_cancel_keyboard():
         InlineKeyboardButton("❌ Отмена", callback_data="feedback_cancel"),
     )
     return markup
+# ─── КОНЕЦ KB_FEEDBACK ─────────────────────────────────────
