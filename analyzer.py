@@ -4,6 +4,9 @@ from config import MINSK_TZ
 from weather import get_minsk_hour
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО SEASON ─────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_season(month=None):
     if month is None:
         month = datetime.now(MINSK_TZ).month
@@ -12,8 +15,12 @@ def get_season(month=None):
     if month in (4, 10):
         return "shoulder"
     return "winter"
+# ─── КОНЕЦ SEASON ──────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО ANALYZE_RISKS ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
     score = 0
@@ -40,13 +47,14 @@ def analyze_risks(weather, is_forecast=False):
     visibility_alerted = False
     twilight_handled = False
 
-    # ============ ГРАД ============
+    # ─── RISK_HAIL ─────────────────────────────────────────
     if is_hail:
         risks.append("🧊 ГРАД — опасно для райдера и техники")
         score += 4
         recommendations.append("🚫 НЕ выезжай — град бьёт по шлему и технике")
+    # ─── КОНЕЦ RISK_HAIL ───────────────────────────────────
 
-    # ============ ВЕТЕР ============
+    # ─── RISK_WIND ─────────────────────────────────────────
     wind_score = 0
     if wind_gust > 20:
         risks.append(f"🌪️ Штормовой ветер (порывы до {wind_gust:.0f} м/с)!")
@@ -86,8 +94,9 @@ def analyze_risks(weather, is_forecast=False):
         speed_score = 1
 
     score += max(wind_score, speed_score)
+    # ─── КОНЕЦ RISK_WIND ───────────────────────────────────
 
-    # ============ ОСАДКИ (с градацией вероятности) ============
+    # ─── RISK_RAIN ─────────────────────────────────────────
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -132,8 +141,9 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🌧️ Вероятен дождь ({rain_prob_day}%)")
         score += 1
         recommendations.append("☔ Возьми дождевик")
+    # ─── КОНЕЦ RISK_RAIN ───────────────────────────────────
 
-    # ============ ЕДИНЫЙ БЛОК: ВИДИМОСТЬ + ТУМАН + ДЫМКА ============
+    # ─── RISK_VISIBILITY ───────────────────────────────────
     big_spread = weather.get("visibility_big_spread", False)
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
@@ -164,9 +174,10 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
+    # ─── КОНЕЦ RISK_VISIBILITY ─────────────────────────────
 
-    # ============ МОКРАЯ ДОРОГА / ВЛАГА ============
-    # Если уже идёт дождь или морось — дорога и так мокрая, дублировать не нужно.
+    # ─── RISK_HUMIDITY (мокрая дорога) ─────────────────────
+    # Если уже идёт дождь или морось — дорога и так мокрая, дублировать не нужно
     rain_or_drizzle = is_rain or is_drizzle
 
     if dew_point is not None and not rain_or_drizzle:
@@ -197,29 +208,33 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append(f"💧 Возможна влага на дороге (влаг. {int(humidity)}%)")
                 score += 1
                 humidity_handled = True
+    # ─── КОНЕЦ RISK_HUMIDITY ───────────────────────────────
 
-    # ============ ИЗМОРОЗЬ (отдельное явление — всегда) ============
+    # ─── RISK_ICE (изморозь, всегда) ───────────────────────
     if temp >= -3 and temp <= 3 and humidity >= 95:
         risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
         score += 4
         recommendations.append("🧊 Осторожно на мостах и эстакадах, не тормози резко")
+    # ─── КОНЕЦ RISK_ICE ────────────────────────────────────
 
-    # ============ ОБЛАЧНОСТЬ + возможный дождь ============
+    # ─── RISK_CLOUDS ───────────────────────────────────────
     if not is_rain and not is_drizzle and rain_total == 0 and clouds_pct >= 80:
         if not any("дождь" in r.lower() or "морось" in r.lower() for r in risks):
             risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%) — возможен дождь")
             score += 1
             recommendations.append("☔ На всякий случай возьми дождевик")
+    # ─── КОНЕЦ RISK_CLOUDS ─────────────────────────────────
 
-    # ============ twilight ============
+    # ─── RISK_TWILIGHT ─────────────────────────────────────
     if not is_forecast:
         if twilight in ("смеркается", "темнеет"):
             risks.append("🌆 Смеркается — видимость хуже")
             score += 1
             recommendations.append("💡 Включите свет заранее")
             twilight_handled = True
+    # ─── КОНЕЦ RISK_TWILIGHT ───────────────────────────────
 
-    # ============ ПРОГНОЗ: код погоды ============
+    # ─── RISK_FORECAST_CODE ────────────────────────────────
     if is_forecast:
         weather_code = weather.get("weather_code")
         if weather_code in (45, 48):
@@ -232,8 +247,9 @@ def analyze_risks(weather, is_forecast=False):
                 risks.append("🌦️ Морось")
                 score += 1
                 recommendations.append("🐢 Скользко — увеличивайте дистанцию")
+    # ─── КОНЕЦ RISK_FORECAST_CODE ──────────────────────────
 
-    # ============ ОЩУЩАЕМАЯ ТЕМПЕРАТУРА ============
+    # ─── RISK_TEMP ─────────────────────────────────────────
     if is_forecast:
         feels_like = weather.get("feels_like") or weather.get("temp_avg") or temp
     else:
@@ -255,14 +271,16 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🔥 Очень жарко ({int(feels_like)} °C)")
         score += 2
         recommendations.append("💧 Пейте воду")
+    # ─── КОНЕЦ RISK_TEMP ───────────────────────────────────
 
-    # ============ ПОЧВА ============
+    # ─── RISK_SOIL ─────────────────────────────────────────
     if soil_temp is not None and soil_temp < 5 and temp > 10:
         risks.append("🧊 Почва холодная — асфальт не прогрелся")
         score += 1
         recommendations.append("🐢 Сцепление хуже, тормози плавно")
+    # ─── КОНЕЦ RISK_SOIL ───────────────────────────────────
 
-    # ============ НОЧЬ ============
+    # ─── RISK_NIGHT ────────────────────────────────────────
     night_score = weather.get("night_score")
     if night_score is None:
         night_score = 2 if weather.get("is_night", False) else 0
@@ -277,8 +295,9 @@ def analyze_risks(weather, is_forecast=False):
             risks.append("🌆 Частично темно — видимость хуже")
             score += 1
             recommendations.append("💡 Включите свет заранее")
+    # ─── КОНЕЦ RISK_NIGHT ──────────────────────────────────
 
-    # ============ ШКАЛА ============
+    # ─── RISK_SCALE ────────────────────────────────────────
     if score >= 9:
         color = "💀"
     elif score >= 7:
@@ -289,6 +308,7 @@ def analyze_risks(weather, is_forecast=False):
         color = "🟡"
     else:
         color = "🟢"
+    # ─── КОНЕЦ RISK_SCALE ──────────────────────────────────
 
     return {
         "score": min(score, 10),
@@ -297,8 +317,12 @@ def analyze_risks(weather, is_forecast=False):
         "recommendations": recommendations,
         "feels_like": feels_like,
     }
+# ─── КОНЕЦ ANALYZE_RISKS ───────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО VERDICTS ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_short_verdict(score):
     if score <= 0:
         return "БЕЗОПАСНО"
@@ -327,8 +351,12 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
     if score <= 8:
         return "ЗАВТРА — НЕ САДИСЬ ЗА РУЛЬ" if is_tomorrow else "НЕ САДИСЬ ЗА РУЛЬ — ОПАСНО"
     return "ЗАВТРА НЕ ВЫЕЗЖАЙ — ОПАСНО" if is_tomorrow else "НЕ ВЫЕЗЖАЙ СЕГОДНЯ. ЖДИ"
+# ─── КОНЕЦ VERDICTS ────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО GEAR ───────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_gear_short(temp, is_rain, is_night, wind_speed):
     gear = []
     if temp >= 25:
@@ -345,8 +373,12 @@ def get_gear_short(temp, is_rain, is_night, wind_speed):
     if is_night:
         gear.append("💡 Дополнительный свет (обязательно)")
     return gear
+# ─── КОНЕЦ GEAR ────────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО TECH_CHECK ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     tech = [
         "Давление в шинах — на холодную",
@@ -359,8 +391,12 @@ def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
     else:
         tech.append("Зеркала — под себя")
     return tech
+# ─── КОНЕЦ TECH_CHECK ──────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО TIP ────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibility,
             wind_gust=0, uv_index=0, is_drizzle=False):
     import random
@@ -421,8 +457,12 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
         "💡 Зеркала — под себя",
     ]
     return random.choice(default_tips)
+# ─── КОНЕЦ TIP ─────────────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО BEST_TIME ──────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_best_time(sunrise=None, sunset=None):
     hour = get_minsk_hour()
 
@@ -455,3 +495,4 @@ def get_best_time(sunrise=None, sunset=None):
         return "🕐 Ночь — только с хорошим светом 🌙"
 
     return "🕐 Раннее утро — будьте внимательны 🌄"
+# ─── КОНЕЦ BEST_TIME ───────────────────────────────────────
