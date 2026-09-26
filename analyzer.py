@@ -96,7 +96,7 @@ def analyze_risks(weather, is_forecast=False):
     score += max(wind_score, speed_score)
     # ─── КОНЕЦ RISK_WIND ───────────────────────────────────
 
-    # ─── RISK_RAIN ─────────────────────────────────────────
+       # ─── RISK_RAIN ─────────────────────────────────────────
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -112,13 +112,11 @@ def analyze_risks(weather, is_forecast=False):
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     elif is_rain:
-        src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
-        risks.append(f"🌧️ Дождь{src_note} — дорога скользкая")
+        risks.append("🌧️ Дождь — дорога скользкая")
         score += 2
         recommendations.append("🐢 Увеличьте дистанцию, тормози плавно")
     elif is_drizzle:
-        src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
-        risks.append(f"🌦️ Морось{src_note} — скользко")
+        risks.append("🌦️ Морось — скользко")
         score += 1
         recommendations.append("🐢 Осторожно на разметке, тормози плавно")
     elif rain_prob_now and rain_prob_now >= 80:
