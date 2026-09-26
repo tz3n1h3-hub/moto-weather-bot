@@ -865,7 +865,7 @@ def get_precipitation_by_districts():
     """
     Запрашивает OM для 5 точек Минска (центр, север, юг, запад, восток).
     Возвращает список: [{"name": "Центр", "short": "Ц", "precip_mm": 0,
-                         "rain_prob": 30, "weather_code": 0}, ...]
+                         "rain_prob": 30, "weather_code": 0, "visibility": None}, ...]
     Кэш в Redis 10 минут.
     """
     global _om_multi_cache
@@ -889,7 +889,7 @@ def get_precipitation_by_districts():
             params = {
                 "latitude": point["lat"],
                 "longitude": point["lon"],
-                "current": "precipitation,rain,weather_code",
+                "current": "precipitation,rain,weather_code,visibility",
                 "timezone": "Europe/Minsk",
                 "wind_speed_unit": "ms",
             }
@@ -903,6 +903,7 @@ def get_precipitation_by_districts():
             cur = data.get("current", {}) or {}
             precip = cur.get("precipitation") or 0
             code = cur.get("weather_code") or 0
+            vis = cur.get("visibility")
             rain_prob = 0
             if code in (51, 53, 55, 61, 63, 65, 80, 81, 82):
                 rain_prob = 80
@@ -917,6 +918,7 @@ def get_precipitation_by_districts():
                 "precip_mm": round(float(precip), 1),
                 "rain_prob": rain_prob,
                 "weather_code": code,
+                "visibility": vis,
             })
         except Exception as e:
             print(f"❌ OM multi {point['name']}: {e}", flush=True)
