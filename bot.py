@@ -888,13 +888,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     p_str = f"{p:.1f}".replace(".", ",") if p > 0 else "0"
                     precip_lines.append(f"• {name}: {p_str} мм")
 
-        # Видимость по районам (показываем, если есть данные)
+        # Видимость по районам
         vis_lines = []
         vis_values = [d.get("visibility") for d in districts if d.get("visibility") is not None]
         if vis_values:
             min_vis = min(vis_values)
             max_vis = max(vis_values)
-            # Показываем, если есть заметный разброс (≥2x) или где-то < 5 км
             show_vis = (max_vis / min_vis >= 2.0) if min_vis > 0 else False
             if show_vis or min_vis < 5000:
                 for d in districts:
@@ -911,7 +910,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-        # Собираем блок
         f2_parts = []
         if precip_lines:
             f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
