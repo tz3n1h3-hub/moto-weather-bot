@@ -761,7 +761,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-          # --- Видимость ---
+    # --- Видимость ---
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         min_vis_m = min(vis_vals)
@@ -806,8 +806,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # --- Облачность ---
-    cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
+    # --- Облачность ---    cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
     if cloud_vals:
@@ -822,8 +821,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # --- Осадки (ФИКС 1.8.3) ---
-      precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
+    # --- Осадки (без источников) ---
+    precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
     is_drizzle_anywhere = w.get("is_drizzle_anywhere", False)
@@ -1028,7 +1027,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             tomorrow_line += f" · дождь {f['rain_prob']}{NBSP}%"
         else:
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
-            # Фикс 1.8.3: явно помечаем "без осадков", если их нет
             rain_sum_t = f.get("rain_sum") or 0
             if rain_sum_t < 0.3:
                 tomorrow_line += " · без осадков"
