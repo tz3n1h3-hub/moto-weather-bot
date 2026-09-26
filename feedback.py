@@ -11,7 +11,10 @@ from config import (
 
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
-# Параметры (детально)
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FEEDBACK_PARAMS ────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 FEEDBACK_PARAMS = {
     "visibility": {"emoji": "🌫️", "label": "Видимость"},
     "wind":       {"emoji": "💨", "label": "Ветер"},
@@ -21,16 +24,24 @@ FEEDBACK_PARAMS = {
     "fog":        {"emoji": "🌫️", "label": "Туман (не показан)"},
     "other":      {"emoji": "❓", "label": "Другое"},
 }
+# ─── КОНЕЦ FEEDBACK_PARAMS ─────────────────────────────────
 
-# Направление
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FEEDBACK_DIRECTIONS ────────────────────────────
+# ═══════════════════════════════════════════════════════════
 FEEDBACK_DIRECTIONS = {
     "less":      {"emoji": "🔽", "label": "Реально меньше"},
     "more":      {"emoji": "🔼", "label": "Реально больше"},
     "not_shown": {"emoji": "❌", "label": "Не показано, а есть"},
     "wrong":     {"emoji": "⚠️", "label": "Другое"},
 }
+# ─── КОНЕЦ FEEDBACK_DIRECTIONS ─────────────────────────────
 
-# Блоки сообщения 【A】–【J】
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FEEDBACK_BLOCKS ────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 FEEDBACK_BLOCKS = {
     "A": {"emoji": "【A】", "label": "Шапка"},
     "B": {"emoji": "【B】", "label": "Вердикт СЕЙЧАС"},
@@ -44,8 +55,12 @@ FEEDBACK_BLOCKS = {
     "J": {"emoji": "【J】", "label": "Совет"},
     "K": {"emoji": "【K】", "label": "Другое"},
 }
+# ─── КОНЕЦ FEEDBACK_BLOCKS ─────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО REDIS_HELPER ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def _redis(cmd, *args):
     if not UPSTASH_ENABLED:
         return None
@@ -63,12 +78,20 @@ def _redis(cmd, *args):
         return r.json().get("result")
     except Exception:
         return None
+# ─── КОНЕЦ REDIS_HELPER ────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FEEDBACK_KEY ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def _feedback_key(ts, user_id):
     return f"{FEEDBACK_PREFIX}{ts}:{user_id}"
+# ─── КОНЕЦ FEEDBACK_KEY ────────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО SAVE_FEEDBACK ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def save_feedback(user_id, param, direction, user_comment, weather_snapshot,
                   shown_value="", block=""):
     if not UPSTASH_ENABLED:
@@ -98,8 +121,12 @@ def save_feedback(user_id, param, direction, user_comment, weather_snapshot,
     except Exception as e:
         print(f"❌ feedback save: {e}", flush=True)
         return False
+# ─── КОНЕЦ SAVE_FEEDBACK ───────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО CHECK_ANTISPAM ─────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def check_antispam(user_id):
     if not UPSTASH_ENABLED:
         return True, 0
@@ -131,8 +158,12 @@ def check_antispam(user_id):
     except Exception as e:
         print(f"⚠️ feedback antispam: {e}", flush=True)
         return True, 0
+# ─── КОНЕЦ CHECK_ANTISPAM ──────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО GET_ALL_FEEDBACK ───────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_all_feedback(days=7):
     if not UPSTASH_ENABLED:
         return []
@@ -164,8 +195,12 @@ def get_all_feedback(days=7):
     except Exception as e:
         print(f"⚠️ feedback list: {e}", flush=True)
         return []
+# ─── КОНЕЦ GET_ALL_FEEDBACK ────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО GET_FEEDBACK_STATS ─────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def get_feedback_stats(days=7):
     items = get_all_feedback(days)
     stats_params = {}
@@ -188,8 +223,12 @@ def get_feedback_stats(days=7):
         stats_blocks[block] += 1
 
     return {"params": stats_params, "blocks": stats_blocks}
+# ─── КОНЕЦ GET_FEEDBACK_STATS ──────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FORMAT_REPORT ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def format_feedback_report(days=7, limit=5):
     items = get_all_feedback(days)
     if not items:
@@ -199,7 +238,6 @@ def format_feedback_report(days=7, limit=5):
     lines = [f"📊 <b>Фидбэк за {days} дней</b>\n"]
     lines.append(f"Всего жалоб: <b>{len(items)}</b>\n")
 
-    # По блокам
     blocks_sorted = sorted(stats["blocks"].items(), key=lambda x: -x[1])
     if blocks_sorted:
         lines.append("<b>🔤 По блокам:</b>")
@@ -208,7 +246,6 @@ def format_feedback_report(days=7, limit=5):
             lines.append(f"{meta['emoji']} {meta['label']}: {cnt}")
         lines.append("")
 
-    # По параметрам
     params_sorted = sorted(stats["params"].items(), key=lambda x: -x[1]["total"])
     if params_sorted:
         lines.append("<b>❓ По параметрам:</b>")
@@ -227,7 +264,6 @@ def format_feedback_report(days=7, limit=5):
             lines.append(line)
         lines.append("")
 
-    # Последние
     lines.append(f"<b>Последние {min(limit, len(items))}:</b>")
     for item in items[:limit]:
         t = item.get("time", "?")[:16].replace("T", " ")
@@ -240,8 +276,12 @@ def format_feedback_report(days=7, limit=5):
         lines.append(f"• {t} {block_meta['emoji']} {meta['emoji']} {dir_meta['emoji']}{comment_str}")
 
     return "\n".join(lines)
+# ─── КОНЕЦ FORMAT_REPORT ───────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FORMAT_DETAIL ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def format_feedback_detail(user_id):
     if not UPSTASH_ENABLED:
         return "❌ Redis отключён"
@@ -293,8 +333,12 @@ def format_feedback_detail(user_id):
         return "\n".join(lines)
     except Exception as e:
         return f"⚠️ Ошибка: {e}"
+# ─── КОНЕЦ FORMAT_DETAIL ───────────────────────────────────
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО BUILD_SNAPSHOT ─────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def build_weather_snapshot(w, a_city):
     try:
         m = w.get("m") or {}
@@ -322,7 +366,6 @@ def build_weather_snapshot(w, a_city):
             "rain_votes": w.get("rain_votes"),
         }
 
-        # Многоточечный прогноз
         multi = w.get("precipitation_by_districts")
         if multi:
             snapshot["districts"] = multi
@@ -331,3 +374,4 @@ def build_weather_snapshot(w, a_city):
     except Exception as e:
         print(f"⚠️ snapshot: {e}", flush=True)
         return {}
+# ─── КОНЕЦ BUILD_SNAPSHOT ──────────────────────────────────
