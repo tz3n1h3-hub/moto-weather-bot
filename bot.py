@@ -823,17 +823,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append("🌥️ Облачность: —")
 
     # --- Осадки (ФИКС 1.8.3) ---
-    precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
+      precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
     is_drizzle_anywhere = w.get("is_drizzle_anywhere", False)
-    rain_sources = w.get("rain_sources", [])
 
-    src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
     avg_precip = (sum(precip_vals) / len(precip_vals)) if precip_vals else 0.0
 
     if is_rain_anywhere and avg_precip < 0.5:
-        precip_line = f"☔️ Осадки: слабый дождь{src_note}"
+        precip_line = "☔️ Осадки: слабый дождь"
         if rain_prob_now and rain_prob_now >= 30:
             precip_line += f" · {rain_prob_now}{NBSP}%"
         weather_lines.append(precip_line)
@@ -844,7 +842,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
         weather_lines.append(precip_line)
     elif is_drizzle_anywhere:
-        weather_lines.append(f"🌦️ Осадки: морось{src_note}")
+        weather_lines.append("🌦️ Осадки: морось")
     elif rain_prob_now and rain_prob_now >= 40:
         weather_lines.append(f"🌦️ Осадки: 0{NBSP}мм · вероятность {rain_prob_now}{NBSP}%")
     elif m.get("is_rain"):
