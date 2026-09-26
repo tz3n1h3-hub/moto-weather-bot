@@ -91,10 +91,6 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"🌬️ Сильные порывы (до {wind_gust:.0f} м/с)")
         wind_score = 2
         recommendations.append("🌬️ Держи руль крепче, снизь скорость")
-    elif wind_gust >= 6:
-        risks.append(f"💨 Свежий ветер (до {wind_gust:.0f} м/с)")
-        wind_score = 1
-        recommendations.append("💨 Руль крепче")
 
     speed_score = 0
     if wind_speed >= 13:
@@ -238,9 +234,7 @@ def analyze_risks(weather, is_forecast=False):
     # ─── RISK_CLOUDS ───────────────────────────────────────
     if not is_rain and not is_drizzle and rain_total == 0 and clouds_pct >= 80:
         if not any("дождь" in r.lower() or "морось" in r.lower() for r in risks):
-            risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%) — возможен дождь")
-            score += 1
-            recommendations.append("☔ На всякий случай возьми дождевик")
+            risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%)")
     # ─── КОНЕЦ RISK_CLOUDS ─────────────────────────────────
 
     # ─── RISK_TWILIGHT ─────────────────────────────────────
