@@ -101,7 +101,9 @@ def _redis(cmd, *args):
         return None
 
 
-# ============ ПОЛЬЗОВАТЕЛИ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО USERS ──────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def load_users():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "users")
@@ -139,9 +141,12 @@ def get_users_count():
         result = _redis("scard", "users")
         return int(result) if result else 0
     return len(load_users())
+# ─── КОНЕЦ USERS ────────────────────────────────────────────
 
 
-# ============ ПОДПИСЧИКИ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО SUBSCRIBERS ────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def load_subscribers():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "subscribers")
@@ -200,9 +205,12 @@ def get_subscribers_count():
         result = _redis("scard", "subscribers")
         return int(result) if result else 0
     return len(load_subscribers())
+# ─── КОНЕЦ SUBSCRIBERS ─────────────────────────────────────
 
 
-# ============ ОБНОВЛЕНИЯ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО UPDATERS ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def load_updaters():
     if UPSTASH_ENABLED:
         result = _redis("smembers", "updaters")
@@ -261,9 +269,12 @@ def get_updaters_count():
         result = _redis("scard", "updaters")
         return int(result) if result else 0
     return len(load_updaters())
+# ─── КОНЕЦ UPDATERS ────────────────────────────────────────
 
 
-# ============ УТРЕННИЙ СТАТУС ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО MORNING_STATE ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 LAST_MORNING_FILE = "last_morning.txt"
 
 
@@ -303,9 +314,12 @@ def get_last_bot_msg(chat_id):
 def set_last_bot_msg(chat_id, message_id):
     if UPSTASH_ENABLED:
         _redis("set", f"last_msg:{chat_id}", message_id)
+# ─── КОНЕЦ MORNING_STATE ───────────────────────────────────
 
 
-# ============ ЦИТАТЫ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО QUOTES ─────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
     "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
@@ -345,9 +359,12 @@ def get_alcohol_warning():
         return "🍷 Воскресенье. Реакция ещё не та — не рискуй."
     else:
         return "🚫 За рулём — трезвый. Алкоголь = реакция ×3 хуже."
+# ─── КОНЕЦ QUOTES ──────────────────────────────────────────
 
 
-# ============ ФОРМАТИРОВАНИЕ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FORMATTING ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -481,9 +498,12 @@ def indent_multiline(text, indent=INDENT):
         return ""
     lines = text.split("\n")
     return "\n".join(f"{indent}{line}" for line in lines)
+# ─── КОНЕЦ FORMATTING ──────────────────────────────────────
 
 
-# ============ ТЕКСТЫ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО TEXTS (START_TEXT и др.) ───────────────────────
+# ═══════════════════════════════════════════════════════════
 START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
 
 <b>Что это?</b>
@@ -564,9 +584,12 @@ UPDATES_ON_TEXT = """🔔 <b>Уведомления об обновлениях<
 UPDATES_OFF_TEXT = """🔕 <b>Уведомления отключены</b>
 
 Включить обратно — в «О проекте»."""
+# ─── КОНЕЦ TEXTS ───────────────────────────────────────────
 
 
-# ============ ОТПРАВКА ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО SEND_OR_EDIT ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def send_or_edit(chat_id, text, reply_markup=None):
     last_id = get_last_bot_msg(chat_id)
     if last_id:
@@ -604,9 +627,12 @@ def filter_rain_risks(risks):
         r for r in risks
         if not any(kw in r.lower() for kw in keywords)
     ]
+# ─── КОНЕЦ SEND_OR_EDIT ────────────────────────────────────
 
 
-# ============ СБОРКА СООБЩЕНИЯ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО BUILD_WEATHER_MESSAGE ──────────────────────────
+# ═══════════════════════════════════════════════════════════
 def build_weather_message(w, a_city, short, f, is_morning=False):
     if not isinstance(short, dict):
         print(f"⚠️ short не dict: type={type(short).__name__}", flush=True)
@@ -637,11 +663,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         header_icon = "🌅"
 
-    # ============ БЛОК 【A】 — Шапка ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_A — Шапка ────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     block_a = f"""【A】{header_icon} <b>MOTOWEATHER · МИНСК</b>
 {INDENT}{weekday} · {date_str} · {time_str}"""
+    # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────────
 
-    # ============ БЛОК 【B】 — Вердикт ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_B — Вердикт ──────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     score = a_city["score"]
     verdict = get_rider_verdict(score, now_dt.month)
     bar = build_risk_bar(score)
@@ -650,8 +681,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if bar:
         verdict_lines.append(bar)
     block_b = "【B】" + f"\n{INDENT}".join(verdict_lines)
+    # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
 
-    # ============ БЛОК 【C】 — ЧТО НА ДОРОГЕ ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_C — Что на дороге ────────────────────────
+    # ═══════════════════════════════════════════════════════════
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
@@ -663,8 +697,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         rec_lines = recs[:3]
         recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
         block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
+    # ─── КОНЕЦ BLOCK_C ──────────────────────────────────────────
 
-    # ============ БЛОК 【D】 — НА СЕБЯ ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_D — На себя ──────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     gear = get_gear_short(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
@@ -674,8 +711,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     gear_block = "\n".join(gear)
     block_d = f"""【D】<b>НА СЕБЯ</b>
 {indent_multiline(gear_block)}"""
+    # ─── КОНЕЦ BLOCK_D ──────────────────────────────────────────
 
-    # ============ БЛОК 【E】 — ПЕРЕД ВЫЕЗДОМ ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_E — Перед выездом ────────────────────────
+    # ═══════════════════════════════════════════════════════════
     tech = get_tech_check(
         a_city.get("feels_like", m.get("feels_like") or 0),
         w.get("is_night", False),
@@ -685,8 +725,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     tech_block = "\n".join(f"✅ {t}" for t in tech)
     block_e = f"""【E】<b>ПЕРЕД ВЫЕЗДОМ</b>
 {indent_multiline(tech_block)}"""
+    # ─── КОНЕЦ BLOCK_E ──────────────────────────────────────────
 
-    # ============ БЛОК 【F】 — ТЕКУЩАЯ ПОГОДА ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_F — Текущая погода ───────────────────────
+    # ═══════════════════════════════════════════════════════════
     def gather(key, sources_keys):
         return [src.get(key) for code, src in sources_keys if src]
 
@@ -718,6 +761,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
+    # --- Видимость ---
     vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
     if vis_vals:
         min_vis_m = min(vis_vals)
@@ -726,7 +770,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         if big_spread:
             shown_vis = math_round(sum(vis_vals) / len(vis_vals), 0)
-            suffix = f" (METAR: {int(min_vis_m)} м — аэропорт)"
+            if min_vis_m >= 1000:
+                ap_str = f"{int(min_vis_m / 1000)} км"
+            else:
+                ap_str = f"{int(min_vis_m)} м"
+            suffix = f" · в аэропорту {ap_str}"
         else:
             shown_vis = min_vis_m
             suffix = ""
@@ -749,6 +797,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
+    # --- Облачность ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
@@ -764,6 +813,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
+    # --- Осадки (ФИКС 1.8.3) ---
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -771,20 +821,21 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     rain_sources = w.get("rain_sources", [])
 
     src_note = f" [{', '.join(rain_sources[:2])}]" if rain_sources else ""
+    avg_precip = (sum(precip_vals) / len(precip_vals)) if precip_vals else 0.0
 
-    if is_rain_anywhere and not precip_vals:
-        weather_lines.append(f"☔️ Осадки: идёт дождь{src_note}")
-    elif is_drizzle_anywhere and not precip_vals:
+    if is_rain_anywhere and avg_precip < 0.5:
+        precip_line = f"☔️ Осадки: слабый дождь{src_note}"
+        if rain_prob_now and rain_prob_now >= 30:
+            precip_line += f" · {rain_prob_now}{NBSP}%"
+        weather_lines.append(precip_line)
+    elif is_rain_anywhere and avg_precip >= 0.5:
+        precip_str = f"{avg_precip:.1f}".replace(".", ",")
+        precip_line = f"🌧️ Осадки: {precip_str}{NBSP}мм"
+        if rain_prob_now and rain_prob_now >= 30:
+            precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
+        weather_lines.append(precip_line)
+    elif is_drizzle_anywhere:
         weather_lines.append(f"🌦️ Осадки: морось{src_note}")
-    elif precip_vals:
-        avg_precip = sum(precip_vals) / len(precip_vals)
-        if avg_precip < 0.1 and is_rain_anywhere:
-            weather_lines.append(f"☔️ Осадки: слабый дождь{src_note}")
-        else:
-            precip_line = f"🌧️ Осадки: {math_round(avg_precip, 0)}{NBSP}мм"
-            if rain_prob_now and rain_prob_now >= 30:
-                precip_line += f" · вероятность {rain_prob_now}{NBSP}%"
-            weather_lines.append(precip_line)
     elif rain_prob_now and rain_prob_now >= 40:
         weather_lines.append(f"🌦️ Осадки: 0{NBSP}мм · вероятность {rain_prob_now}{NBSP}%")
     elif m.get("is_rain"):
@@ -808,25 +859,33 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_block = "\n".join(weather_lines)
     block_f = f"""【F】🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
 {indent_multiline(weather_block)}"""
+    # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
-    # ============ МНОГОТОЧЕЧНЫЙ ПРОГНОЗ 【F2】 ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_F2 — Осадки по районам ───────────────────
+    # ═══════════════════════════════════════════════════════════
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
         max_precip = max((d.get("precip_mm", 0) or 0) for d in districts)
-        any_rain = max_precip > 0
-        if any_rain:
+        # Показываем только если где-то заметный дождь (≥ 0.3 мм) — иначе шум
+        if max_precip >= 0.3:
             lines = []
             for d in districts:
                 p = d.get("precip_mm", 0) or 0
                 name = d.get("name", "?")
-                if p > 0:
-                    lines.append(f"• {name}: {p} мм 🌧️")
+                if p >= 0.3:
+                    p_str = f"{p:.1f}".replace(".", ",")
+                    lines.append(f"• {name}: {p_str} мм 🌧️")
                 else:
-                    lines.append(f"• {name}: 0 мм")
+                    p_str = f"{p:.1f}".replace(".", ",") if p > 0 else "0"
+                    lines.append(f"• {name}: {p_str} мм")
             districts_block = "【F2】🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(lines))
+    # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────────
 
-    # ============ БЛОК 【G】 — БЛИЖАЙШИЙ ПЕРИОД ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_G — Ближайший период ─────────────────────
+    # ═══════════════════════════════════════════════════════════
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     next_period_range = short.get("next_period_range", "")
@@ -886,7 +945,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_bar = build_risk_bar(period_risk["score"])
         title_line = f"{next_period_title} ({next_period_range})" if next_period_range else next_period_title
 
-        # === ФИКС 1.8.2: если глобальный вердикт — дождь/морось, но OM говорит "ясно" — подменяем
+        # Фикс 1.8.2: если глобально идёт дождь, а OM говорит "ясно" — подменяем
         shown_period = next_period
         if avg_w.get("is_rain") and "· ясно" in shown_period:
             shown_period = shown_period.replace("· ясно", "· дождь")
@@ -904,8 +963,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             p_inner.append(period_risks_text)
 
         forecast_block = f"【G】{title_line}\n" + indent_multiline("\n".join(p_inner))
+    # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────────
 
-    # ============ БЛОК 【H】 — ЗАВТРА ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_H — Завтра ───────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
@@ -929,6 +991,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             tomorrow_line += f" · дождь {f['rain_prob']}{NBSP}%"
         else:
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
+            # Фикс 1.8.3: явно помечаем "без осадков", если их нет
+            rain_sum_t = f.get("rain_sum") or 0
+            if rain_sum_t < 0.3:
+                tomorrow_line += " · без осадков"
 
         rain_line_tomorrow = ""
         if f.get("rain_prob") and f["rain_prob"] >= 30:
@@ -964,8 +1030,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             t_inner.append(tomorrow_risks_text)
 
         tomorrow_block = f"【H】📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
+    # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
 
-    # ============ БЛОК 【I】 — ИСТОЧНИКИ ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_I — Источники ────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     def src_marker(code):
         return code if code in sources_live else f"{code}*"
 
@@ -986,8 +1055,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             i_inner.append(vs)
 
     block_i = "【I】" + indent_multiline("\n".join(i_inner))
+    # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
 
-    # ============ БЛОК 【J】 — СОВЕТ ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_J — Совет ────────────────────────────────
+    # ═══════════════════════════════════════════════════════════
     tip = get_tip(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("humidity") or m.get("humidity"),
@@ -1006,8 +1078,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
     block_j = "【J】" + indent_multiline("\n".join(j_lines))
+    # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────────
 
-    # ============ СБОРКА ============
+    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_BUILD — Финальная сборка ─────────────────
+    # ═══════════════════════════════════════════════════════════
     msg = f"""{block_a}
 
 —————
@@ -1048,9 +1123,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 {block_j}"""
 
     return msg
+    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
+# ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
-# ============ УТРЕННЯЯ РАССЫЛКА ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО MORNING_BROADCAST ──────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def run_morning_broadcast(force=False):
     now = datetime.now(MINSK_TZ)
     today_str = now.strftime("%Y-%m-%d")
@@ -1125,9 +1204,12 @@ def morning_broadcast_loop():
             print(f"❌ Ошибка рассылки: {e}", flush=True)
 
         time.sleep(60)
+# ─── КОНЕЦ MORNING_BROADCAST ───────────────────────────────
 
 
-# ============ РАССЫЛКА ОБНОВЛЕНИЙ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО NOTIFY_VERSION ─────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def notify_version_update(force=False):
     if not UPSTASH_ENABLED and not force:
         return {"skipped": "no_redis"}
@@ -1178,9 +1260,12 @@ def notify_version_update(force=False):
 
     print(f"📢 Уведомление v{BOT_VERSION}: {sent} ок, {len(failed_403)} удалено", flush=True)
     return {"sent": sent, "deleted": len(failed_403), "version": BOT_VERSION}
+# ─── КОНЕЦ NOTIFY_VERSION ──────────────────────────────────
 
 
-# ============ ОТПРАВКА ПОГОДЫ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО SEND_WEATHER ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def send_weather(chat_id):
     now = time.time()
     last = _user_last_weather.get(chat_id, 0)
@@ -1228,9 +1313,12 @@ def send_weather(chat_id):
         import traceback
         traceback.print_exc()
         return "error"
+# ─── КОНЕЦ SEND_WEATHER ────────────────────────────────────
 
 
-# ============ КОМАНДЫ ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО COMMANDS ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 @bot.message_handler(commands=['start'])
 def start(message):
     try:
@@ -1370,9 +1458,12 @@ def feedback_detail_cmd(m):
         bot.reply_to(m, detail, parse_mode="HTML")
     except Exception as e:
         bot.reply_to(m, f"⚠️ Ошибка: {e}")
+# ─── КОНЕЦ COMMANDS ────────────────────────────────────────
 
 
-# ============ CALLBACK ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО CALLBACK ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     try:
@@ -1463,7 +1554,9 @@ def callback(call):
             kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=False)
             send_or_edit(chat_id, UPDATES_OFF_TEXT, kb)
 
-        # ============ ФИДБЭК ============
+        # ═══════════════════════════════════════════════════════════
+        # ─── НАЧАЛО CALLBACK_FEEDBACK ──────────────────────────────
+        # ═══════════════════════════════════════════════════════════
         elif call.data == "feedback_start":
             can, remaining = fb.check_antispam(chat_id)
             if not can:
@@ -1608,6 +1701,7 @@ def callback(call):
                 "❌ Отменено. Если что-то ещё — жми «🔄 ОБНОВИТЬ ПРОГНОЗ».",
                 get_after_weather_keyboard(is_subscribed(chat_id))
             )
+        # ─── КОНЕЦ CALLBACK_FEEDBACK ───────────────────────────────
 
         else:
             bot.answer_callback_query(call.id, "❓", cache_time=3)
@@ -1655,9 +1749,12 @@ def handle_feedback_comment(message):
             "⚠️ Не удалось сохранить. Попробуй позже.",
             get_after_weather_keyboard(is_subscribed(chat_id))
         )
+# ─── КОНЕЦ CALLBACK ────────────────────────────────────────
 
 
-# ============ FLASK ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО FLASK_ROUTES ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 @app.route("/")
 def home():
     return "🏍️ MotoWeather Bot is running!", 200
@@ -1715,9 +1812,12 @@ def cron_version():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+# ─── КОНЕЦ FLASK_ROUTES ────────────────────────────────────
 
 
-# ============ ЗАПУСК ============
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО MAIN ───────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("🏍️ MotoWeather Бот запущен!", flush=True)
 
@@ -1747,3 +1847,4 @@ if __name__ == "__main__":
             else:
                 print(f"⚠️ Polling упал: {e}", flush=True)
                 time.sleep(10)
+# ─── КОНЕЦ MAIN ────────────────────────────────────────────
