@@ -806,7 +806,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # --- Облачность ---    
+    # --- Облачность ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
@@ -822,7 +822,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # --- Осадки (без источников) ---
+    # --- Осадки (без источников, вариант A) ---
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -844,7 +844,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     elif is_drizzle_anywhere:
         weather_lines.append("🌦️ Осадки: морось")
     elif rain_prob_now and rain_prob_now >= 40:
-        weather_lines.append(f"🌦️ Осадки: 0{NBSP}мм · вероятность {rain_prob_now}{NBSP}%")
+        weather_lines.append(f"🌦️ Осадки: вероятность {rain_prob_now}{NBSP}%")
     elif m.get("is_rain"):
         weather_lines.append(f"🌧️ Осадки: {m.get('weather_text') or 'дождь'}")
 
