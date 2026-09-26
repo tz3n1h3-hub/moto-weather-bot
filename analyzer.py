@@ -189,7 +189,7 @@ def analyze_risks(weather, is_forecast=False):
         visibility_alerted = True
     elif visibility < 7000 and humidity >= 90:
         km = math_round(visibility / 1000, 0) if visibility >= 1000 else 1
-        risks.append(f"🌫️ Дымка (видимость {int(km)} км, влаж. {int(humidity)}%)")
+        risks.append(f"🌫️ Дымка (видимость {int(km)} км)")
         score += 2
         recommendations.append("🌫️ Противотуманки, дистанцию ×2, визор протирай")
         visibility_alerted = True
@@ -203,27 +203,27 @@ def analyze_risks(weather, is_forecast=False):
 
         if diff <= 1:
             if humidity >= 90:
-                risks.append(f"💧 Мокрая дорога / роса (влаг. {int(humidity)}%, роса)")
+                risks.append("💧 Мокрая дорога / роса")
                 score += 3
                 recommendations.append("🐢 Тормози плавно, дистанцию ×2, осторожно на разметке")
                 humidity_handled = True
             elif humidity >= 80:
-                risks.append(f"💧 Возможна влага на дороге (влаг. {int(humidity)}%)")
+                risks.append("💧 Возможна влага на дороге")
                 score += 1
                 humidity_handled = True
         elif diff <= 2:
             if humidity >= 90:
-                risks.append(f"🌫️ Влажность {int(humidity)} % — воздух близок к туману")
+                risks.append("🌫️ Влажность высокая — воздух близок к туману")
                 score += 2
                 recommendations.append("🌫️ Возможен туман — противотуманки, снизьте скорость")
                 humidity_handled = True
             elif humidity >= 85:
-                risks.append(f"💧 Высокая влажность {int(humidity)} %")
+                risks.append("💧 Высокая влажность")
                 score += 1
                 humidity_handled = True
         elif diff <= 3:
             if humidity >= 80:
-                risks.append(f"💧 Возможна влага на дороге (влаг. {int(humidity)}%)")
+                risks.append("💧 Возможна влага на дороге")
                 score += 1
                 humidity_handled = True
     # ─── КОНЕЦ RISK_HUMIDITY ───────────────────────────────
