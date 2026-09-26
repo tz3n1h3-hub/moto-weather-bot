@@ -96,7 +96,7 @@ def analyze_risks(weather, is_forecast=False):
     score += max(wind_score, speed_score)
     # ─── КОНЕЦ RISK_WIND ───────────────────────────────────
 
-       # ─── RISK_RAIN ─────────────────────────────────────────
+    # ─── RISK_RAIN ─────────────────────────────────────────
     if is_thunder:
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
@@ -141,7 +141,8 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("☔ Возьми дождевик")
     # ─── КОНЕЦ RISK_RAIN ───────────────────────────────────
 
-       # ─── RISK_VISIBILITY ───────────────────────────────────
+    
+    # ─── RISK_VISIBILITY ───────────────────────────────────
     big_spread = weather.get("visibility_big_spread", False)
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
@@ -173,7 +174,6 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
     elif visibility < 7000 and humidity >= 90:
-        # NEW: 5-7 км при высокой влажности — дымка
         km = math_round(visibility / 1000, 0) if visibility >= 1000 else 1
         risks.append(f"🌫️ Дымка (видимость {int(km)} км, влаж. {int(humidity)}%)")
         score += 2
