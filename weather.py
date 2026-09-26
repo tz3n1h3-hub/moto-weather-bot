@@ -780,7 +780,8 @@ def get_open_meteo_data():
         "longitude": MINSK_LON,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,"
                    "precipitation,rain,weather_code,cloud_cover,pressure_msl,"
-                   "surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+                   "surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
+                   "visibility",
         "hourly": "temperature_2m,precipitation_probability,precipitation,"
                   "weather_code,wind_speed_10m,wind_gusts_10m,cloud_cover,uv_index,"
                   "soil_temperature_0cm",
@@ -1010,7 +1011,7 @@ def get_weather():
             "wind_speed": math_round(cur.get("wind_speed_10m"), 0),
             "wind_gust": math_round(cur.get("wind_gusts_10m"), 0) if cur.get("wind_gusts_10m") else None,
             "wind_direction": cur.get("wind_direction_10m"),
-            "visibility": None,
+            "visibility": math_round(cur.get("visibility"), 0) if cur.get("visibility") is not None else None,
             "pressure_mmhg": hpa_to_mmhg(cur.get("pressure_msl")),
             "pressure_hpa": cur.get("pressure_msl"),
             "clouds_pct": cur.get("cloud_cover"),
