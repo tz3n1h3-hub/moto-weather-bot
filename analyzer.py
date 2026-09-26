@@ -174,8 +174,8 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
     elif visibility < 7000 and humidity >= 90:
-        km = math_round(visibility / 1000, 0) if visibility >= 1000 else 1
-        risks.append(f"🌫️ Дымка (видимость {int(km)} км, влаж. {int(humidity)}%)")
+        km = int(round(visibility / 1000)) if visibility >= 1000 else 1
+        risks.append(f"🌫️ Дымка (видимость {km} км, влаж. {int(humidity)}%)")
         score += 2
         recommendations.append("🌫️ Противотуманки, дистанцию ×2, визор протирай")
         visibility_alerted = True
