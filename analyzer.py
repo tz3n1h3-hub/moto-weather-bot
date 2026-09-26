@@ -1,7 +1,23 @@
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 from config import MINSK_TZ
 from weather import get_minsk_hour
+
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО MATH_ROUND ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+def math_round(x, digits=0):
+    if x is None:
+        return None
+    if digits == 0:
+        if x >= 0:
+            return int(x + 0.5)
+        return int(x - 0.5)
+    q = Decimal(10) ** -digits
+    return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
+# ─── КОНЕЦ MATH_ROUND ──────────────────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
@@ -33,7 +49,6 @@ def analyze_risks(weather, is_forecast=False):
     is_drizzle = weather.get("is_drizzle", False)
     rain_prob_now = weather.get("rain_prob_now")
     rain_prob_day = weather.get("rain_prob_day")
-    rain_sources = weather.get("rain_sources", [])
     is_thunder = weather.get("is_thunder", False)
     is_hail = weather.get("is_hail", False)
     visibility = weather.get("visibility") or 10000
@@ -141,7 +156,6 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("☔ Возьми дождевик")
     # ─── КОНЕЦ RISK_RAIN ───────────────────────────────────
 
-    
     # ─── RISK_VISIBILITY ───────────────────────────────────
     big_spread = weather.get("visibility_big_spread", False)
     vis_min = weather.get("visibility_min") or visibility
@@ -174,15 +188,14 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
     elif visibility < 7000 and humidity >= 90:
-        km = int(round(visibility / 1000)) if visibility >= 1000 else 1
-        risks.append(f"🌫️ Дымка (видимость {km} км, влаж. {int(humidity)}%)")
+        km = math_round(visibility / 1000, 0) if visibility >= 1000 else 1
+        risks.append(f"🌫️ Дымка (видимость {int(km)} км, влаж. {int(humidity)}%)")
         score += 2
         recommendations.append("🌫️ Противотуманки, дистанцию ×2, визор протирай")
         visibility_alerted = True
     # ─── КОНЕЦ RISK_VISIBILITY ─────────────────────────────
 
     # ─── RISK_HUMIDITY (мокрая дорога) ─────────────────────
-    # Если уже идёт дождь или морось — дорога и так мокрая, дублировать не нужно
     rain_or_drizzle = is_rain or is_drizzle
 
     if dew_point is not None and not rain_or_drizzle:
