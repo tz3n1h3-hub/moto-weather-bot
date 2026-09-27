@@ -806,16 +806,20 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-        # --- Облачность (приоритет METAR) ---
+    # --- Облачность (приоритет METAR) ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
-    # Если METAR даёт ясно/малооблачно — доверяем ему (он с земли)
-    metar_says_clear = metar_cloud in ("Ясно", "Малооблачно")
+    # METAR с земли — доверяем, если он говорит ясно/малооблачно/с прояснениями
+    metar_priority = metar_cloud in ("Ясно", "Малооблачно", "Облачно с прояснениями")
 
-    if metar_says_clear:
-        # METAR видит ясно — не усредняем с OM/wttr/OWM (они могут врать)
-        label_lower = "ясно" if metar_cloud == "Ясно" else "малооблачно"
+    if metar_priority:
+        label_map = {
+            "Ясно": "ясно",
+            "Малооблачно": "малооблачно",
+            "Облачно с прояснениями": "переменно",
+        }
+        label_lower = label_map.get(metar_cloud, "—")
         if cloud_vals:
             avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
             weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR, спутники: {avg_cloud}{NBSP}%)")
@@ -877,7 +881,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность ────
+    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность + ветер ─
     # ═══════════════════════════════════════════════════════════
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
@@ -918,14 +922,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-        # Облачность по районам
+        # Облачность по районам (порог 15 п.п.)
         cloud_lines = []
         cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
         if cloud_values:
             min_cloud = min(cloud_values)
             max_cloud = max(cloud_values)
-            # Показываем, если разброс ≥ 30 п.п. (есть заметная разница между районами)
-            if max_cloud - min_cloud >= 30:
+            if max_cloud - min_cloud >= 15:
                 for d in districts:
                     c = d.get("cloud_cover")
                     name = d.get("name", "?")
@@ -946,6 +949,31 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ☀️" if c_int < 30 else (" ☁️" if c_int >= 60 else "")
                         cloud_lines.append(f"• {name}: {c_int}% — {label}{marker}")
 
+        # Ветер по районам (порог разброс ≥ 3 м/с или где-то ≥ 9 м/с)
+        wind_lines = []
+        wind_values = [d.get("wind_speed") for d in districts if d.get("wind_speed") is not None]
+        if wind_values:
+            min_wind = min(wind_values)
+            max_wind = max(wind_values)
+            if (max_wind - min_wind) >= 3 or max_wind >= 9:
+                for d in districts:
+                    ws = d.get("wind_speed")
+                    wd = d.get("wind_direction")
+                    name = d.get("name", "?")
+                    if ws is None:
+                        wind_lines.append(f"• {name}: —")
+                    else:
+                        dir_str = ""
+                        if wd is not None:
+                            dirs = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+                            try:
+                                idx = int((wd + 22.5) // 45) % 8
+                                dir_str = f", {dirs[idx]}"
+                            except Exception:
+                                pass
+                        marker = " ⚠️" if ws >= 9 else ""
+                        wind_lines.append(f"• {name}: {ws} м/с{dir_str}{marker}")
+
         f2_parts = []
         if precip_lines:
             f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
@@ -953,6 +981,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             f2_parts.append("👁️ <b>ВИДИМОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(vis_lines)))
         if cloud_lines:
             f2_parts.append("☁️ <b>ОБЛАЧНОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(cloud_lines)))
+        if wind_lines:
+            f2_parts.append("💨 <b>ВЕТЕР ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(wind_lines)))
 
         if f2_parts:
             districts_block = "【F2】" + "\n".join(f2_parts)
