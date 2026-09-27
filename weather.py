@@ -1331,6 +1331,7 @@ def merge_weather_data(w):
     result["is_thunder"] = any(s.get("is_thunder") for s in sources)
     result["is_hail"] = any(s.get("is_hail") for s in sources)
     result["wind_direction"] = (w.get("m") or {}).get("wind_direction")
+    result["metar_cloud_text"] = (w.get("m") or {}).get("cloud_text", "")
 
     uv_vals = gather("uv_index")
     if uv_vals:
