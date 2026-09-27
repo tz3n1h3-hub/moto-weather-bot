@@ -234,7 +234,12 @@ def analyze_risks(weather, is_forecast=False):
     # ─── RISK_CLOUDS ───────────────────────────────────────
     if not is_rain and not is_drizzle and rain_total == 0 and clouds_pct >= 80:
         if not any("дождь" in r.lower() or "морось" in r.lower() for r in risks):
-            risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%)")
+            # Если METAR говорит ясно/переменно — не считаем пасмурно
+            metar_cloud_check = weather.get("metar_cloud_text", "")
+            if metar_cloud_check in ("Ясно", "Малооблачно", "Облачно с прояснениями"):
+                pass  # METAR важнее — не добавляем риск
+            else:
+                risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%)")
     # ─── КОНЕЦ RISK_CLOUDS ─────────────────────────────────
 
     # ─── RISK_TWILIGHT ─────────────────────────────────────
