@@ -526,18 +526,37 @@ def hpa_to_mmhg(hpa):
 # ─── НАЧАЛО METAR_PARSERS ──────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def parse_clouds(metar_text):
-    if "OVC" in metar_text:
-        return "☁️", "Пасмурно"
-    if "BKN" in metar_text:
-        return "☁️", "Значительная облачность"
-    if "SCT" in metar_text:
-        return "⛅", "Облачно с прояснениями"
-    if "FEW" in metar_text:
-        return "🌤️", "Малооблачно"
-    if any(x in metar_text for x in ["CAVOK", "NSC", "SKC", "CLR"]):
-        return "🌤️", "Ясно"
-    return "⛅", "Облачно"
+    has_ovc = "OVC" in metar_text
+    has_bkn = "BKN" in metar_text
+    has_sct = "SCT" in metar_text
+    has_few = "FEW" in metar_text
+    has_cavok = any(x in metar_text for x in ["CAVOK", "NSC", "SKC", "CLR"])
 
+    # Ясно — если CAVOK/NSC/SKC/CLR
+    if has_cavok and not has_ovc and not has_bkn and not has_sct and not has_few:
+        return "🌤️", "Ясно"
+
+    # BKN + SCT вместе → Облачно с прояснениями (SCT = разрывы)
+    if has_bkn and has_sct:
+        return "⛅", "Облачно с прояснениями"
+
+    # Пасмурно — если OVC
+    if has_ovc:
+        return "☁️", "Пасмурно"
+
+    # Значительная облачность — если BKN (без SCT)
+    if has_bkn:
+        return "☁️", "Значительная облачность"
+
+    # Облачно с прояснениями — если SCT (без BKN)
+    if has_sct:
+        return "⛅", "Облачно с прояснениями"
+
+    # Малооблачно — если FEW
+    if has_few:
+        return "🌤️", "Малооблачно"
+
+    return "⛅", "Облачно"
 
 def parse_visibility(metar_text):
     if "CAVOK" in metar_text or "9999" in metar_text:
