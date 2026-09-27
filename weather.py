@@ -866,7 +866,8 @@ def get_precipitation_by_districts():
     """
     Запрашивает OM для 5 точек Минска (центр, север, юг, запад, восток).
     Возвращает список: [{"name": "Центр", "short": "Ц", "precip_mm": 0,
-                         "rain_prob": 30, "weather_code": 0, "visibility": None}, ...]
+                         "rain_prob": 30, "weather_code": 0,
+                         "visibility": None, "cloud_cover": None}, ...]
     Кэш в Redis 10 минут.
     """
     global _om_multi_cache
@@ -890,7 +891,7 @@ def get_precipitation_by_districts():
             params = {
                 "latitude": point["lat"],
                 "longitude": point["lon"],
-                "current": "precipitation,rain,weather_code,visibility",
+                "current": "precipitation,rain,weather_code,visibility,cloud_cover",
                 "timezone": "Europe/Minsk",
                 "wind_speed_unit": "ms",
             }
@@ -905,6 +906,7 @@ def get_precipitation_by_districts():
             precip = cur.get("precipitation") or 0
             code = cur.get("weather_code") or 0
             vis = cur.get("visibility")
+            cloud = cur.get("cloud_cover")
             rain_prob = 0
             if code in (51, 53, 55, 61, 63, 65, 80, 81, 82):
                 rain_prob = 80
@@ -920,6 +922,7 @@ def get_precipitation_by_districts():
                 "rain_prob": rain_prob,
                 "weather_code": code,
                 "visibility": vis,
+                "cloud_cover": cloud,
             })
         except Exception as e:
             print(f"❌ OM multi {point['name']}: {e}", flush=True)
@@ -1352,6 +1355,7 @@ def get_short_forecast():
         winds = om_raw["hourly"].get("wind_speed_10m", [])
         gusts = om_raw["hourly"].get("wind_gusts_10m", [])
         codes = om_raw["hourly"].get("weather_code", [])
+        clouds = om_raw["hourly"].get("cloud_cover", [])
 
         target_indices = []
         for i, t in enumerate(times):
@@ -1371,6 +1375,10 @@ def get_short_forecast():
         max_prob = max((probs[i] for i in target_indices if i < len(probs) and probs[i] is not None), default=None)
         sum_precip = sum(precs[i] for i in target_indices if i < len(precs) and precs[i] is not None)
 
+        # Средняя облачность по периоду
+        cloud_vals = [clouds[i] for i in target_indices if i < len(clouds) and clouds[i] is not None]
+        avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0) if cloud_vals else None
+
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
 
         sunrise_today = None
@@ -1385,11 +1393,19 @@ def get_short_forecast():
         title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
+        # Определяем cond с учётом облачности
         cond = "ясно"
         if max_prob and max_prob >= 50:
             cond = "дождь"
         elif sum_precip > 0.5:
             cond = "дождь"
+        elif avg_cloud is not None:
+            if avg_cloud >= 85:
+                cond = "пасмурно"
+            elif avg_cloud >= 60:
+                cond = "облачно"
+            elif avg_cloud >= 30:
+                cond = "переменно"
 
         wind_str = f"{avg_wind} м/с"
         if max_gust and max_gust > avg_wind:
@@ -1404,6 +1420,7 @@ def get_short_forecast():
             "rain_prob": max_prob,
             "rain_total": sum_precip_rounded,
             "precip_mm": sum_precip_rounded,
+            "avg_cloud": avg_cloud,
         }
     except Exception as e:
         print(f"⚠️ short_forecast: {e}", flush=True)
