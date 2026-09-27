@@ -2,12 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.9.6"
+BOT_VERSION = "1.9.7"
 BOT_VERSION_DATE = "2026-09-27"
 
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.9.7", "27.09.2026", "parse_clouds: BKN+SCT = переменно (разрывы в облаках)", False),
     ("1.9.6", "27.09.2026", "Облачность по районам: показ при разбросе видимости ≥ 2x", False),
     ("1.9.5", "27.09.2026", "Приоритет METAR для SCT/FEW + порог облачности 15 п.п. + ветер/темп по районам", False),
     ("1.9.4", "27.09.2026", "Облачность по районам + согласование 【F】↔【G】 + приоритет METAR", False),
