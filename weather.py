@@ -1041,7 +1041,7 @@ def get_weather():
             "wind_speed": math_round(cur.get("wind_speed_10m"), 0),
             "wind_gust": math_round(cur.get("wind_gusts_10m"), 0) if cur.get("wind_gusts_10m") else None,
             "wind_direction": cur.get("wind_direction_10m"),
-            "visibility": math_round(cur.get("visibility"), 0) if cur.get("visibility") is not None else None,
+            "visibility": math_round(min(cur.get("visibility"), 10000), 0) if cur.get("visibility") is not None else None,
             "pressure_mmhg": hpa_to_mmhg(cur.get("pressure_msl")),
             "pressure_hpa": cur.get("pressure_msl"),
             "clouds_pct": cur.get("cloud_cover"),
@@ -1297,7 +1297,7 @@ def merge_weather_data(w):
         result[key] = math_round(avg(filtered), 0) if key != "precip_mm" else round(avg(filtered), 1)
 
     # Видимость: минимум, но с проверкой разброса
-    vis_vals = gather("visibility")
+    vis_vals = [v for v in gather("visibility") if v is not None and 0 < v <= 20000]
     if vis_vals:
         min_v = min(vis_vals)
         max_v = max(vis_vals)
