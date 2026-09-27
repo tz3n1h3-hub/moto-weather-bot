@@ -768,7 +768,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         max_vis_m = max(vis_vals)
         big_spread = (max_vis_m > 0 and min_vis_m > 0 and max_vis_m / min_vis_m >= 5.0)
 
-        if big_spread:
+        # Скобка "в аэропорту" только если METAR хуже города (min < 10 км и разброс ≥ 5x)
+        if big_spread and min_vis_m < 10000:
             shown_vis = math_round(sum(vis_vals) / len(vis_vals), 0)
             if min_vis_m >= 1000:
                 ap_str = f"{int(min_vis_m / 1000)} км"
