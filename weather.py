@@ -864,10 +864,11 @@ def get_open_meteo_data():
 # ═══════════════════════════════════════════════════════════
 def get_precipitation_by_districts():
     """
-    Запрашивает OM для 5 точек Минска (центр, север, юг, запад, восток).
+    Запрашивает OM для 5 точек Минска.
     Возвращает список: [{"name": "Центр", "short": "Ц", "precip_mm": 0,
-                         "rain_prob": 30, "weather_code": 0,
-                         "visibility": None, "cloud_cover": None}, ...]
+                         "rain_prob": 30, "weather_code": 0, "visibility": None,
+                         "cloud_cover": None, "wind_speed": None,
+                         "wind_direction": None, "temp": None}, ...]
     Кэш в Redis 10 минут.
     """
     global _om_multi_cache
@@ -891,7 +892,8 @@ def get_precipitation_by_districts():
             params = {
                 "latitude": point["lat"],
                 "longitude": point["lon"],
-                "current": "precipitation,rain,weather_code,visibility,cloud_cover",
+                "current": "precipitation,rain,weather_code,visibility,cloud_cover,"
+                           "wind_speed_10m,wind_direction_10m,temperature_2m",
                 "timezone": "Europe/Minsk",
                 "wind_speed_unit": "ms",
             }
@@ -907,6 +909,9 @@ def get_precipitation_by_districts():
             code = cur.get("weather_code") or 0
             vis = cur.get("visibility")
             cloud = cur.get("cloud_cover")
+            wind_s = cur.get("wind_speed_10m")
+            wind_d = cur.get("wind_direction_10m")
+            temp = cur.get("temperature_2m")
             rain_prob = 0
             if code in (51, 53, 55, 61, 63, 65, 80, 81, 82):
                 rain_prob = 80
@@ -923,6 +928,9 @@ def get_precipitation_by_districts():
                 "weather_code": code,
                 "visibility": vis,
                 "cloud_cover": cloud,
+                "wind_speed": math_round(wind_s, 0) if wind_s is not None else None,
+                "wind_direction": wind_d,
+                "temp": math_round(temp, 0) if temp is not None else None,
             })
         except Exception as e:
             print(f"❌ OM multi {point['name']}: {e}", flush=True)
