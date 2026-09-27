@@ -922,13 +922,23 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-        # Облачность по районам (порог 15 п.п.)
+            # Облачность по районам (порог 15 п.п. ИЛИ разброс видимости ≥ 2x)
         cloud_lines = []
         cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
         if cloud_values:
             min_cloud = min(cloud_values)
             max_cloud = max(cloud_values)
-            if max_cloud - min_cloud >= 15:
+            cloud_spread = max_cloud - min_cloud
+
+            # Разброс видимости: если видимость по районам разная — показываем и облачность
+            vis_spread_big = False
+            if vis_values:
+                vis_min_local = min(vis_values)
+                vis_max_local = max(vis_values)
+                if vis_min_local > 0 and vis_max_local / vis_min_local >= 2.0:
+                    vis_spread_big = True
+
+            if cloud_spread >= 15 or vis_spread_big:
                 for d in districts:
                     c = d.get("cloud_cover")
                     name = d.get("name", "?")
