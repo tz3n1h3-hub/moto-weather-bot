@@ -806,11 +806,22 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # --- Облачность ---
+        # --- Облачность (приоритет METAR) ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
-    if cloud_vals:
+    # Если METAR даёт ясно/малооблачно — доверяем ему (он с земли)
+    metar_says_clear = metar_cloud in ("Ясно", "Малооблачно")
+
+    if metar_says_clear:
+        # METAR видит ясно — не усредняем с OM/wttr/OWM (они могут врать)
+        label_lower = "ясно" if metar_cloud == "Ясно" else "малооблачно"
+        if cloud_vals:
+            avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
+            weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR, спутники: {avg_cloud}{NBSP}%)")
+        else:
+            weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR)")
+    elif cloud_vals:
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
         cloud_label = classify_clouds(avg_cloud, metar_cloud)
         weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
@@ -866,7 +877,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость по районам ───────
+    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность ────
     # ═══════════════════════════════════════════════════════════
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
@@ -907,11 +918,41 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
+        # Облачность по районам
+        cloud_lines = []
+        cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
+        if cloud_values:
+            min_cloud = min(cloud_values)
+            max_cloud = max(cloud_values)
+            # Показываем, если разброс ≥ 30 п.п. (есть заметная разница между районами)
+            if max_cloud - min_cloud >= 30:
+                for d in districts:
+                    c = d.get("cloud_cover")
+                    name = d.get("name", "?")
+                    if c is None:
+                        cloud_lines.append(f"• {name}: —")
+                    else:
+                        c_int = int(c)
+                        if c_int >= 85:
+                            label = "пасмурно"
+                        elif c_int >= 60:
+                            label = "облачно"
+                        elif c_int >= 30:
+                            label = "переменно"
+                        elif c_int >= 15:
+                            label = "малооблачно"
+                        else:
+                            label = "ясно"
+                        marker = " ☀️" if c_int < 30 else (" ☁️" if c_int >= 60 else "")
+                        cloud_lines.append(f"• {name}: {c_int}% — {label}{marker}")
+
         f2_parts = []
         if precip_lines:
             f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
         if vis_lines:
             f2_parts.append("👁️ <b>ВИДИМОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(vis_lines)))
+        if cloud_lines:
+            f2_parts.append("☁️ <b>ОБЛАЧНОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(cloud_lines)))
 
         if f2_parts:
             districts_block = "【F2】" + "\n".join(f2_parts)
@@ -981,6 +1022,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         # Фикс 1.8.2: если глобально идёт дождь, а OM говорит "ясно" — подменяем
         shown_period = next_period
+        # Согласование с 【F】: если METAR говорит ясно, а период — пасмурно/дождь — доверяем short_forecast
         if avg_w.get("is_rain") and "· ясно" in shown_period:
             shown_period = shown_period.replace("· ясно", "· дождь")
         elif avg_w.get("is_drizzle") and "· ясно" in shown_period:
