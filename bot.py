@@ -1243,30 +1243,25 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_I — Источники ────────────────────────────
+    # ─── НАЧАЛО BLOCK_I — Источники (только при среднем/низком) ─
     # ═══════════════════════════════════════════════════════════
-    def src_marker(code):
-        return code if code in sources_live else f"{code}*"
-
-    legend_lines = [f"{src_marker('M')}{NBSP} — METAR (аэропорт Минск)"]
-    legend_lines.append(f"{src_marker('OM')} — Open-Meteo (5 точек Минска)")
-    legend_lines.append(f"{src_marker('W')}{NBSP} — wttr (Минск)")
-    legend_lines.append(f"{src_marker('OW')} — OpenWeatherMap (Минск)")
-
     agreement = a_city.get("agreement") if isinstance(a_city, dict) else None
     agree_values = a_city.get("agree_values") if isinstance(a_city, dict) else None
 
-    i_inner = ["📡 Источники:"] + legend_lines + [f"Формула: {formula}"]
-    if agreement:
-        i_inner.append(f"Согласие источников: <b>{agreement.upper()}</b>")
-    if agree_values:
-        vs = fmt_spread(agree_values)
-        if vs:
-            i_inner.append(vs)
-
-    block_i = "【I】" + indent_multiline("\n".join(i_inner))
-    # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
-
+    block_i = ""
+    if agreement and agreement != "высокое":
+        # Показываем только при среднем/низком согласии
+        parts = [f"📡 Согласие источников: <b>{agreement.upper()}</b>"]
+        if agree_values:
+            vs = fmt_spread(agree_values)
+            if vs:
+                # vs = "📊 Разброс: ±2 °C · ±3 м/с"
+                # убираем префикс "📊 Разброс: " для компактности
+                spread_clean = vs.replace("📊 Разброс: ", "")
+                parts.append(f"Разброс: {spread_clean}")
+        block_i = "【I】" + " · ".join(parts)
+    # ─── КОНЕЦ BLOCK_I ─────────────────────────────────────────
+    
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_J — Совет ────────────────────────────────
     # ═══════════════════════════════════════════════════════════
@@ -1324,16 +1319,21 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 —————
 {tomorrow_block}"""
 
-    msg += f"""
+    # 【I】показываем только при среднем/низком согласии
+    if block_i:
+        msg += f"""
 
 —————
-{block_i}
+{block_i}"""
+
+    msg += f"""
 
 —————
 {block_j}"""
 
     return msg
-    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
+# ─── КОНЕЦ BLOCK_BUILD ─────────────────────────────────────
+
 # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
