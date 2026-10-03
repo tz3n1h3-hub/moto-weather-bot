@@ -851,7 +851,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         label_lower = label_map.get(metar_cloud, "—")
         if cloud_vals:
             avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
-            weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR, спутники: {avg_cloud}{NBSP}%)")
+            # Не показываем спутники, если они дают 0% или сильно расходятся (≥ 30 п.п.)
+            if avg_cloud <= 5:
+                weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR)")
+            else:
+                weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR, спутники: {avg_cloud}{NBSP}%)")
         else:
             weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR)")
     elif cloud_vals:
