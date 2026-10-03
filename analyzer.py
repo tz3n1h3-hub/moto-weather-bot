@@ -297,6 +297,11 @@ def analyze_risks(weather, is_forecast=False):
     if night_score is None:
         night_score = 2 if weather.get("is_night", False) else 0
 
+    # Переопределение по twilight: сумерки = частично темно, не полная ночь
+    twilight_now = weather.get("twilight", "")
+    if twilight_now in ("смеркается", "темнеет"):
+        night_score = min(night_score, 1)
+
     if night_score == 2:
         if not any("темно" in r.lower() for r in risks):
             risks.append("🌙 Темно — плохая видимость")
@@ -308,7 +313,7 @@ def analyze_risks(weather, is_forecast=False):
             score += 1
             recommendations.append("💡 Включите свет заранее")
     # ─── КОНЕЦ RISK_NIGHT ──────────────────────────────────
-
+    
     # ─── RISK_SCALE ────────────────────────────────────────
     if score >= 9:
         color = "💀"
