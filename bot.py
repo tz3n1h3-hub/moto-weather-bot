@@ -884,31 +884,34 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность + ветер ─
     # ═══════════════════════════════════════════════════════════
+    # Принцип: показываем только то, что влияет на решение "ехать/не ехать".
+    # Если везде одинаково — не показываем.
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
-        # Осадки по районам
+        # --- Осадки по районам ---
+        # Порог: где-то ≥ 0.5 мм ИЛИ разброс ≥ 2 мм
         max_precip = max((d.get("precip_mm", 0) or 0) for d in districts)
+        min_precip = min((d.get("precip_mm", 0) or 0) for d in districts)
+        precip_spread = max_precip - min_precip
         precip_lines = []
-        if max_precip >= 0.3:
+        if max_precip >= 0.5 or precip_spread >= 2.0:
             for d in districts:
                 p = d.get("precip_mm", 0) or 0
                 name = d.get("name", "?")
-                if p >= 0.3:
-                    p_str = f"{p:.1f}".replace(".", ",")
-                    precip_lines.append(f"• {name}: {p_str} мм 🌧️")
-                else:
-                    p_str = f"{p:.1f}".replace(".", ",") if p > 0 else "0"
-                    precip_lines.append(f"• {name}: {p_str} мм")
+                p_str = f"{p:.1f}".replace(".", ",") if p > 0 else "0"
+                marker = " 🌧️" if p >= 0.5 else ""
+                precip_lines.append(f"• {name}: {p_str} мм{marker}")
 
-        # Видимость по районам
+        # --- Видимость по районам ---
+        # Порог: где-то < 1 км (туман) ИЛИ разброс ≥ 3x
         vis_lines = []
         vis_values = [d.get("visibility") for d in districts if d.get("visibility") is not None]
         if vis_values:
             min_vis = min(vis_values)
             max_vis = max(vis_values)
-            show_vis = (max_vis / min_vis >= 2.0) if min_vis > 0 else False
-            if show_vis or min_vis < 5000:
+            vis_spread_big = (max_vis / min_vis >= 3.0) if min_vis > 0 else False
+            if min_vis < 1000 or vis_spread_big:
                 for d in districts:
                     v = d.get("visibility")
                     name = d.get("name", "?")
@@ -918,28 +921,20 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         vis_lines.append(f"• {name}: 10+ км")
                     elif v >= 1000:
                         km = math_round(v / 1000, 0)
-                        marker = " 🌫️" if v < 5000 else ""
+                        marker = " 🌫️" if v < 3000 else ""
                         vis_lines.append(f"• {name}: {km} км{marker}")
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-            # Облачность по районам (порог 15 п.п. ИЛИ разброс видимости ≥ 2x)
+        # --- Облачность по районам ---
+        # Порог: разброс ≥ 30 п.п. (если везде одинаково — не показываем)
         cloud_lines = []
         cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
         if cloud_values:
             min_cloud = min(cloud_values)
             max_cloud = max(cloud_values)
             cloud_spread = max_cloud - min_cloud
-
-            # Разброс видимости: если видимость по районам разная — показываем и облачность
-            vis_spread_big = False
-            if vis_values:
-                vis_min_local = min(vis_values)
-                vis_max_local = max(vis_values)
-                if vis_min_local > 0 and vis_max_local / vis_min_local >= 2.0:
-                    vis_spread_big = True
-
-            if cloud_spread >= 15 or vis_spread_big:
+            if cloud_spread >= 30:
                 for d in districts:
                     c = d.get("cloud_cover")
                     name = d.get("name", "?")
@@ -960,13 +955,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ☀️" if c_int < 30 else (" ☁️" if c_int >= 60 else "")
                         cloud_lines.append(f"• {name}: {c_int}% — {label}{marker}")
 
-        # Ветер по районам (порог разброс ≥ 3 м/с или где-то ≥ 9 м/с)
+        # --- Ветер по районам ---
+        # Порог: где-то ≥ 9 м/с ИЛИ разброс ≥ 4 м/с
         wind_lines = []
         wind_values = [d.get("wind_speed") for d in districts if d.get("wind_speed") is not None]
         if wind_values:
             min_wind = min(wind_values)
             max_wind = max(wind_values)
-            if (max_wind - min_wind) >= 3 or max_wind >= 9:
+            wind_spread = max_wind - min_wind
+            if max_wind >= 9 or wind_spread >= 4:
                 for d in districts:
                     ws = d.get("wind_speed")
                     wd = d.get("wind_direction")
@@ -985,6 +982,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ⚠️" if ws >= 9 else ""
                         wind_lines.append(f"• {name}: {ws} м/с{dir_str}{marker}")
 
+        # --- Сборка блока ---
         f2_parts = []
         if precip_lines:
             f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
