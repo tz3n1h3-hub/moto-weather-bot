@@ -668,7 +668,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_A — Шапка ────────────────────────────────
     # ═══════════════════════════════════════════════════════════
-    block_a = f"""【A】{header_icon} <b>MOTOWEATHER · МИНСК</b>
+    block_a = f"""<code>【A】</code>{header_icon} <b>MOTOWEATHER · МИНСК</b>
 {INDENT}{weekday} · {date_str} · {time_str}"""
     # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────────
 
@@ -677,7 +677,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     score = a_city["score"]
 
-    # Расчёт температуры асфальта (нужен для вердикта)
     asphalt_temp_early = None
     if avg_w.get("temp") is not None:
         temp_air_early = avg_w.get("temp")
@@ -695,7 +694,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         else:
             asphalt_temp_early = temp_air_early + 5
 
-    # Вердикт: если score 0 — проверяем асфальт
     verdict = get_rider_verdict(score, now_dt.month)
     if score == 0 and asphalt_temp_early is not None and asphalt_temp_early >= 15:
         verdict = "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
@@ -705,7 +703,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
     if bar:
         verdict_lines.append(bar)
-    block_b = "【B】" + f"\n{INDENT}".join(verdict_lines)
+    block_b = "<code>【B】</code>" + f"\n{INDENT}".join(verdict_lines)
     # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -714,7 +712,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     risk_factors = a_city["risks"][:4]
     risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
 
-    block_c = f"""【C】<b>ЧТО НА ДОРОГЕ</b>
+    block_c = f"""<code>【C】</code><b>ЧТО НА ДОРОГЕ</b>
 {indent_multiline(risk_text)}"""
 
     recs = a_city.get("recommendations", [])
@@ -723,7 +721,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
         block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
 
-    # Цитаты из исследований при критичных рисках
     research_lines = []
 
     vis_now = avg_w.get("visibility") or m.get("visibility") or 10000
@@ -757,7 +754,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         avg_w.get("temp") or m.get("temp") or 0,
         rain_prob=w.get("rain_prob_now") or 0,
     )
-    block_d = f"""【D】<b>НА СЕБЯ</b>
+    block_d = f"""<code>【D】</code><b>НА СЕБЯ</b>
 {indent_multiline(gear_line)}"""
     # ─── КОНЕЦ BLOCK_D ──────────────────────────────────────────
 
@@ -773,7 +770,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         w.get("is_night", False),
         avg_w.get("is_drizzle", False) or m.get("is_drizzle", False),
     )
-    block_e = f"""【E】<b>ПЕРЕД ВЫЕЗДОМ</b>
+    block_e = f"""<code>【E】</code><b>ПЕРЕД ВЫЕЗДОМ</b>
 {indent_multiline(tech_line)}"""
     # ─── КОНЕЦ BLOCK_E ──────────────────────────────────────────
 
@@ -957,7 +954,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append(f"☀️ UV-индекс: {uv}{NBSP}({lvl}) — {advice}")
 
     weather_block = "\n".join(weather_lines)
-    block_f = f"""【F】🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
+    block_f = f"""<code>【F】</code>🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
 {indent_multiline(weather_block)}"""
     # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
@@ -1063,7 +1060,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             f2_parts.append("💨 <b>ВЕТЕР ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(wind_lines)))
 
         if f2_parts:
-            districts_block = "【F2】" + "\n".join(f2_parts)
+            districts_block = "<code>【F2】</code>" + "\n".join(f2_parts)
     # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -1159,7 +1156,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             p_inner.append("<b>ЧТО НА ДОРОГЕ</b>")
             p_inner.append(period_risks_text)
 
-        forecast_block = f"【G】{title_line}\n" + indent_multiline("\n".join(p_inner))
+            forecast_block = f"<code>【G】</code>{title_line}\n" + indent_multiline("\n".join(p_inner))
     # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -1227,7 +1224,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             t_inner.append("<b>ЧТО НА ДОРОГЕ</b>")
             t_inner.append(tomorrow_risks_text)
 
-        tomorrow_block = f"【H】📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
+        tomorrow_block = f"<code>【H】</code>📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
     # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -1244,7 +1241,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             if vs:
                 spread_clean = vs.replace("📊 Разброс: ", "")
                 parts.append(f"Разброс: {spread_clean}")
-        block_i = "【I】" + " · ".join(parts)
+        block_i = "<code>【I】</code>" + " · ".join(parts)
     # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -1257,7 +1254,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
-    block_j = "【J】" + indent_multiline("\n".join(j_lines))
+    block_j = "<code>【J】</code>" + indent_multiline("\n".join(j_lines))
     # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
