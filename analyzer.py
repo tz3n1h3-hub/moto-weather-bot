@@ -191,7 +191,7 @@ def analyze_risks(weather, is_forecast=False):
         visibility_alerted = True
     # ─── КОНЕЦ RISK_VISIBILITY ─────────────────────────────
 
-    # ─── RISK_HUMIDITY (мокрая дорога) ─────────────────────
+    # ─── RISK_HUMIDITY ─────────────────────────────────────
     rain_or_drizzle = is_rain or is_drizzle
 
     if dew_point is not None and not rain_or_drizzle:
@@ -224,9 +224,9 @@ def analyze_risks(weather, is_forecast=False):
                 humidity_handled = True
     # ─── КОНЕЦ RISK_HUMIDITY ───────────────────────────────
 
-    # ─── RISK_ICE (изморозь, всегда) ───────────────────────
+    # ─── RISK_ICE ──────────────────────────────────────────
     if temp >= -3 and temp <= 3 and humidity >= 95:
-        risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C, влаж. {int(humidity)}%)")
+        risks.append(f"🧊 ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C)")
         score += 4
         recommendations.append("🧊 Осторожно на мостах и эстакадах, не тормози резко")
     # ─── КОНЕЦ RISK_ICE ────────────────────────────────────
@@ -234,12 +234,7 @@ def analyze_risks(weather, is_forecast=False):
     # ─── RISK_CLOUDS ───────────────────────────────────────
     if not is_rain and not is_drizzle and rain_total == 0 and clouds_pct >= 80:
         if not any("дождь" in r.lower() or "морось" in r.lower() for r in risks):
-            # Если METAR говорит ясно/переменно — не считаем пасмурно
-            metar_cloud_check = weather.get("metar_cloud_text", "")
-            if metar_cloud_check in ("Ясно", "Малооблачно", "Облачно с прояснениями"):
-                pass  # METAR важнее — не добавляем риск
-            else:
-                risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%)")
+            risks.append(f"☁️ Пасмурно ({int(clouds_pct)}%)")
     # ─── КОНЕЦ RISK_CLOUDS ─────────────────────────────────
 
     # ─── RISK_TWILIGHT ─────────────────────────────────────
@@ -362,7 +357,7 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
         else:
             return "ЗАВТРА ЯСНО — АСФАЛЬТ ХОЛОДНЫЙ" if is_tomorrow else "ЯСНО, НО АСФАЛЬТ ХОЛОДНЫЙ — ОСТОРОЖНО"
     if score <= 4:
-        return "ЗАВТРА МОЖНО ЕХАТЬ" if is_tomorrow else "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
+        return "ЗАВТРА МОЖНО ЕХАТЬ" if is_tomorrow else "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
     if score <= 6:
         return "ЗАВТРА — С ОСТОРОЖНОСТЬЮ" if is_tomorrow else "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
@@ -372,43 +367,64 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 
 
 # ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО GEAR ───────────────────────────────────────────
+# ─── НАЧАЛО GEAR_DYNAMIC ───────────────────────────────────
 # ═══════════════════════════════════════════════════════════
-def get_gear_short(temp, is_rain, is_night, wind_speed):
-    gear = []
-    if temp >= 25:
-        gear.append("🧢 Вентиляция + перчатки")
-    elif temp >= 15:
-        gear.append("🧥 Лёгкая ветрозащита")
-    elif temp >= 5:
-        gear.append("🧥 Тёплая подкладка + подогрев ручек")
-    else:
-        gear.append("🧥 Термобельё + балаклава + подогрев")
+def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
+    """
+    Динамическая экипировка: База + добавки по условиям.
+    Возвращает строку, например: "База + ☔ Дождевик / мембрана"
+    """
+    parts = ["База"]
 
-    if is_rain:
-        gear.append("☔ Дождевик / мембрана")
+    # Дождь или высокая вероятность
+    if is_rain or (rain_prob and rain_prob >= 40):
+        parts.append("☔ Дождевик / мембрана")
+
+    # Ночь
     if is_night:
-        gear.append("💡 Дополнительный свет (обязательно)")
-    return gear
-# ─── КОНЕЦ GEAR ────────────────────────────────────────────
+        parts.append("💡 Доп. свет")
+
+    # Холод
+    if feels_like < 5:
+        parts.append("🧥 Термобельё")
+
+    # Жара
+    if temp and temp > 30:
+        parts.append("💧 Вода")
+
+    return " + ".join(parts)
+# ─── КОНЕЦ GEAR_DYNAMIC ────────────────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО TECH_CHECK ─────────────────────────────────────
+# ─── НАЧАЛО TECH_CHECK_DYNAMIC ─────────────────────────────
 # ═══════════════════════════════════════════════════════════
-def get_tech_check(temp, is_night, is_rain, humidity, dew_point):
-    tech = [
-        "Давление в шинах — на холодную",
-        "Свет: ближний + стоп + поворотники",
-    ]
+def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
+                            is_rain, is_night, is_drizzle=False):
+    """
+    Динамический чек-лист: База + критичное по условиям.
+    Возвращает строку, например: "База + ✅ Противотуманки"
+    """
+    parts = ["База"]
+
+    # Туман < 1 км
+    if visibility and visibility < 1000:
+        parts.append("✅ Противотуманки")
+
+    # Дождь
+    if is_rain or is_drizzle:
+        parts.append("✅ Визор — антизапотеватель")
+
+    # Ночь
     if is_night:
-        tech.append("Визор — протри и обработай")
-    elif is_rain or (humidity and humidity >= 80):
-        tech.append("Визор — антизапотеватель обязателен")
-    else:
-        tech.append("Зеркала — под себя")
-    return tech
-# ─── КОНЕЦ TECH_CHECK ──────────────────────────────────────
+        parts.append("✅ Доп. свет — включи")
+
+    # Сильный ветер
+    if wind_gust and wind_gust >= 9:
+        parts.append("✅ Руль крепче — порывы")
+
+    return " + ".join(parts)
+# ─── КОНЕЦ TECH_CHECK_DYNAMIC ──────────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
