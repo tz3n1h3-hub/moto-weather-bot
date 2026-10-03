@@ -2,12 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.9.10"
+BOT_VERSION = "1.9.11"
 BOT_VERSION_DATE = "2026-10-03"
 
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.9.11", "03.10.2026", "Цитаты из исследований при критичных рисках (JAF, FHWA, MOTOSAN, NZTA)", False),
     ("1.9.10", "03.10.2026", "Фикс /stats: экранирование HTML в changelog", False),
     ("1.9.9", "03.10.2026", "【F2】: пороги критичности (только влияющее на решение)", False),
     ("1.9.8", "27.09.2026", "Видимость: фильтр выбросов (OM ≤ 10 км) + скобка 'в аэропорту' только при min < 10 км", False),
