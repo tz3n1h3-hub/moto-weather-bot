@@ -700,22 +700,27 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     # Цитаты из исследований при критичных рисках
     research_lines = []
-    risks_lower = " ".join(risk_factors).lower()
+
+    # Достаём значения из avg_w и m (не из BLOCK_F — он позже)
+    vis_now = avg_w.get("visibility") or m.get("visibility") or 10000
+    gust_now = avg_w.get("wind_gust") or 0
+    temp_now = avg_w.get("temp") or m.get("temp") or 0
+    is_rain_now = avg_w.get("is_rain", False) or m.get("is_rain", False)
 
     # Дождь — JAF: на мокром асфальте радиус поворота ×2 при 80 км/ч
-    if avg_w.get("is_rain") or m.get("is_rain"):
+    if is_rain_now:
         research_lines.append("📚 JAF: на мокром асфальте радиус поворота ×2 при 80 км/ч")
 
     # Туман — Корейское исследование: смертность ×8
-    if visibility < 1000:
+    if vis_now < 1000:
         research_lines.append("📚 Корейское иссл.: в туман смертность мотоциклистов ×8")
 
     # Ветер — Tokyo Bay Aqua-Line: 15 м/с ограничение, 20 м/с закрытие
-    if wind_gust >= 12:
+    if gust_now >= 12:
         research_lines.append("📚 Tokyo Bay Aqua-Line: 15 м/с — ограничение, 20 м/с — закрытие")
 
     # Холод — MOTOSAN: летние шины ниже +7 °C
-    if temp < 7:
+    if temp_now < 7:
         research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +7 °C")
 
     if research_lines:
