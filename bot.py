@@ -1520,6 +1520,9 @@ def updates_cmd(m):
         print(f"❌ /updates: {e}", flush=True)
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО STATS_CMD ──────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 @bot.message_handler(commands=['stats'])
 def stats_cmd(m):
     if not ADMIN_ID or m.chat.id != ADMIN_ID:
@@ -1530,7 +1533,9 @@ def stats_cmd(m):
     for item in BOT_CHANGELOG[:6]:
         ver, date, desc = item[0], item[1], item[2]
         marker = "▶️" if ver == BOT_VERSION else "  "
-        changelog_lines.append(f"{marker} <b>v{ver}</b> ({date}) — {desc}")
+        # Экранируем HTML-опасные символы в desc (< > &)
+        desc_safe = desc.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        changelog_lines.append(f"{marker} <b>v{ver}</b> ({date}) — {desc_safe}")
     changelog_text = "\n".join(changelog_lines)
 
     bot.reply_to(
@@ -1546,6 +1551,7 @@ def stats_cmd(m):
         f"<b>История версий:</b>\n{changelog_text}",
         parse_mode="HTML"
     )
+# ─── КОНЕЦ STATS_CMD ───────────────────────────────────────
 
 
 @bot.message_handler(commands=['feedback'])
