@@ -674,7 +674,31 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── НАЧАЛО BLOCK_B — Вердикт ──────────────────────────────
     # ═══════════════════════════════════════════════════════════
     score = a_city["score"]
+
+    # Расчёт температуры асфальта (нужен для вердикта)
+    asphalt_temp_early = None
+    if avg_w.get("temp") is not None:
+        temp_air_early = avg_w.get("temp")
+        uv_now_early = avg_uv([m.get("uv_index"), om.get("uv_index"),
+                                ww.get("uv_index"), ow.get("uv_index")])
+        is_night_early = w.get("is_night", False)
+        is_rain_early = avg_w.get("is_rain", False) or m.get("is_rain", False)
+
+        if is_night_early:
+            asphalt_temp_early = temp_air_early
+        elif is_rain_early:
+            asphalt_temp_early = temp_air_early + 2
+        elif uv_now_early is not None and uv_now_early >= 3:
+            asphalt_temp_early = temp_air_early + 12
+        else:
+            asphalt_temp_early = temp_air_early + 5
+
+    # Вердикт: если score 0 — проверяем асфальт
     verdict = get_rider_verdict(score, now_dt.month)
+    if score == 0 and asphalt_temp_early is not None and asphalt_temp_early >= 15:
+        # Асфальт прогрет — стандартный вердикт для лета
+        verdict = "ДОРОГА ЧИСТАЯ — ГАЗУЙ" if not w.get("is_tomorrow") else verdict
+
     bar = build_risk_bar(score)
 
     verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
@@ -767,29 +791,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"🌡️ Температура: {fmt_avg(gather('temp', src_map), '°C')}")
     weather_lines.append(f"🤔 Ощущается: {fmt_avg(gather('feels_like', src_map), '°C')}")
 
-    # Расчётная температура асфальта (не факт, оценка)
-    # День + солнце (UV >= 3) + нет дождя → +12 °C
-    # День + облачно → +5 °C
-    # Ночь → +0 °C
-    asphalt_temp = None
-    if avg_w.get("temp") is not None:
-        temp_air = avg_w.get("temp")
-        uv_now = avg_uv([m.get("uv_index"), om.get("uv_index"),
-                         ww.get("uv_index"), ow.get("uv_index")])
-        is_night_now = w.get("is_night", False)
-        is_rain_now = avg_w.get("is_rain", False) or m.get("is_rain", False)
-
-        if is_night_now:
-            asphalt_temp = temp_air
-        elif is_rain_now:
-            asphalt_temp = temp_air + 2
-        elif uv_now is not None and uv_now >= 3:
-            asphalt_temp = temp_air + 12
-        else:
-            asphalt_temp = temp_air + 5
-
-    if asphalt_temp is not None:
-        weather_lines.append(f"🛣️ Асфальт (расч.): ~{asphalt_temp}{NBSP}°C")
+    # Асфальт уже посчитан в BLOCK_B (asphalt_temp_early)
+    if asphalt_temp_early is not None:
+        weather_lines.append(f"🛣️ Асфальт (расч.): ~{asphalt_temp_early}{NBSP}°C")
 
     wind_vals = [v for v in gather("wind_speed", src_map) if v is not None]
     gust_vals = [g for g in gather("wind_gust", src_map) if g is not None]
