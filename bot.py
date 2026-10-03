@@ -1138,8 +1138,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             tomorrow_line += f" · дождь {f['rain_prob']}{NBSP}%"
         else:
             tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
+            # "без осадков" только если cond не про осадки
+            rain_keywords = ("дождь", "морось", "ливень", "снег", "гроза", "град")
+            cond_has_precip = any(kw in cond_low.lower() for kw in rain_keywords)
             rain_sum_t = f.get("rain_sum") or 0
-            if rain_sum_t < 0.3:
+            if rain_sum_t < 0.3 and not cond_has_precip:
                 tomorrow_line += " · без осадков"
 
         rain_line_tomorrow = ""
