@@ -399,9 +399,9 @@ def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
                             is_rain, is_night, is_drizzle=False):
     """
     Динамический чек-лист: База + критичное по условиям.
-    Возвращает строку, например: "База + ✅ Противотуманки"
+    Возвращает строку, например: "🔧 База + ✅ Противотуманки"
     """
-    parts = ["База"]
+    parts = ["🔧 База"]
 
     if visibility and visibility < 1000:
         parts.append("✅ Противотуманки")
