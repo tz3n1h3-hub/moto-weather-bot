@@ -376,19 +376,15 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
     """
     parts = ["База"]
 
-    # Дождь или высокая вероятность
     if is_rain or (rain_prob and rain_prob >= 40):
         parts.append("☔ Дождевик / мембрана")
 
-    # Ночь
     if is_night:
         parts.append("💡 Доп. свет")
 
-    # Холод
     if feels_like < 5:
         parts.append("🧥 Термобельё")
 
-    # Жара
     if temp and temp > 30:
         parts.append("💧 Вода")
 
@@ -407,19 +403,15 @@ def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
     """
     parts = ["База"]
 
-    # Туман < 1 км
     if visibility and visibility < 1000:
         parts.append("✅ Противотуманки")
 
-    # Дождь
     if is_rain or is_drizzle:
         parts.append("✅ Визор — антизапотеватель")
 
-    # Ночь
     if is_night:
         parts.append("✅ Доп. свет — включи")
 
-    # Сильный ветер
     if wind_gust and wind_gust >= 9:
         parts.append("✅ Руль крепче — порывы")
 
