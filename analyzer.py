@@ -386,6 +386,8 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
 
     if feels_like < 5:
         parts.append("🧥 Термобельё")
+    elif feels_like < 10:
+        parts.append("🧥 Ветрозащита")
 
     if temp and temp > 30:
         parts.append("💧 Вода")
