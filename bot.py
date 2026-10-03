@@ -1332,6 +1332,8 @@ def run_morning_broadcast(force=False):
         if not avg_w:
             return {"error": "merge_failed", "date": today_str}
 
+        avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
+
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
@@ -1472,6 +1474,9 @@ def send_weather(chat_id):
         if not avg_w:
             send_or_edit(chat_id, "❌ Небо молчит.", None)
             return "error"
+
+        # Прокидываем twilight в avg_w для согласования night_score
+        avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
