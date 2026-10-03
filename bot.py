@@ -806,32 +806,72 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-    # --- Видимость ---
-    vis_vals = [v for v in gather("visibility", src_map) if v is not None and v > 0]
-    if vis_vals:
-        min_vis_m = min(vis_vals)
-        max_vis_m = max(vis_vals)
-        big_spread = (max_vis_m > 0 and min_vis_m > 0 and max_vis_m / min_vis_m >= 5.0)
+       # --- Видимость ---
+    # Приоритет: минимум по районам (OM-multi), если есть и разброс ≥ 3x
+    districts_for_vis = w.get("precipitation_by_districts", [])
+    district_vis_values = [
+        (d.get("name", "?"), d.get("visibility"))
+        for d in districts_for_vis
+        if d.get("visibility") is not None
+    ]
+    # Фильтр выбросов
+    district_vis_values = [(n, v) for n, v in district_vis_values if 0 < v <= 20000]
 
-        if big_spread and min_vis_m < 10000:
-            shown_vis = math_round(sum(vis_vals) / len(vis_vals), 0)
-            if min_vis_m >= 1000:
-                ap_str = f"{int(min_vis_m / 1000)} км"
-            else:
-                ap_str = f"{int(min_vis_m)} м"
-            suffix = f" · в аэропорту {ap_str}"
+    # METAR отдельно — для пометки "в аэропорту"
+    metar_vis = m.get("visibility") if m.get("visibility") is not None and 0 < m.get("visibility") <= 20000 else None
+
+    # Видимость из 4 источников (для fallback)
+    vis_vals_src = [v for v in gather("visibility", src_map) if v is not None and 0 < v <= 20000]
+    src_min_vis = min(vis_vals_src) if vis_vals_src else None
+
+    shown_vis = None
+    suffix = ""
+    haze_suffix = ""
+
+    if district_vis_values:
+        all_district_vis = [v for n, v in district_vis_values]
+        worst_name, worst_vis = min(district_vis_values, key=lambda x: x[1])
+        max_district_vis = max(all_district_vis)
+
+        big_spread_districts = (max_district_vis / worst_vis >= 3.0) if worst_vis > 0 else False
+
+        if big_spread_districts:
+            # Худший район
+            shown_vis = worst_vis
+            suffix = f" ({worst_name} — хуже всего)"
         else:
-            shown_vis = min_vis_m
-            suffix = ""
+            # Разброс небольшой — берём минимум из 4 источников
+            if src_min_vis is not None:
+                shown_vis = src_min_vis
+    else:
+        # Нет данных по районам — минимум из 4 источников
+        if src_min_vis is not None:
+            shown_vis = src_min_vis
 
+    # Если METAR хуже города и мы не показываем худший район (или METAR ещё хуже)
+    if metar_vis is not None and shown_vis is not None:
+        if metar_vis < shown_vis:
+            # METAR хуже — показываем отдельной пометкой
+            if metar_vis >= 1000:
+                ap_str = f"{int(metar_vis / 1000)} км"
+            else:
+                ap_str = f"{int(metar_vis)} м"
+            # Если уже есть suffix от района — добавляем к нему
+            if suffix:
+                suffix += f" · в аэропорту {ap_str} (METAR)"
+            else:
+                suffix = f" · в аэропорту {ap_str} (METAR)"
+
+    # Дымка
+    if shown_vis is not None:
         humidity_now = avg_w.get("humidity") or m.get("humidity")
         dew_now = avg_w.get("dew_point")
         temp_now_v = avg_w.get("temp") or m.get("temp")
-        haze_suffix = ""
         if shown_vis < 8000 and humidity_now and humidity_now >= 90:
             if dew_now is not None and temp_now_v is not None and (temp_now_v - dew_now) <= 2:
                 haze_suffix = " · дымка"
 
+    if shown_vis is not None:
         if shown_vis >= 10000:
             vis_str = f"10+{NBSP}км"
         elif shown_vis >= 1000:
@@ -846,7 +886,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}{haze_suffix}")
     else:
         weather_lines.append("👁️ Видимость: —")
-
+        
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
