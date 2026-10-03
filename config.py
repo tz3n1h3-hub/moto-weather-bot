@@ -2,12 +2,13 @@ import os
 from datetime import timedelta, timezone
 
 # ============ ВЕРСИЯ ============
-BOT_VERSION = "1.9.23"
+BOT_VERSION = "1.9.24"
 BOT_VERSION_DATE = "2026-10-03"
 
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.9.24", "03.10.2026", "【D】🏍️ База · 【E】🔧 База · кнопка 📚 Что такое База?", False),
     ("1.9.23", "03.10.2026", "Кнопка 📚 База для райдера + расширенный knowledge.py", False),
     ("1.9.22", "03.10.2026", "UV по-райдерски · динамические 【D】/【E】 · кнопка [🏍️ База] + knowledge.py", False),
     ("1.9.21", "03.10.2026", "UV-советы: мотоциклетные вместо 'можно без крема'", False),
