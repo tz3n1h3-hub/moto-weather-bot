@@ -1255,16 +1255,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_BUILD — Финальная сборка ─────────────────
     # ═══════════════════════════════════════════════════════════
+    # Порядок: A → B → C → F → F2 → D → E → G → H → J
+    # Логика: решение → причина → погода → экип → проверка → прогноз
     msg = f"""{block_a}
 
 —————
 {block_b}
 
 {block_c}
-
-{block_d}
-
-{block_e}
 
 —————
 {block_f}"""
@@ -1273,6 +1271,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         msg += f"""
 
 {districts_block}"""
+
+    msg += f"""
+
+{block_d}
+
+{block_e}"""
 
     if forecast_block:
         msg += f"""
@@ -1298,7 +1302,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 {block_j}"""
 
     return msg
-    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
+# ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
 # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
