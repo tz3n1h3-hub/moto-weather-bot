@@ -476,7 +476,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     for p in tech_parts:
         de_items.append(f"+ {p}")
 
-    block_de = f"""<code>【D/E】</code><b>ПРЕДПОЛЁТНАЯ</b>
+        block_de = f"""<code>【D/E】</code>✈️ <b>ПРЕДПОЛЁТНАЯ</b>
 {indent_multiline(chr(10).join(de_items))}"""
     # ─── КОНЕЦ BLOCK_D_E ────────────────────────────────────────
 
@@ -981,6 +981,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     msg += f"""
 
+—————
 {block_de}"""
 
     if forecast_block:
