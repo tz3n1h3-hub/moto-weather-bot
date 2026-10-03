@@ -27,15 +27,17 @@ from weather import (
 )
 from analyzer import (
     analyze_risks, get_short_verdict, get_rider_verdict,
-    get_gear_short, get_tech_check, get_tip,
+    get_gear_dynamic, get_tech_check_dynamic, get_tip,
 )
 from keyboards import (
     get_main_keyboard, get_after_weather_keyboard, get_morning_keyboard,
     get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard,
+    get_base_back_keyboard,
     get_feedback_blocks_keyboard, get_feedback_params_keyboard,
     get_feedback_direction_keyboard, get_feedback_skip_keyboard,
     get_feedback_cancel_keyboard,
 )
+from knowledge import BASE_EQUIPMENT_TEXT
 import feedback as fb
 
 
@@ -465,14 +467,14 @@ def uv_advice(uv):
     if uv is None:
         return ""
     if uv <= 2:
-        return "можно без крема"
+        return "хоть в майке"
     if uv <= 5:
-        return "крем не помешает"
+        return "прикрой шею"
     if uv <= 7:
-        return "закрой шею и руки"
+        return "солнце злое — в тень"
     if uv <= 10:
-        return "минимум открытой кожи"
-    return "лучше не выезжать днём"
+        return "злое солнце — закрой всё"
+    return "пекло — не выезжай днём"
 
 
 def wind_dir_short(full):
@@ -746,31 +748,33 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_C ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_D — На себя ──────────────────────────────
+    # ─── НАЧАЛО BLOCK_D — На себя (динамический) ───────────────
     # ═══════════════════════════════════════════════════════════
-    gear = get_gear_short(
+    gear_line = get_gear_dynamic(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
         w.get("is_night", False),
-        (m.get("wind_speed") or om.get("wind_speed") or 0),
+        avg_w.get("temp") or m.get("temp") or 0,
+        rain_prob=w.get("rain_prob_now") or 0,
     )
-    gear_block = "\n".join(gear)
     block_d = f"""【D】<b>НА СЕБЯ</b>
-{indent_multiline(gear_block)}"""
+{indent_multiline(gear_line)}"""
     # ─── КОНЕЦ BLOCK_D ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_E — Перед выездом ────────────────────────
+    # ─── НАЧАЛО BLOCK_E — Перед выездом (динамический) ─────────
     # ═══════════════════════════════════════════════════════════
-    tech = get_tech_check(
-        a_city.get("feels_like", m.get("feels_like") or 0),
+    tech_line = get_tech_check_dynamic(
+        avg_w.get("visibility") or m.get("visibility") or 10000,
+        avg_w.get("humidity") or m.get("humidity"),
+        avg_w.get("temp") or m.get("temp") or 0,
+        avg_w.get("wind_gust") or 0,
+        avg_w.get("is_rain", False) or m.get("is_rain", False),
         w.get("is_night", False),
-        avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
-        m.get("humidity"), m.get("dew_point"),
+        avg_w.get("is_drizzle", False) or m.get("is_drizzle", False),
     )
-    tech_block = "\n".join(f"✅ {t}" for t in tech)
     block_e = f"""【E】<b>ПЕРЕД ВЫЕЗДОМ</b>
-{indent_multiline(tech_block)}"""
+{indent_multiline(tech_line)}"""
     # ─── КОНЕЦ BLOCK_E ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -806,21 +810,17 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         wind_line += "—"
     weather_lines.append(wind_line)
 
-       # --- Видимость ---
-    # Приоритет: минимум по районам (OM-multi), если есть и разброс ≥ 3x
+    # --- Видимость ---
     districts_for_vis = w.get("precipitation_by_districts", [])
     district_vis_values = [
         (d.get("name", "?"), d.get("visibility"))
         for d in districts_for_vis
         if d.get("visibility") is not None
     ]
-    # Фильтр выбросов
     district_vis_values = [(n, v) for n, v in district_vis_values if 0 < v <= 20000]
 
-    # METAR отдельно — для пометки "в аэропорту"
     metar_vis = m.get("visibility") if m.get("visibility") is not None and 0 < m.get("visibility") <= 20000 else None
 
-    # Видимость из 4 источников (для fallback)
     vis_vals_src = [v for v in gather("visibility", src_map) if v is not None and 0 < v <= 20000]
     src_min_vis = min(vis_vals_src) if vis_vals_src else None
 
@@ -836,27 +836,22 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         big_spread_districts = (max_district_vis / worst_vis >= 3.0) if worst_vis > 0 else False
 
         if big_spread_districts:
-            # Худший район
             shown_vis = worst_vis
             suffix = f" ({worst_name} — хуже всего)"
         else:
-            # Разброс небольшой — берём минимум из 4 источников
             if src_min_vis is not None:
                 shown_vis = src_min_vis
     else:
-        # Нет данных по районам — минимум из 4 источников
         if src_min_vis is not None:
             shown_vis = src_min_vis
 
-    # Если METAR хуже города и мы не показываем худший район (или METAR ещё хуже)
+    # METAR только если хуже города
     if metar_vis is not None and shown_vis is not None:
         if metar_vis < shown_vis:
-            # METAR хуже — показываем отдельной пометкой
             if metar_vis >= 1000:
                 ap_str = f"{int(metar_vis / 1000)} км"
             else:
                 ap_str = f"{int(metar_vis)} м"
-            # Если уже есть suffix от района — добавляем к нему
             if suffix:
                 suffix += f" · в аэропорту {ap_str} (METAR)"
             else:
@@ -886,7 +881,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}{haze_suffix}")
     else:
         weather_lines.append("👁️ Видимость: —")
-        
+
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
@@ -969,12 +964,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность + ветер
     # ═══════════════════════════════════════════════════════════
-    # Принцип: показываем только то, что влияет на решение "ехать/не ехать".
-    # Все данные — из OM-модели (не измерение).
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
-        # --- Осадки по районам ---
         max_precip = max((d.get("precip_mm", 0) or 0) for d in districts)
         min_precip = min((d.get("precip_mm", 0) or 0) for d in districts)
         precip_spread = max_precip - min_precip
@@ -987,7 +979,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 marker = " 🌧️" if p >= 0.5 else ""
                 precip_lines.append(f"• {name}: {p_str} мм{marker}")
 
-        # --- Видимость по районам ---
         vis_lines = []
         vis_values = [d.get("visibility") for d in districts if d.get("visibility") is not None]
         if vis_values:
@@ -1009,7 +1000,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-        # --- Облачность по районам ---
         cloud_lines = []
         cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
         if cloud_values:
@@ -1037,7 +1027,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ☀️" if c_int < 30 else (" ☁️" if c_int >= 60 else "")
                         cloud_lines.append(f"• {name}: {c_int}% — {label}{marker}")
 
-        # --- Ветер по районам ---
         wind_lines = []
         wind_values = [d.get("wind_speed") for d in districts if d.get("wind_speed") is not None]
         if wind_values:
@@ -1118,7 +1107,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_risk = analyze_risks(period_data, is_forecast=True)
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
 
-        # Переопределение вердикта по асфальту периода
         if period_risk["score"] == 0:
             period_temp_v = period_data.get("temp") or 0
             period_is_night = period_night_score == 2
@@ -1250,18 +1238,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     block_i = ""
     if agreement and agreement != "высокое":
-        # Показываем только при среднем/низком согласии
         parts = [f"📡 Согласие источников: <b>{agreement.upper()}</b>"]
         if agree_values:
             vs = fmt_spread(agree_values)
             if vs:
-                # vs = "📊 Разброс: ±2 °C · ±3 м/с"
-                # убираем префикс "📊 Разброс: " для компактности
                 spread_clean = vs.replace("📊 Разброс: ", "")
                 parts.append(f"Разброс: {spread_clean}")
         block_i = "【I】" + " · ".join(parts)
-    # ─── КОНЕЦ BLOCK_I ─────────────────────────────────────────
-    
+    # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
+
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_J — Совет ────────────────────────────────
     # ═══════════════════════════════════════════════════════════
@@ -1319,7 +1304,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 —————
 {tomorrow_block}"""
 
-    # 【I】показываем только при среднем/низком согласии
     if block_i:
         msg += f"""
 
@@ -1332,8 +1316,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 {block_j}"""
 
     return msg
-# ─── КОНЕЦ BLOCK_BUILD ─────────────────────────────────────
-
+    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
 # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
@@ -1629,7 +1612,6 @@ def stats_cmd(m):
     for item in BOT_CHANGELOG[:6]:
         ver, date, desc = item[0], item[1], item[2]
         marker = "▶️" if ver == BOT_VERSION else "  "
-        # Экранируем HTML-опасные символы в desc (< > &)
         desc_safe = desc.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         changelog_lines.append(f"{marker} <b>v{ver}</b> ({date}) — {desc_safe}")
     changelog_text = "\n".join(changelog_lines)
@@ -1769,6 +1751,18 @@ def callback(call):
             bot.answer_callback_query(call.id, "🔕 Отключено", cache_time=3)
             kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=False)
             send_or_edit(chat_id, UPDATES_OFF_TEXT, kb)
+
+        # ═══════════════════════════════════════════════════════════
+        # ─── НАЧАЛО CALLBACK_BASE_EQUIP ────────────────────────────
+        # ═══════════════════════════════════════════════════════════
+        elif call.data == "base_equip":
+            bot.answer_callback_query(call.id, "🏍️ База", cache_time=3)
+            send_or_edit(
+                chat_id,
+                BASE_EQUIPMENT_TEXT,
+                get_base_back_keyboard()
+            )
+        # ─── КОНЕЦ CALLBACK_BASE_EQUIP ─────────────────────────────
 
         # ═══════════════════════════════════════════════════════════
         # ─── НАЧАЛО CALLBACK_FEEDBACK ──────────────────────────────
