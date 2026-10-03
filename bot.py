@@ -38,18 +38,21 @@ from keyboards import (
     get_feedback_cancel_keyboard,
 )
 from knowledge import BASE_EQUIPMENT_TEXT
+from texts import (
+    START_TEXT, SUBSCRIBE_TEXT, SUBSCRIBE_CONFIRMED, SUBSCRIBE_CANCELED,
+    UNSUBSCRIBE_PROMPT, UNSUBSCRIBED, UNSUBSCRIBE_CANCELED, ALREADY_SUBSCRIBED,
+    UPDATES_ON_TEXT, UPDATES_OFF_TEXT,
+    WEEKDAYS_RU, MONTHS_RU,
+    get_random_quote, get_alcohol_warning,
+)
+from formatters import (
+    math_round, NBSP, INDENT,
+    fmt_num, fmt_avg, format_visibility,
+    shorten_cond, classify_clouds, build_risk_bar,
+    avg_uv, uv_level, uv_advice, wind_dir_short,
+    indent_multiline, fmt_spread, filter_rain_risks,
+)
 import feedback as fb
-
-
-def math_round(x, digits=0):
-    if x is None:
-        return None
-    if digits == 0:
-        if x >= 0:
-            return int(x + 0.5)
-        return int(x - 0.5)
-    q = Decimal(10) ** -digits
-    return float(Decimal(str(x)).quantize(q, rounding=ROUND_HALF_UP))
 
 
 if not BOT_TOKEN:
@@ -71,9 +74,6 @@ else:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
-
-NBSP = "\u00A0"
-INDENT = "     "
 
 UPSTASH_ENABLED = bool(UPSTASH_URL and UPSTASH_TOKEN)
 
@@ -320,276 +320,6 @@ def set_last_bot_msg(chat_id, message_id):
 
 
 # ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО QUOTES ─────────────────────────────────────────
-# ═══════════════════════════════════════════════════════════
-RIDER_QUOTES = [
-    "«Дорога — лучший психотерапевт. И самый дешёвый.»",
-    "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
-    "«На мотоцикле ты не пассажир. Ты — сам за всё.»",
-    "«Газ до отсечки — только если мозг в черепе.»",
-    "«Лучший тюнинг — это прокладка между рулём и сиденьем.»",
-    "«Ветер в лицо — единственная реклама, которая работает.»",
-    "«Сезон длиной в жизнь — вот цель.»",
-    "«На двух колёсах свобода, но и ответственность ×2.»",
-    "«Резина цепляет асфальт. Голова — реальность.»",
-    "«Холодный асфальт не прощает уверенности без опыта.»",
-    "«Мотоцикл — это не транспорт. Это состояние.»",
-    "«Едешь быстро — думай быстрее.»",
-    "«Лучше приехать позже, чем не приехать вовсе.»",
-    "«Соблюдай дистанцию — она спасает.»",
-    "«Сначала тормоз, потом поворот.»",
-    "«Ночью сова не ты — делай паузы.»",
-    "«Не тот райдер, кто гонит. А тот, кто чувствует.»",
-    "«Мокрый асфальт — не место для лихачества.»",
-    "«На мотоцикле каждый выезд — экзамен.»",
-    "«Свой мотоцикл знаешь лучше всех. Проверяй его сам.»",
-]
-
-
-def get_random_quote():
-    return random.choice(RIDER_QUOTES)
-
-
-def get_alcohol_warning():
-    now = datetime.now(MINSK_TZ)
-    weekday = now.weekday()
-    if weekday == 4:
-        return "🍺 Пятница. За рулём — трезвый. Иначе — такси."
-    elif weekday == 5:
-        return "🍻 Суббота. Пил вчера? За руль не садись."
-    elif weekday == 6:
-        return "🍷 Воскресенье. Реакция ещё не та — не рискуй."
-    else:
-        return "🚫 За рулём — трезвый. Алкоголь = реакция ×3 хуже."
-# ─── КОНЕЦ QUOTES ──────────────────────────────────────────
-
-
-# ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО FORMATTING ─────────────────────────────────────
-# ═══════════════════════════════════════════════════════════
-WEEKDAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
-MONTHS_RU = [
-    "января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря"
-]
-
-
-def fmt_num(v):
-    if v is None:
-        return "—"
-    if isinstance(v, (int, float)):
-        return str(math_round(v, 0))
-    return str(v)
-
-
-def fmt_avg(values, unit=""):
-    vals = [v for v in values if v is not None]
-    if not vals:
-        return f"—{NBSP}{unit}" if unit else "—"
-    avg = sum(vals) / len(vals)
-    s = str(math_round(avg, 0))
-    return f"{s}{NBSP}{unit}" if unit else s
-
-
-def format_visibility(v):
-    if v is None:
-        return "—"
-    if v >= 10000:
-        return f"10+{NBSP}км"
-    if v >= 1000:
-        km = v / 1000
-        if km == int(km):
-            return f"{int(km)}{NBSP}км"
-        return f"{km:.1f}{NBSP}км".replace(".", ",")
-    return f"{int(v)}{NBSP}м"
-
-
-def shorten_cond(cond):
-    if not cond:
-        return "—"
-    cond_lower = cond.lower()
-    replacements = {
-        "преимущественно ясно": "ясно",
-        "переменная облачность": "переменно",
-        "значительная облачность": "облачно",
-        "облачно с прояснениями": "прояснения",
-        "преимущественно облачно": "облачно",
-    }
-    for k, v in replacements.items():
-        if k in cond_lower:
-            return v
-    return cond_lower
-
-
-def classify_clouds(avg_cloud_pct, metar_text):
-    if avg_cloud_pct is None:
-        return metar_text or "—"
-    if avg_cloud_pct >= 85:
-        return "пасмурно"
-    if avg_cloud_pct >= 70:
-        return "облачно"
-    if avg_cloud_pct >= 40:
-        return "переменно"
-    if avg_cloud_pct >= 15:
-        return "малооблачно"
-    return "ясно"
-
-
-def build_risk_bar(score):
-    score = max(0, min(10, score))
-    if score == 0:
-        return ""
-    return "💀" * score
-
-
-def avg_uv(live_values):
-    vals = [v for v in live_values if v is not None]
-    if not vals:
-        return None
-    return math_round(sum(vals) / len(vals), 0)
-
-
-def uv_level(uv):
-    if uv is None:
-        return ""
-    if uv <= 2:
-        return "низкий"
-    if uv <= 5:
-        return "умеренный"
-    if uv <= 7:
-        return "высокий"
-    if uv <= 10:
-        return "очень высокий"
-    return "экстремальный"
-
-
-def uv_advice(uv):
-    if uv is None:
-        return ""
-    if uv <= 2:
-        return "хоть в майке"
-    if uv <= 5:
-        return "прикрой шею"
-    if uv <= 7:
-        return "солнце злое — в тень"
-    if uv <= 10:
-        return "злое солнце — закрой всё"
-    return "пекло — не выезжай днём"
-
-
-def wind_dir_short(full):
-    if not full or not isinstance(full, str):
-        return None
-    m = {
-        "С": "С", "СВ": "С-В", "В": "В", "ЮВ": "Ю-В",
-        "Ю": "Ю", "ЮЗ": "Ю-З", "З": "З", "СЗ": "С-З",
-    }
-    part = full.split(" ")[0]
-    if part in m:
-        return m[part]
-    if part == "переменный":
-        return "перем."
-    if part == "штиль":
-        return "штиль"
-    return None
-
-
-def indent_multiline(text, indent=INDENT):
-    if not text:
-        return ""
-    lines = text.split("\n")
-    return "\n".join(f"{indent}{line}" for line in lines)
-# ─── КОНЕЦ FORMATTING ──────────────────────────────────────
-
-
-# ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО TEXTS ──────────────────────────────────────────
-# ═══════════════════════════════════════════════════════════
-START_TEXT = f"""🌤 <b>MOTOWEATHER · МИНСК</b>
-
-<b>Что это?</b>
-Погодный ориентир для райдеров Минска.
-Не точный прогноз, а честная сводка:
-ехать сегодня или нет.
-
-<b>Откуда беру данные:</b>
-• METAR аэропорта Минск (UMMS) — фактическая погода. Аэропорт в 20 км от центра, поэтому это лишь один из источников.
-• Open-Meteo (5 точек Минска), OpenWeatherMap, wttr — прогнозные сервисы.
-
-<b>Как считаю:</b>
-1. Собираю данные со всех источников.
-2. Убираю выбросы.
-3. Осадки — голосование источников (wttr один — не верю).
-4. Видимость — минимум, но с проверкой на разброс (аэропорт отдельно).
-5. Многоточечный прогноз OM — 5 районов Минска.
-6. Асфальт — расчётная температура (день/ночь + солнце).
-
-<b>Периоды дня — по Солнцу:</b>
-• 🌙 НОЧЬ — от темноты до рассвета
-• 🌄 РАССВЕТ — от первых лучей до восхода
-• 🌅 УТРО — от восхода до полудня
-• ☀️ ДЕНЬ — от полудня до сумерек (за 60 мин до заката)
-• 🌆 ВЕЧЕР — от сумерек до темноты
-
-<b>Блоки сообщения 【A】–【J】</b>
-Можно ссылаться на блок при жалобе: «блок 【B】 неверно».
-
-<b>Заметили ошибку?</b>
-Жмите «❗️ ЧТО-ТО НЕ ТАК?» — выберите блок и параметр.
-
-—
-👨‍💻 Разработчик: <a href="https://t.me/Aleksandr_K8V">@Aleksandr_K8V</a>
-🏍️ v{BOT_VERSION}"""
-
-
-SUBSCRIBE_TEXT = """🌅 <b>Подписка на утро</b>
-
-Каждый день в <b>7:00</b>:
-• погода в Минске;
-• вердикт — ехать или нет;
-• экипировка;
-• прогноз;
-• цитата.
-
-Подписаться?"""
-
-SUBSCRIBE_CONFIRMED = """✅ <b>Подписка активирована</b>
-
-Прогноз в 7:00 каждый день."""
-
-SUBSCRIBE_CANCELED = """❌ <b>Подписка отменена</b>
-
-Жми «ПРОГНОЗ» чтобы вернуться."""
-
-UNSUBSCRIBE_PROMPT = """❌ <b>Отписаться от рассылки?</b>
-
-Перестанешь получать утренний прогноз в 7:00."""
-
-UNSUBSCRIBED = """❌ <b>Отписан от рассылки</b>
-
-Жми «ПРОГНОЗ» — и вперёд."""
-
-UNSUBSCRIBE_CANCELED = """✅ <b>Остаёмся!</b>
-
-Прогноз в 7:00 продолжит приходить."""
-
-ALREADY_SUBSCRIBED = """ℹ️ <b>Ты уже подписан</b>
-
-Отписаться можно в «О проекте»."""
-
-UPDATES_ON_TEXT = """🔔 <b>Уведомления об обновлениях</b>
-
-Будешь получать сообщения о новых версиях.
-
-Отключить можно в «О проекте»."""
-
-UPDATES_OFF_TEXT = """🔕 <b>Уведомления отключены</b>
-
-Включить обратно — в «О проекте»."""
-# ─── КОНЕЦ TEXTS ───────────────────────────────────────────
-
-
-# ═══════════════════════════════════════════════════════════
 # ─── НАЧАЛО SEND_OR_EDIT ───────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def send_or_edit(chat_id, text, reply_markup=None):
@@ -606,29 +336,6 @@ def send_or_edit(chat_id, text, reply_markup=None):
     except Exception as e:
         print(f"⚠️ send_or_edit: {e}", flush=True)
         return None
-
-
-def fmt_spread(agree_values):
-    if not agree_values:
-        return None
-    filtered = [(v, u) for v, u in agree_values if v and v >= 2]
-    if len(filtered) < 2:
-        return None
-    parts = []
-    for v, unit in filtered:
-        v_str = str(math_round(v, 0)) if v == int(v) else f"{v:.1f}".replace(".", ",")
-        parts.append(f"±{v_str}{NBSP}{unit}")
-    return "📊 Разброс: " + " · ".join(parts)
-
-
-def filter_rain_risks(risks):
-    if not risks:
-        return []
-    keywords = ("дождь", "осадк", "морось", "ливн", "влажн", "мокро")
-    return [
-        r for r in risks
-        if not any(kw in r.lower() for kw in keywords)
-    ]
 # ─── КОНЕЦ SEND_OR_EDIT ────────────────────────────────────
 
 
