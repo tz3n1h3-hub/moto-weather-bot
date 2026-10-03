@@ -357,7 +357,7 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
         else:
             return "ЗАВТРА ЯСНО — АСФАЛЬТ ХОЛОДНЫЙ" if is_tomorrow else "ЯСНО, НО АСФАЛЬТ ХОЛОДНЫЙ — ОСТОРОЖНО"
     if score <= 4:
-        return "ЗАВТРА МОЖНО ЕХАТЬ" if is_tomorrow else "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВСТРО"
+        return "ЗАВТРА МОЖНО ЕХАТЬ" if is_tomorrow else "ЕХАТЬ МОЖНО — ДЕРЖИ УХО ВОСТРО"
     if score <= 6:
         return "ЗАВТРА — С ОСТОРОЖНОСТЬЮ" if is_tomorrow else "С ОСТОРОЖНОСТЬЮ — НЕ ЛИХАЧЬ"
     if score <= 8:
