@@ -715,12 +715,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     block_c = f"""<code>【C】</code><b>ЧТО НА ДОРОГЕ</b>
 {indent_multiline(risk_text)}"""
 
-    recs = a_city.get("recommendations", [])
-    if score >= 3 and recs:
-        rec_lines = recs[:3]
-        recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
-        block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
-
+    # Цитаты из исследований при критичных рисках
     research_lines = []
 
     vis_now = avg_w.get("visibility") or m.get("visibility") or 10000
