@@ -100,12 +100,22 @@ def get_unsubscribe_keyboard():
 
 
 # ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_BASE_EQUIP ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+def get_base_back_keyboard():
+    """Кнопка возврата к прогнозу из окна Базы."""
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("◀️ К прогнозу", callback_data="weather")
+    )
+    return markup
+# ─── КОНЕЦ KB_BASE_EQUIP ───────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════
 # ─── НАЧАЛО KB_FEEDBACK ────────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_feedback_blocks_keyboard():
-    """
-    Меню выбора БЛОКА (【A】–【K】) — первый шаг фидбэка.
-    """
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("【A】 Шапка", callback_data="feedback_block:A"),
@@ -137,9 +147,6 @@ def get_feedback_blocks_keyboard():
 
 
 def get_feedback_params_keyboard(block=""):
-    """
-    Меню параметров — второй шаг фидбэка (после выбора блока).
-    """
     markup = InlineKeyboardMarkup()
     markup.row(
         InlineKeyboardButton("🌫️ Видимость", callback_data=f"feedback_param:{block}:visibility"),
