@@ -929,6 +929,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность + ветер
     # ═══════════════════════════════════════════════════════════
+    # Принцип: показываем только то, что влияет на решение "ехать/не ехать".
+    # Все данные — из OM-модели (не измерение).
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
@@ -1023,13 +1025,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         f2_parts = []
         if precip_lines:
-            f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(precip_lines)))
+            f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(precip_lines)))
         if vis_lines:
-            f2_parts.append("👁️ <b>ВИДИМОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(vis_lines)))
+            f2_parts.append("👁️ <b>ВИДИМОСТЬ ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(vis_lines)))
         if cloud_lines:
-            f2_parts.append("☁️ <b>ОБЛАЧНОСТЬ ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(cloud_lines)))
+            f2_parts.append("☁️ <b>ОБЛАЧНОСТЬ ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(cloud_lines)))
         if wind_lines:
-            f2_parts.append("💨 <b>ВЕТЕР ПО РАЙОНАМ:</b>\n" + indent_multiline("\n".join(wind_lines)))
+            f2_parts.append("💨 <b>ВЕТЕР ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(wind_lines)))
 
         if f2_parts:
             districts_block = "【F2】" + "\n".join(f2_parts)
