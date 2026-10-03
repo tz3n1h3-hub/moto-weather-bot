@@ -1248,22 +1248,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_J — Совет ────────────────────────────────
+    # ─── НАЧАЛО BLOCK_J — Подпись ──────────────────────────────
     # ═══════════════════════════════════════════════════════════
-    tip = get_tip(
-        a_city.get("feels_like", m.get("feels_like") or 0),
-        avg_w.get("humidity") or m.get("humidity"),
-        avg_w.get("is_rain", False) or m.get("is_rain", False),
-        w.get("is_night", False),
-        avg_w.get("wind_speed") or m.get("wind_speed") or 0,
-        m.get("is_thunder", False),
-        avg_w.get("visibility") or m.get("visibility"),
-        wind_gust=(avg_w.get("wind_gust") or 0),
-        uv_index=(uv if uv is not None else 0),
-        is_drizzle=(avg_w.get("is_drizzle", False) or m.get("is_drizzle", False)),
-    )
-
-    j_lines = [tip, "🏍️ <b>Ровной дороги!</b>", f"<i>v{BOT_VERSION}</i>"]
+    j_lines = [
+        "🏍️ <i>Газ в пол — только если мозг в черепе.</i>",
+        f"— @Aleksandr_K8V · <i>v{BOT_VERSION}</i>",
+    ]
     if is_morning:
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
