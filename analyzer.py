@@ -372,9 +372,9 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
     """
     Динамическая экипировка: База + добавки по условиям.
-    Возвращает строку, например: "База + ☔ Дождевик / мембрана"
+    Возвращает строку, например: "🏍️ База + ☔ Дождевик / мембрана"
     """
-    parts = ["База"]
+    parts = ["🏍️ База"]
 
     if is_rain or (rain_prob and rain_prob >= 40):
         parts.append("☔ Дождевик / мембрана")
