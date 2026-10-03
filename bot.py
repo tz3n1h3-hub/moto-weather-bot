@@ -697,6 +697,29 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         rec_lines = recs[:3]
         recs_text = "➡️ " + "\n➡️ ".join(rec_lines)
         block_c += "\n<i>" + indent_multiline(recs_text) + "</i>"
+
+    # Цитаты из исследований при критичных рисках
+    research_lines = []
+    risks_lower = " ".join(risk_factors).lower()
+
+    # Дождь — JAF: на мокром асфальте радиус поворота ×2 при 80 км/ч
+    if avg_w.get("is_rain") or m.get("is_rain"):
+        research_lines.append("📚 JAF: на мокром асфальте радиус поворота ×2 при 80 км/ч")
+
+    # Туман — Корейское исследование: смертность ×8
+    if visibility < 1000:
+        research_lines.append("📚 Корейское иссл.: в туман смертность мотоциклистов ×8")
+
+    # Ветер — Tokyo Bay Aqua-Line: 15 м/с ограничение, 20 м/с закрытие
+    if wind_gust >= 12:
+        research_lines.append("📚 Tokyo Bay Aqua-Line: 15 м/с — ограничение, 20 м/с — закрытие")
+
+    # Холод — MOTOSAN: летние шины ниже +7 °C
+    if temp < 7:
+        research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +7 °C")
+
+    if research_lines:
+        block_c += "\n\n" + indent_multiline("\n".join(research_lines))
     # ─── КОНЕЦ BLOCK_C ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
