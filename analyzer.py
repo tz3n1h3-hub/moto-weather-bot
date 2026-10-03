@@ -371,16 +371,13 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 # ═══════════════════════════════════════════════════════════
 def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
     """
-    Динамическая экипировка: База + добавки по условиям.
-    Возвращает строку, например: "🏍️ База + ☔ Дождевик / мембрана"
+    Динамическая экипировка: 📚 б а з а + добавки по условиям.
+    Свет — не тут, а в 【E】ПЕРЕД ВЫЕЗДОМ.
     """
-    parts = ["🏍️ База"]
+    parts = ["📚 б а з а"]
 
     if is_rain or (rain_prob and rain_prob >= 40):
         parts.append("☔ Дождевик / мембрана")
-
-    if is_night:
-        parts.append("💡 Доп. свет")
 
     if feels_like < 5:
         parts.append("🧥 Термобельё")
@@ -398,10 +395,9 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
 def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
                             is_rain, is_night, is_drizzle=False):
     """
-    Динамический чек-лист: База + критичное по условиям.
-    Возвращает строку, например: "🔧 База + ✅ Противотуманки"
+    Динамический чек-лист: 📚 б а з а + критичное по условиям.
     """
-    parts = ["🔧 База"]
+    parts = ["📚 б а з а"]
 
     if visibility and visibility < 1000:
         parts.append("✅ Противотуманки")
