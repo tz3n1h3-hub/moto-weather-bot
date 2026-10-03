@@ -22,7 +22,7 @@ def get_after_weather_keyboard(is_subscribed=False):
         InlineKeyboardButton("🔄 ОБНОВИТЬ ПРОГНОЗ", callback_data="weather")
     )
     markup.row(
-        InlineKeyboardButton("📚 База для райдера", callback_data="base_equip"),
+        InlineKeyboardButton("📚 Что такое База?", callback_data="base_equip"),
         InlineKeyboardButton("❗️ ЧТО-ТО НЕ ТАК?", callback_data="feedback_start")
     )
     markup.row(
@@ -37,7 +37,7 @@ def get_morning_keyboard():
         InlineKeyboardButton("🔄 ОБНОВИТЬ ПРОГНОЗ", callback_data="weather")
     )
     markup.row(
-        InlineKeyboardButton("📚 База для райдера", callback_data="base_equip"),
+        InlineKeyboardButton("📚 Что такое База?", callback_data="base_equip"),
         InlineKeyboardButton("❗️ ЧТО-ТО НЕ ТАК?", callback_data="feedback_start")
     )
     markup.row(
