@@ -326,7 +326,7 @@ RIDER_QUOTES = [
     "«Дорога — лучший психотерапевт. И самый дешёвый.»",
     "«Райдер не тот, кто быстрее. Райдер — тот, кто дожил до дома.»",
     "«На мотоцикле ты не пассажир. Ты — сам за всё.»",
-    "«Газ в пол — только если мозг в черепе.»",
+    "«Газ до отсечки — только если мозг в черепе.»",
     "«Лучший тюнинг — это прокладка между рулём и сиденьем.»",
     "«Ветер в лицо — единственная реклама, которая работает.»",
     "«Сезон длиной в жизнь — вот цель.»",
@@ -715,7 +715,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     block_c = f"""<code>【C】</code><b>ЧТО НА ДОРОГЕ</b>
 {indent_multiline(risk_text)}"""
 
-    # Цитаты из исследований при критичных рисках
     research_lines = []
 
     vis_now = avg_w.get("visibility") or m.get("visibility") or 10000
@@ -740,7 +739,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_C ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_D — На себя (динамический) ───────────────
+    # ─── НАЧАЛО BLOCK_D_E — Предполётная ───────────────────────
     # ═══════════════════════════════════════════════════════════
     gear_line = get_gear_dynamic(
         a_city.get("feels_like", m.get("feels_like") or 0),
@@ -749,13 +748,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         avg_w.get("temp") or m.get("temp") or 0,
         rain_prob=w.get("rain_prob_now") or 0,
     )
-    block_d = f"""<code>【D】</code><b>НА СЕБЯ</b>
-{indent_multiline(gear_line)}"""
-    # ─── КОНЕЦ BLOCK_D ──────────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_E — Перед выездом (динамический) ─────────
-    # ═══════════════════════════════════════════════════════════
     tech_line = get_tech_check_dynamic(
         avg_w.get("visibility") or m.get("visibility") or 10000,
         avg_w.get("humidity") or m.get("humidity"),
@@ -765,9 +758,20 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         w.get("is_night", False),
         avg_w.get("is_drizzle", False) or m.get("is_drizzle", False),
     )
-    block_e = f"""<code>【E】</code><b>ПЕРЕД ВЫЕЗДОМ</b>
-{indent_multiline(tech_line)}"""
-    # ─── КОНЕЦ BLOCK_E ──────────────────────────────────────────
+
+    de_items = ["📚 Б а з а"]
+
+    gear_parts = [p.strip() for p in gear_line.split(" + ") if p.strip() and "б а з а" not in p.lower()]
+    for p in gear_parts:
+        de_items.append(f"+ {p}")
+
+    tech_parts = [p.strip() for p in tech_line.split(" + ") if p.strip() and "б а з а" not in p.lower()]
+    for p in tech_parts:
+        de_items.append(f"+ {p}")
+
+    block_de = f"""<code>【D/E】</code><b>ПРЕДПОЛЁТНАЯ</b>
+{indent_multiline(chr(10).join(de_items))}"""
+    # ─── КОНЕЦ BLOCK_D_E ────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_F — Текущая погода ───────────────────────
@@ -837,7 +841,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if src_min_vis is not None:
             shown_vis = src_min_vis
 
-    # METAR только если хуже города
     if metar_vis is not None and shown_vis is not None:
         if metar_vis < shown_vis:
             if metar_vis >= 1000:
@@ -849,7 +852,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             else:
                 suffix = f" · в аэропорту {ap_str} (METAR)"
 
-    # Дымка
     if shown_vis is not None:
         humidity_now = avg_w.get("humidity") or m.get("humidity")
         dew_now = avg_w.get("dew_point")
@@ -1151,7 +1153,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             p_inner.append("<b>ЧТО НА ДОРОГЕ</b>")
             p_inner.append(period_risks_text)
 
-            forecast_block = f"<code>【G】</code>{title_line}\n" + indent_multiline("\n".join(p_inner))
+        forecast_block = f"<code>【G】</code>{title_line}\n" + indent_multiline("\n".join(p_inner))
     # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -1223,7 +1225,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_I — Источники (только при среднем/низком) ─
+    # ─── НАЧАЛО BLOCK_I — Источники ────────────────────────────
     # ═══════════════════════════════════════════════════════════
     agreement = a_city.get("agreement") if isinstance(a_city, dict) else None
     agree_values = a_city.get("agree_values") if isinstance(a_city, dict) else None
@@ -1255,8 +1257,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_BUILD — Финальная сборка ─────────────────
     # ═══════════════════════════════════════════════════════════
-    # Порядок: A → B → C → F → F2 → D → E → G → H → J
-    # Логика: решение → причина → погода → экип → проверка → прогноз
     msg = f"""{block_a}
 
 —————
@@ -1274,9 +1274,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     msg += f"""
 
-{block_d}
-
-{block_e}"""
+{block_de}"""
 
     if forecast_block:
         msg += f"""
@@ -1302,7 +1300,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 {block_j}"""
 
     return msg
-# ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
 # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
@@ -1474,7 +1472,6 @@ def send_weather(chat_id):
             send_or_edit(chat_id, "❌ Небо молчит.", None)
             return "error"
 
-        # Прокидываем twilight в avg_w для согласования night_score
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
         a_city = analyze_risks(avg_w)
@@ -1747,7 +1744,7 @@ def callback(call):
         # ─── НАЧАЛО CALLBACK_BASE_EQUIP ────────────────────────────
         # ═══════════════════════════════════════════════════════════
         elif call.data == "base_equip":
-            bot.answer_callback_query(call.id, "🏍️ База", cache_time=3)
+            bot.answer_callback_query(call.id, "📚 База", cache_time=3)
             send_or_edit(
                 chat_id,
                 BASE_EQUIPMENT_TEXT,
