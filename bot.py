@@ -407,7 +407,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     bar = build_risk_bar(score)
 
-        if bar:
+    if bar:
         verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {bar} ({score}/10)"]
     else:
         verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
