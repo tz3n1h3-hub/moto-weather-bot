@@ -380,7 +380,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_B — Вердикт ──────────────────────────────
+    # ─── НАЧАЛО BLOCK_B — Вердикт + Что на дороге + Цитаты ─────
     # ═══════════════════════════════════════════════════════════
     score = a_city["score"]
 
@@ -408,20 +408,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     bar = build_risk_bar(score)
 
     if bar:
-        verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {bar} ({score}/10)"]
+        b_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {bar} ({score}/10)"]
     else:
-        verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
-    block_b = "<code>【B】</code>" + f"\n{INDENT}".join(verdict_lines)
-    # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
+        b_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_C — Что на дороге ────────────────────────
-    # ═══════════════════════════════════════════════════════════
     risk_factors = a_city["risks"][:4]
-    risk_text = "\n".join(risk_factors) if risk_factors else "✅ Дорога чистая"
-
-    block_c = f"""<code>【C】</code><b>ЧТО НА ДОРОГЕ</b>
-{indent_multiline(risk_text)}"""
+    if risk_factors:
+        b_lines.extend(risk_factors)
+    else:
+        b_lines.append("✅ Дорога чистая")
 
     research_lines = []
 
@@ -435,35 +430,31 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     asphalt_now_r = asphalt_temp_early or 0
     night_now_r = w.get("is_night", False)
 
-    # Дождь или мокрая дорога
     is_wet = is_rain_now or (dew_now_r is not None and temp_now - dew_now_r <= 1 and humidity_now_r >= 90)
 
     if is_wet:
         research_lines.append("📚 JAF: на мокром асфальте тормозной путь ×2")
 
-    # Туман
     if vis_now < 1000:
         research_lines.append("📚 Корейское иссл.: в туман смертность мотоциклистов ×8")
 
-    # Ветер
     if gust_now >= 12:
         research_lines.append("📚 Tokyo Bay Aqua-Line: 15 м/с — ограничение, 20 м/с — закрытие")
 
-    # Холодный асфальт (вместо «холод < 7°C»)
     if asphalt_now_r and asphalt_now_r < 15:
         research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +15 °C")
 
-    # Ночь
     if night_now_r:
         research_lines.append("📚 IIHS: ночью риск мотоаварий ×3")
 
-    # Пасмурно 95%+
     if clouds_now_r >= 95:
         research_lines.append("📚 NHTSA: в пасмурную погоду тебя хуже видят")
 
+    block_b = "<code>【B】</code>" + f"\n{INDENT}".join(b_lines)
+
     if research_lines:
-        block_c += "\n\n" + indent_multiline("\n".join(research_lines))
-    # ─── КОНЕЦ BLOCK_C ──────────────────────────────────────────
+        block_b += "\n\n" + indent_multiline("\n".join(research_lines))
+    # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_D_E — Предполётная ───────────────────────
@@ -606,18 +597,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # --- Облачность (приоритет METAR) ---
+    # --- Облачность (спутники приоритет, METAR в скобках) ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
-
-    metar_priority = metar_cloud in ("Ясно", "Малооблачно", "Облачно с прояснениями")
 
     if cloud_vals:
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
         cloud_label = classify_clouds(avg_cloud, metar_cloud)
 
-        # Приоритет спутники, METAR — в скобках (аэропорт)
-        if metar_cloud and metar_cloud != cloud_label:
+        if metar_cloud:
             metar_low = metar_cloud.lower()
             weather_lines.append(f"🌥️ Облачность: {cloud_label} (спутники: {avg_cloud}{NBSP}%, в аэропорту: {metar_low})")
         else:
@@ -626,6 +614,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append(f"🌥️ Облачность: {metar_cloud}")
     else:
         weather_lines.append("🌥️ Облачность: —")
+
     # --- Осадки ---
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
@@ -678,7 +667,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
-        # --- Осадки по районам ---
         max_precip = max((d.get("precip_mm", 0) or 0) for d in districts)
         min_precip = min((d.get("precip_mm", 0) or 0) for d in districts)
         precip_spread = max_precip - min_precip
@@ -691,17 +679,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 marker = " 🌧️" if p >= 0.5 else ""
                 precip_lines.append(f"• {name}: {p_str} мм{marker}")
 
-        # --- Видимость по районам (D+A: только выбросы, если min < 5 км) ---
         vis_lines = []
         vis_values = [d.get("visibility") for d in districts if d.get("visibility") is not None]
         if vis_values:
             min_vis = min(vis_values)
             max_vis = max(vis_values)
 
-            # D: показываем только если где-то < 5 км
             if min_vis < 5000:
                 threshold = max_vis * 0.7 if max_vis > 0 else 0
-                # A: если ВСЕ районы плохие — показываем все, иначе только выбросы
                 show_all = max_vis < 5000
 
                 for d in districts:
@@ -720,7 +705,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                     else:
                         vis_lines.append(f"• {name}: {int(v)} м 🌫️")
 
-        # --- Облачность по районам (разброс ≥ 30 п.п.) ---
         cloud_lines = []
         cloud_values = [d.get("cloud_cover") for d in districts if d.get("cloud_cover") is not None]
         if cloud_values:
@@ -748,7 +732,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ☀️" if c_int < 30 else (" ☁️" if c_int >= 60 else "")
                         cloud_lines.append(f"• {name}: {c_int}% — {label}{marker}")
 
-        # --- Ветер по районам (где-то ≥ 9 или разброс ≥ 4) ---
         wind_lines = []
         wind_values = [d.get("wind_speed") for d in districts if d.get("wind_speed") is not None]
         if wind_values:
@@ -774,7 +757,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                         marker = " ⚠️" if ws >= 9 else ""
                         wind_lines.append(f"• {name}: {ws} м/с{dir_str}{marker}")
 
-        # --- Сборка ---
         f2_parts = []
         if precip_lines:
             f2_parts.append("🌧️ <b>ОСАДКИ ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(precip_lines)))
@@ -846,40 +828,17 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 period_verdict = "ДОРОГА ЧИСТАЯ — ГАЗУЙ"
 
         period_risks = period_risk["risks"][:4]
-
-        rain_line = ""
-        if period_rain_prob and period_rain_prob >= 30:
-            if period_rain_prob >= 95:
-                rain_line = f"🌧️ Дождь идёт: {period_rain_prob}{NBSP}%"
-            elif period_rain_prob >= 80:
-                rain_line = f"☔️ Дождь почти наверняка: {period_rain_prob}{NBSP}%"
-            elif period_rain_prob >= 50:
-                rain_line = f"🌧️ Вероятен дождь: {period_rain_prob}{NBSP}%"
-            else:
-                rain_line = f"🌦️ Возможен дождь: {period_rain_prob}{NBSP}%"
-
-        if rain_line:
-            period_risks = filter_rain_risks(period_risks)
-
         period_risks_text = "\n".join(period_risks) if period_risks else ""
 
         period_bar = build_risk_bar(period_risk["score"])
         title_line = f"{next_period_title} ({next_period_range})" if next_period_range else next_period_title
 
-        shown_period = next_period
-        if avg_w.get("is_rain") and "· ясно" in shown_period:
-            shown_period = shown_period.replace("· ясно", "· дождь")
-        elif avg_w.get("is_drizzle") and "· ясно" in shown_period:
-            shown_period = shown_period.replace("· ясно", "· морось")
-
-        p_inner = [f"<b>{period_verdict}</b>", f"РИСК: {period_risk['score']}/10"]
         if period_bar:
-            p_inner.append(period_bar)
-        p_inner.append(shown_period)
-        if rain_line:
-            p_inner.append(rain_line)
+            p_inner = [f"<b>{period_verdict}</b>", f"РИСК: {period_bar} ({period_risk['score']}/10)"]
+        else:
+            p_inner = [f"<b>{period_verdict}</b>", f"РИСК: {period_risk['score']}/10"]
+
         if period_risks_text:
-            p_inner.append("<b>ЧТО НА ДОРОГЕ</b>")
             p_inner.append(period_risks_text)
 
         forecast_block = f"<code>【G】</code>{title_line}\n" + indent_multiline("\n".join(p_inner))
@@ -896,58 +855,19 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         fa = analyze_risks(f, is_forecast=True)
         fa_verdict = get_rider_verdict(fa["score"], now_dt.month, is_tomorrow=True)
-        cond_low = shorten_cond(f.get("condition_text", ""))
-        emoji_short = f.get("condition_emoji", "")
 
         tomorrow_risks = fa["risks"][:4]
-
-        tomorrow_line = (
-            f"{f['temp_min']}–{f['temp_max']}{NBSP}°C · "
-            f"{f['wind_speed']}{NBSP}м/с"
-        )
-        if f.get("wind_gust"):
-            tomorrow_line += f" (до {f['wind_gust']}{NBSP}м/с)"
-        if f.get("rain_prob") and f["rain_prob"] > 30:
-            tomorrow_line += f" · дождь {f['rain_prob']}{NBSP}%"
-        else:
-            tomorrow_line += f" · {cond_low} {emoji_short}".rstrip()
-            rain_keywords = ("дождь", "морось", "ливень", "снег", "гроза", "град")
-            cond_has_precip = any(kw in cond_low.lower() for kw in rain_keywords)
-            rain_sum_t = f.get("rain_sum") or 0
-            if rain_sum_t < 0.3 and not cond_has_precip:
-                tomorrow_line += " · без осадков"
-
-        rain_line_tomorrow = ""
-        if f.get("rain_prob") and f["rain_prob"] >= 30:
-            rp = f["rain_prob"]
-            rain_sum = f.get("rain_sum") or 0
-            if rp >= 95:
-                rain_line_tomorrow = f"🌧️ Дождь идёт: {rp}{NBSP}%"
-            elif rp >= 80:
-                rain_line_tomorrow = f"☔️ Дождь почти наверняка: {rp}{NBSP}%"
-            elif rp >= 50:
-                rain_line_tomorrow = f"🌧️ Вероятен дождь: {rp}{NBSP}%"
-            else:
-                rain_line_tomorrow = f"🌦️ Возможен дождь: {rp}{NBSP}%"
-            if rain_sum > 0:
-                rain_line_tomorrow += f" · {rain_sum}{NBSP}мм"
-
-        if rain_line_tomorrow:
-            tomorrow_risks = filter_rain_risks(tomorrow_risks)
-
         tomorrow_risks_text = "\n".join(tomorrow_risks) if tomorrow_risks else ""
 
         tomorrow_bar = build_risk_bar(fa["score"])
         title_t = f"ЗАВТРА ({f.get('day_range', '')})" if f.get("day_range") else "ЗАВТРА"
 
-        t_inner = [f"<b>{fa_verdict}</b>", f"РИСК: {fa['score']}/10"]
         if tomorrow_bar:
-            t_inner.append(tomorrow_bar)
-        t_inner.append(tomorrow_line)
-        if rain_line_tomorrow:
-            t_inner.append(rain_line_tomorrow)
+            t_inner = [f"<b>{fa_verdict}</b>", f"РИСК: {tomorrow_bar} ({fa['score']}/10)"]
+        else:
+            t_inner = [f"<b>{fa_verdict}</b>", f"РИСК: {fa['score']}/10"]
+
         if tomorrow_risks_text:
-            t_inner.append("<b>ЧТО НА ДОРОГЕ</b>")
             t_inner.append(tomorrow_risks_text)
 
         tomorrow_block = f"<code>【H】</code>📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
@@ -974,13 +894,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ─── НАЧАЛО BLOCK_J — Подпись ──────────────────────────────
     # ═══════════════════════════════════════════════════════════
     j_lines = [
-        "🏍️ <i>Газ до отсечки — только если мозг в черепе.</i>",
-        f"— @Aleksandr_K8V · <i>v{BOT_VERSION}</i>",
+        f"Версия бота — {BOT_VERSION}",
+        f"«Газ до отсечки — только если мозг в черепе», — @Aleksandr_K8V.",
     ]
     if is_morning:
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
-    block_j = "<code>【J】</code>" + indent_multiline("\n".join(j_lines))
+    block_j = "<code>【J】</code>" + "\n".join(j_lines)
     # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -988,12 +908,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     msg = f"""{block_a}
 
-—————
 {block_b}
 
-{block_c}
-
-—————
 {block_f}"""
 
     if districts_block:
@@ -1003,30 +919,25 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     msg += f"""
 
-—————
 {block_de}"""
 
     if forecast_block:
         msg += f"""
 
-—————
 {forecast_block}"""
 
     if tomorrow_block:
         msg += f"""
 
-—————
 {tomorrow_block}"""
 
     if block_i:
         msg += f"""
 
-—————
 {block_i}"""
 
     msg += f"""
 
-—————
 {block_j}"""
 
     return msg
@@ -1470,9 +1381,6 @@ def callback(call):
             kb = get_about_keyboard(is_subscribed=is_subscribed(chat_id), is_updater=False)
             send_or_edit(chat_id, UPDATES_OFF_TEXT, kb)
 
-        # ═══════════════════════════════════════════════════════════
-        # ─── НАЧАЛО CALLBACK_BASE_EQUIP ────────────────────────────
-        # ═══════════════════════════════════════════════════════════
         elif call.data == "base_equip":
             bot.answer_callback_query(call.id, "📚 База", cache_time=3)
             send_or_edit(
@@ -1480,11 +1388,7 @@ def callback(call):
                 BASE_EQUIPMENT_TEXT,
                 get_base_back_keyboard()
             )
-        # ─── КОНЕЦ CALLBACK_BASE_EQUIP ─────────────────────────────
 
-        # ═══════════════════════════════════════════════════════════
-        # ─── НАЧАЛО CALLBACK_FEEDBACK ──────────────────────────────
-        # ═══════════════════════════════════════════════════════════
         elif call.data == "feedback_start":
             can, remaining = fb.check_antispam(chat_id)
             if not can:
@@ -1629,7 +1533,6 @@ def callback(call):
                 "❌ Отменено. Если что-то ещё — жми «🔄 ОБНОВИТЬ ПРОГНОЗ».",
                 get_after_weather_keyboard(is_subscribed(chat_id))
             )
-        # ─── КОНЕЦ CALLBACK_FEEDBACK ───────────────────────────────
 
         else:
             bot.answer_callback_query(call.id, "❓", cache_time=3)
