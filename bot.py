@@ -407,9 +407,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     bar = build_risk_bar(score)
 
-    verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
-    if bar:
-        verdict_lines.append(bar)
+        if bar:
+        verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {bar} ({score}/10)"]
+    else:
+        verdict_lines = [f"СЕЙЧАС <b>{verdict}!</b>", f"РИСК: {score}/10"]
     block_b = "<code>【B】</code>" + f"\n{INDENT}".join(verdict_lines)
     # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
 
@@ -428,18 +429,37 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     gust_now = avg_w.get("wind_gust") or 0
     temp_now = avg_w.get("temp") or m.get("temp") or 0
     is_rain_now = avg_w.get("is_rain", False) or m.get("is_rain", False)
+    humidity_now_r = avg_w.get("humidity") or m.get("humidity") or 0
+    dew_now_r = avg_w.get("dew_point")
+    clouds_now_r = avg_w.get("clouds_pct") or 0
+    asphalt_now_r = asphalt_temp_early or 0
+    night_now_r = w.get("is_night", False)
 
-    if is_rain_now:
-        research_lines.append("📚 JAF: на мокром асфальте радиус поворота ×2 при 80 км/ч")
+    # Дождь или мокрая дорога
+    is_wet = is_rain_now or (dew_now_r is not None and temp_now - dew_now_r <= 1 and humidity_now_r >= 90)
 
+    if is_wet:
+        research_lines.append("📚 JAF: на мокром асфальте тормозной путь ×2")
+
+    # Туман
     if vis_now < 1000:
         research_lines.append("📚 Корейское иссл.: в туман смертность мотоциклистов ×8")
 
+    # Ветер
     if gust_now >= 12:
         research_lines.append("📚 Tokyo Bay Aqua-Line: 15 м/с — ограничение, 20 м/с — закрытие")
 
-    if temp_now < 7:
-        research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +7 °C")
+    # Холодный асфальт (вместо «холод < 7°C»)
+    if asphalt_now_r and asphalt_now_r < 15:
+        research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +15 °C")
+
+    # Ночь
+    if night_now_r:
+        research_lines.append("📚 IIHS: ночью риск мотоаварий ×3")
+
+    # Пасмурно 95%+
+    if clouds_now_r >= 95:
+        research_lines.append("📚 NHTSA: в пасмурную погоду тебя хуже видят")
 
     if research_lines:
         block_c += "\n\n" + indent_multiline("\n".join(research_lines))
@@ -592,30 +612,20 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     metar_priority = metar_cloud in ("Ясно", "Малооблачно", "Облачно с прояснениями")
 
-    if metar_priority:
-        label_map = {
-            "Ясно": "ясно",
-            "Малооблачно": "малооблачно",
-            "Облачно с прояснениями": "переменно",
-        }
-        label_lower = label_map.get(metar_cloud, "—")
-        if cloud_vals:
-            avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
-            if avg_cloud <= 5:
-                weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR)")
-            else:
-                weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR, спутники: {avg_cloud}{NBSP}%)")
-        else:
-            weather_lines.append(f"🌥️ Облачность: {label_lower} (METAR)")
-    elif cloud_vals:
+    if cloud_vals:
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0)
         cloud_label = classify_clouds(avg_cloud, metar_cloud)
-        weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
+
+        # Приоритет спутники, METAR — в скобках (аэропорт)
+        if metar_cloud and metar_cloud != cloud_label:
+            metar_low = metar_cloud.lower()
+            weather_lines.append(f"🌥️ Облачность: {cloud_label} (спутники: {avg_cloud}{NBSP}%, в аэропорту: {metar_low})")
+        else:
+            weather_lines.append(f"🌥️ Облачность: {cloud_label} ({avg_cloud}{NBSP}%)")
     elif metar_cloud:
         weather_lines.append(f"🌥️ Облачность: {metar_cloud}")
     else:
         weather_lines.append("🌥️ Облачность: —")
-
     # --- Осадки ---
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
