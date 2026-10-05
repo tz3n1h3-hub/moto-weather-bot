@@ -426,7 +426,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     is_rain_now = avg_w.get("is_rain", False) or m.get("is_rain", False)
     humidity_now_r = avg_w.get("humidity") or m.get("humidity") or 0
     dew_now_r = avg_w.get("dew_point")
-    clouds_now_r = avg_w.get("clouds_pct") or 0
     asphalt_now_r = asphalt_temp_early or 0
     night_now_r = w.get("is_night", False)
 
@@ -446,10 +445,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     if night_now_r:
         research_lines.append("📚 IIHS: ночью риск мотоаварий ×3")
-
-    if clouds_now_r >= 95:
-        research_lines.append("📚 NHTSA: в пасмурную погоду тебя хуже видят")
-
+   
     block_b = "<code>【B】</code>" + f"\n{INDENT}".join(b_lines)
 
     if research_lines:
