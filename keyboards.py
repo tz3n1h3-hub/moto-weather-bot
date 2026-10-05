@@ -19,11 +19,13 @@ def get_main_keyboard():
 def get_after_weather_keyboard(is_subscribed=False):
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🔄 ОБНОВИТЬ ПРОГНОЗ", callback_data="weather")
+        InlineKeyboardButton("🔄 Обновить прогноз", callback_data="weather")
     )
     markup.row(
-        InlineKeyboardButton("📚 Что такое База?", callback_data="base_equip"),
-        InlineKeyboardButton("❗️ ЧТО-ТО НЕ ТАК?", callback_data="feedback_start")
+        InlineKeyboardButton("📡 Радар осадков", url="https://www.meteoblue.com/ru/region/%D0%BF%D0%BE%D0%B3%D0%BE%D0%B4%D0%B0/radar/%D0%9C%D0%B8%D0%BD%D1%81%D0%BA_%D0%91%D0%B5%D0%BB%D0%B0%D1%80%D1%83%D1%81%D1%8C_625143")
+    )
+    markup.row(
+        InlineKeyboardButton("📚 База для райдера", callback_data="base_equip")
     )
     markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
@@ -34,11 +36,13 @@ def get_after_weather_keyboard(is_subscribed=False):
 def get_morning_keyboard():
     markup = InlineKeyboardMarkup()
     markup.row(
-        InlineKeyboardButton("🔄 ОБНОВИТЬ ПРОГНОЗ", callback_data="weather")
+        InlineKeyboardButton("🔄 Обновить прогноз", callback_data="weather")
     )
     markup.row(
-        InlineKeyboardButton("📚 Что такое База?", callback_data="base_equip"),
-        InlineKeyboardButton("❗️ ЧТО-ТО НЕ ТАК?", callback_data="feedback_start")
+        InlineKeyboardButton("📡 Радар осадков", url="https://www.meteoblue.com/ru/region/%D0%BF%D0%BE%D0%B3%D0%BE%D0%B4%D0%B0/radar/%D0%9C%D0%B8%D0%BD%D1%81%D0%BA_%D0%91%D0%B5%D0%BB%D0%B0%D1%80%D1%83%D1%81%D1%8C_625143")
+    )
+    markup.row(
+        InlineKeyboardButton("📚 База для райдера", callback_data="base_equip")
     )
     markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
