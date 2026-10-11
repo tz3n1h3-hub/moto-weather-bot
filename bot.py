@@ -32,12 +32,12 @@ from analyzer import (
 from keyboards import (
     get_main_keyboard, get_after_weather_keyboard, get_morning_keyboard,
     get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard,
-    get_base_back_keyboard,
+    get_base_back_keyboard, get_links_back_keyboard,
     get_feedback_blocks_keyboard, get_feedback_params_keyboard,
     get_feedback_direction_keyboard, get_feedback_skip_keyboard,
     get_feedback_cancel_keyboard,
 )
-from knowledge import BASE_EQUIPMENT_TEXT
+from knowledge import BASE_EQUIPMENT_TEXT, LINKS_TEXT
 from texts import (
     START_TEXT, SUBSCRIBE_TEXT, SUBSCRIBE_CONFIRMED, SUBSCRIBE_CANCELED,
     UNSUBSCRIBE_PROMPT, UNSUBSCRIBED, UNSUBSCRIBE_CANCELED, ALREADY_SUBSCRIBED,
@@ -1429,7 +1429,13 @@ def callback(call):
                 BASE_EQUIPMENT_TEXT,
                 get_base_back_keyboard()
             )
-
+        elif call.data == "links":
+            bot.answer_callback_query(call.id, "🔗 Ссылки", cache_time=3)
+            send_or_edit(
+                chat_id,
+                LINKS_TEXT,
+                get_links_back_keyboard()
+            )
         elif call.data == "feedback_start":
             can, remaining = fb.check_antispam(chat_id)
             if not can:
