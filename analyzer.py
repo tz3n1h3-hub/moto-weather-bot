@@ -112,15 +112,15 @@ def analyze_risks(weather, is_forecast=False):
         risks.append("⚡ ГРОЗА! Категорически запрещено")
         score += 5
         recommendations.append("🚫 НЕМЕДЛЕННО остановитесь, найдите укрытие (30 м от мото)")
-    elif rain_total > 5:
+    elif rain_total > 3:
         rain_str = f"{rain_total:.1f}".replace(".", ",")
         risks.append(f"🌧️ СИЛЬНЫЙ ДОЖДЬ ({rain_str} мм)")
         score += 4
         recommendations.append("🐢 Увеличьте дистанцию, снизьте скорость")
-    elif rain_total > 1:
+    elif rain_total > 0.5:
         rain_str = f"{rain_total:.1f}".replace(".", ",")
         risks.append(f"🌧️ Дождь ({rain_str} мм)")
-        score += 2
+        score += 3
         recommendations.append("🐢 Увеличьте дистанцию, избегайте резких манёвров")
     elif is_rain:
         risks.append("🌧️ Дождь — дорога скользкая")
@@ -151,24 +151,34 @@ def analyze_risks(weather, is_forecast=False):
         score += 1
         recommendations.append("☔ Возьми дождевик")
     # ─── КОНЕЦ RISK_RAIN ───────────────────────────────────
-
+    
+    # ─── RISK_RAIN_VIS_SYNERGY ─────────────────────────────
+    if (is_rain or is_drizzle or rain_total > 0.5) and visibility < 3000:
+        risks.append("🌧️🌫️ Дождь + низкая видимость — визор заливает, фары в отражении")
+        score += 2
+        recommendations.append("🚫 Не выезжай без крайней необходимости")
+    # ─── КОНЕЦ RISK_RAIN_VIS_SYNERGY ───────────────────────
+    
     # ─── RISK_VISIBILITY ───────────────────────────────────
     big_spread = weather.get("visibility_big_spread", False)
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
+    vis_source = weather.get("visibility_source_worst", "")
 
     def _vis_str(v):
-        """Формат видимости — единый с 【F】: км при >= 1000, иначе метры."""
         if v is None:
             return "—"
         if v >= 1000:
             return f"{math_round(v / 1000, 0)} км"
         return f"{int(v)} м"
 
-    if big_spread and vis_min < 1000 and vis_max > 5000:
+    if big_spread and vis_min < 2000 and vis_max > 5000:
         km_max = math_round(vis_max / 1000, 0) if vis_max >= 1000 else 0
-        risks.append(f"🌫️ Туман в аэропорту ({int(vis_min)} м), в городе — {km_max} км")
-        score += 2
+        if vis_source == "METAR":
+            risks.append(f"⚠️ В аэропорту туман ({int(vis_min)} м), в городе до {km_max} км")
+        else:
+            risks.append(f"⚠️ Туман в одном районе ({_vis_str(vis_min)}), в других до {km_max} км")
+        score += 1
         recommendations.append("💡 Возможна дымка — включите противотуманки")
         visibility_alerted = True
     elif vis_min < 500:
@@ -201,7 +211,7 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("🌫️ Противотуманки, дистанцию ×2, визор протирай")
         visibility_alerted = True
     # ─── КОНЕЦ RISK_VISIBILITY ─────────────────────────────
-
+    
     # ─── RISK_HUMIDITY ─────────────────────────────────────
     rain_or_drizzle = is_rain or is_drizzle
 
