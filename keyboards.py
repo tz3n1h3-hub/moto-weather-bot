@@ -127,15 +127,23 @@ def get_base_back_keyboard():
 # ═══════════════════════════════════════════════════════════
 # ─── НАЧАЛО KB_LINKS ───────────────────────────────────────
 # ═══════════════════════════════════════════════════════════
-def get_links_back_keyboard():
-    """Кнопка возврата к прогнозу из окна Полезные ссылки."""
+def get_links_keyboard(links_data):
+    """Клавиатура для окна Полезные ссылки.
+    
+    links_data — словарь из config.LINKS_DATA.
+    Каждая ссылка → URL-кнопка в столбик.
+    Внизу — «◀️ К прогнозу».
+    """
     markup = InlineKeyboardMarkup()
+    for key, item in links_data.items():
+        markup.row(
+            InlineKeyboardButton(item["label"], url=item["url"])
+        )
     markup.row(
         InlineKeyboardButton("◀️ К прогнозу", callback_data="weather")
     )
     return markup
 # ─── КОНЕЦ KB_LINKS ────────────────────────────────────────
-
 
 # ═══════════════════════════════════════════════════════════
 # ─── НАЧАЛО KB_FEEDBACK ────────────────────────────────────
