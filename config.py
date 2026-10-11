@@ -125,3 +125,12 @@ if OPEN_METEO_PROXY_URL:
     print(f"ℹ️ OM URL: {OPEN_METEO_URL}", flush=True)
 if MINSK_POINTS_ENABLED:
     print(f"ℹ️ Многоточечный OM: {len(MINSK_POINTS)} точек Минска", flush=True)
+
+# ============ РЕЕСТР ПОЛЕЗНЫХ ССЫЛОК ============
+LINKS_DATA = {
+    "minsk_scr250": {
+        "url": "https://t.me/minsk_scr250",
+        "label": "🏍️ Minsk Scrambler",
+        "description": "Крупный канал владельцев Minsk SCR и родственных моделей (Avantis City, Fuego Scrambler, Geon Scrambler, Regulmoto Fargo). Ремонт, запчасти, FAQ и другое!",
+    },
+}
