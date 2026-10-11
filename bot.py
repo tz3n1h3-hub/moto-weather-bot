@@ -547,7 +547,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         if big_spread_districts:
             shown_vis = worst_vis
-            suffix = f" ({worst_name} — хуже всего)"
+            # "хуже всего" только если один район с минимумом
+            min_count = sum(1 for _, v in district_vis_values if v == worst_vis)
+            if min_count == 1:
+                suffix = f" ({worst_name} — хуже всего)"
+            else:
+                suffix = ""
         else:
             if src_min_vis is not None:
                 shown_vis = src_min_vis
@@ -968,6 +973,12 @@ def run_morning_broadcast(force=False):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
+        # Согласование видимости: если есть данные по районам — берём минимум
+        districts_vis = w.get("precipitation_by_districts", [])
+        vis_from_districts = [d.get("visibility") for d in districts_vis if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000]
+        if vis_from_districts:
+            avg_w["visibility"] = min(vis_from_districts)
+
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
@@ -1110,6 +1121,11 @@ def send_weather(chat_id):
             return "error"
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
+
+        districts_vis = w.get("precipitation_by_districts", [])
+        vis_from_districts = [d.get("visibility") for d in districts_vis if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000]
+        if vis_from_districts:
+            avg_w["visibility"] = min(vis_from_districts)
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
