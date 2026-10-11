@@ -531,8 +531,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     metar_vis = m.get("visibility") if m.get("visibility") is not None and 0 < m.get("visibility") <= 20000 else None
 
-    vis_vals_src = [v for v in gather("visibility", src_map) if v is not None and 0 < v <= 20000]
-    src_min_vis = min(vis_vals_src) if vis_vals_src else None
+    # Видимость: приоритет — минимум по районам (как в 【B】)
+    if district_vis_values:
+        src_min_vis = min(v for _, v in district_vis_values)
+    else:
+        vis_vals_src = [v for v in gather("visibility", src_map) if v is not None and 0 < v <= 20000]
+        src_min_vis = min(vis_vals_src) if vis_vals_src else None
 
     shown_vis = None
     suffix = ""
@@ -547,8 +551,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         if big_spread_districts:
             shown_vis = worst_vis
-            # "хуже всего" только если один район с минимумом
-            min_count = sum(1 for _, v in district_vis_values if v == worst_vis)
+            # "хуже всего" только если один район с минимумом (с округлением до км)
+            worst_vis_km = math_round(worst_vis / 1000, 0) if worst_vis >= 1000 else None
+            if worst_vis_km is not None:
+                min_count = sum(
+                    1 for _, v in district_vis_values
+                    if v >= 1000 and math_round(v / 1000, 0) == worst_vis_km
+                )
+            else:
+                min_count = sum(1 for _, v in district_vis_values if v == worst_vis)
             if min_count == 1:
                 suffix = f" ({worst_name} — хуже всего)"
             else:
