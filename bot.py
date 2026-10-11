@@ -1141,20 +1141,12 @@ def send_weather(chat_id):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
-        # Согласование видимости: если есть данные по районам — берём минимум
+        # Согласование видимости: приоритет — минимум по районам
         districts_vis = w.get("precipitation_by_districts", [])
-        print(f"🔍 districts_vis: len={len(districts_vis)}", flush=True)
-        for d in districts_vis:
-            print(f"   • {d.get('name', '?')}: visibility={d.get('visibility')}", flush=True)
-
         vis_from_districts = [
             d.get("visibility") for d in districts_vis
             if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000
         ]
-        print(f"🔍 vis_from_districts: {vis_from_districts}", flush=True)
-        print(f"🔍 avg_w['visibility'] до: {avg_w.get('visibility')}", flush=True)
-        print(f"🔍 avg_w['visibility_min'] до: {avg_w.get('visibility_min')}", flush=True)
-
         if vis_from_districts:
             min_v = min(vis_from_districts)
             max_v = max(vis_from_districts)
@@ -1163,11 +1155,7 @@ def send_weather(chat_id):
             avg_w["visibility_max"] = max_v
             avg_w["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
 
-        print(f"🔍 avg_w['visibility'] после: {avg_w.get('visibility')}", flush=True)
-        print(f"🔍 avg_w['visibility_min'] после: {avg_w.get('visibility_min')}", flush=True)
-
         a_city = analyze_risks(avg_w)
-        print(f"🔍 score={a_city['score']}, risks={a_city['risks']}", flush=True)
 
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
