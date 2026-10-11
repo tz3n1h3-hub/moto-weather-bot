@@ -17,7 +17,7 @@ from config import (
     USERS_FILE, SUBSCRIBERS_FILE, UPDATERS_FILE, ADMIN_ID, MINSK_TZ,
     UPSTASH_URL, UPSTASH_TOKEN, OWM_API_KEY,
     BOT_VERSION, BOT_VERSION_DATE, BOT_VERSION_NOTIFY, BOT_CHANGELOG,
-    MINSK_POINTS_ENABLED,
+    MINSK_POINTS_ENABLED, LINKS_DATA,
 )
 from weather import (
     get_weather, get_forecast_tomorrow,
@@ -32,7 +32,7 @@ from analyzer import (
 from keyboards import (
     get_main_keyboard, get_after_weather_keyboard, get_morning_keyboard,
     get_about_keyboard, get_subscribe_keyboard, get_unsubscribe_keyboard,
-    get_base_back_keyboard, get_links_back_keyboard,
+    get_base_back_keyboard, get_links_keyboard,
     get_feedback_blocks_keyboard, get_feedback_params_keyboard,
     get_feedback_direction_keyboard, get_feedback_skip_keyboard,
     get_feedback_cancel_keyboard,
@@ -982,19 +982,40 @@ def run_morning_broadcast(force=False):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
-        # Согласование видимости: если есть данные по районам — берём минимум
+# Согласование видимости: если есть данные по районам — берём минимум
         districts_vis = w.get("precipitation_by_districts", [])
         vis_from_districts = [
             d.get("visibility") for d in districts_vis
             if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000
         ]
+        metar_vis = None
+        if w.get("m"):
+            mv = w["m"].get("visibility")
+            if mv is not None and 0 < mv <= 20000:
+                metar_vis = mv
+
         if vis_from_districts:
-            min_v = min(vis_from_districts)
-            max_v = max(vis_from_districts)
-            avg_w["visibility"] = min_v
-            avg_w["visibility_min"] = min_v
-            avg_w["visibility_max"] = max_v
-            avg_w["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
+            min_city = min(vis_from_districts)
+            max_city = max(vis_from_districts)
+            if metar_vis is not None and metar_vis < min_city:
+                ratio = min_city / metar_vis if metar_vis > 0 else 999
+                if ratio <= 2.0:
+                    avg_w["visibility"] = metar_vis
+                    avg_w["visibility_min"] = metar_vis
+                    avg_w["visibility_max"] = max_city
+                    avg_w["visibility_source_worst"] = "METAR"
+                else:
+                    avg_w["visibility"] = min_city
+                    avg_w["visibility_min"] = metar_vis
+                    avg_w["visibility_max"] = max_city
+                    avg_w["visibility_source_worst"] = "METAR"
+                avg_w["visibility_big_spread"] = (max_city / metar_vis >= 2.0) if metar_vis > 0 else False
+            else:
+                avg_w["visibility"] = min_city
+                avg_w["visibility_min"] = min_city
+                avg_w["visibility_max"] = max_city
+                avg_w["visibility_source_worst"] = "районы"
+                avg_w["visibility_big_spread"] = (max_city / min_city >= 2.0) if min_city > 0 else False
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
@@ -1139,19 +1160,40 @@ def send_weather(chat_id):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
-        # Согласование видимости: приоритет — минимум по районам
+# Согласование видимости: Минск — приоритет, METAR — сигнал
         districts_vis = w.get("precipitation_by_districts", [])
         vis_from_districts = [
             d.get("visibility") for d in districts_vis
             if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000
         ]
+        metar_vis = None
+        if w.get("m"):
+            mv = w["m"].get("visibility")
+            if mv is not None and 0 < mv <= 20000:
+                metar_vis = mv
+
         if vis_from_districts:
-            min_v = min(vis_from_districts)
-            max_v = max(vis_from_districts)
-            avg_w["visibility"] = min_v
-            avg_w["visibility_min"] = min_v
-            avg_w["visibility_max"] = max_v
-            avg_w["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
+            min_city = min(vis_from_districts)
+            max_city = max(vis_from_districts)
+            if metar_vis is not None and metar_vis < min_city:
+                ratio = min_city / metar_vis if metar_vis > 0 else 999
+                if ratio <= 2.0:
+                    avg_w["visibility"] = metar_vis
+                    avg_w["visibility_min"] = metar_vis
+                    avg_w["visibility_max"] = max_city
+                    avg_w["visibility_source_worst"] = "METAR"
+                else:
+                    avg_w["visibility"] = min_city
+                    avg_w["visibility_min"] = metar_vis
+                    avg_w["visibility_max"] = max_city
+                    avg_w["visibility_source_worst"] = "METAR"
+                avg_w["visibility_big_spread"] = (max_city / metar_vis >= 2.0) if metar_vis > 0 else False
+            else:
+                avg_w["visibility"] = min_city
+                avg_w["visibility_min"] = min_city
+                avg_w["visibility_max"] = max_city
+                avg_w["visibility_source_worst"] = "районы"
+                avg_w["visibility_big_spread"] = (max_city / min_city >= 2.0) if min_city > 0 else False
 
         a_city = analyze_risks(avg_w)
 
@@ -1432,7 +1474,7 @@ def callback(call):
             send_or_edit(
                 chat_id,
                 LINKS_TEXT,
-                get_links_back_keyboard()
+                get_links_keyboard(LINKS_DATA)
             )
         elif call.data == "feedback_start":
             can, remaining = fb.check_antispam(chat_id)
