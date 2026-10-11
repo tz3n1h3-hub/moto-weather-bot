@@ -375,7 +375,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     # ═══════════════════════════════════════════════════════════
     # ─── НАЧАЛО BLOCK_A — Шапка ────────────────────────────────
     # ═══════════════════════════════════════════════════════════
-    block_a = f"""<code>【A】</code>{header_icon} <b>MOTOWEATHER · МИНСК</b>
+    block_a = f"""{header_icon} <b>MOTOWEATHER · МИНСК</b>
 {INDENT}{weekday} · {date_str} · {time_str}"""
     # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────────
 
@@ -445,8 +445,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     if night_now_r:
         research_lines.append("📚 IIHS: ночью риск мотоаварий ×3")
-   
-    block_b = "<code>【B】</code>" + f"\n{INDENT}".join(b_lines)
+
+    block_b = "\n".join(b_lines)
 
     if research_lines:
         block_b += "\n\n" + indent_multiline("\n".join(research_lines))
@@ -483,7 +483,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     for p in tech_parts:
         de_items.append(f"+ {p}")
 
-    block_de = f"""<code>【D/E】</code>✈️ <b>ПРЕДПОЛЁТНАЯ</b>
+    block_de = f"""✈️ <b>ПРЕДПОЛЁТНАЯ</b>
 {indent_multiline(chr(10).join(de_items))}"""
     # ─── КОНЕЦ BLOCK_D_E ────────────────────────────────────────
 
@@ -531,7 +531,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     metar_vis = m.get("visibility") if m.get("visibility") is not None and 0 < m.get("visibility") <= 20000 else None
 
-    # Видимость: приоритет — минимум по районам (как в 【B】)
     if district_vis_values:
         src_min_vis = min(v for _, v in district_vis_values)
     else:
@@ -551,7 +550,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         if big_spread_districts:
             shown_vis = worst_vis
-            # "хуже всего" только если один район с минимумом (с округлением до км)
             worst_vis_km = math_round(worst_vis / 1000, 0) if worst_vis >= 1000 else None
             if worst_vis_km is not None:
                 min_count = sum(
@@ -669,7 +667,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         weather_lines.append(f"☀️ UV-индекс: {uv}{NBSP}({lvl}) — {advice}")
 
     weather_block = "\n".join(weather_lines)
-    block_f = f"""<code>【F】</code>🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
+    block_f = f"""🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
 {indent_multiline(weather_block)}"""
     # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
 
@@ -780,7 +778,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             f2_parts.append("💨 <b>ВЕТЕР ПО РАЙОНАМ (OM-модель):</b>\n" + indent_multiline("\n".join(wind_lines)))
 
         if f2_parts:
-            districts_block = "<code>【F2】</code>" + "\n".join(f2_parts)
+            districts_block = "\n".join(f2_parts)
     # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -853,7 +851,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if period_risks_text:
             p_inner.append(period_risks_text)
 
-        forecast_block = f"<code>【G】</code>{title_line}\n" + indent_multiline("\n".join(p_inner))
+        forecast_block = f"{title_line}\n" + indent_multiline("\n".join(p_inner))
     # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -882,7 +880,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if tomorrow_risks_text:
             t_inner.append(tomorrow_risks_text)
 
-        tomorrow_block = f"<code>【H】</code>📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
+        tomorrow_block = f"📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
     # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -899,7 +897,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             if vs:
                 spread_clean = vs.replace("📊 Разброс: ", "")
                 parts.append(f"Разброс: {spread_clean}")
-        block_i = "<code>【I】</code>" + " · ".join(parts)
+        block_i = " · ".join(parts)
     # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -912,7 +910,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
-    block_j = "<code>【J】</code>" + "\n".join(j_lines)
+    block_j = "\n".join(j_lines)
     # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────────
 
     # ═══════════════════════════════════════════════════════════
@@ -954,7 +952,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     return msg
     # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
-# ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
+    # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
