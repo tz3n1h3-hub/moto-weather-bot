@@ -1033,6 +1033,23 @@ def run_morning_broadcast(force=False):
     except Exception as e:
         print(f"❌ run_morning_broadcast: {type(e).__name__}: {e}", flush=True)
         return {"error": str(e), "date": today_str}
+
+
+def morning_broadcast_loop():
+    print("⏰ Поток утренней рассылки запущен", flush=True)
+    while True:
+        try:
+            now = datetime.now(MINSK_TZ)
+            today_str = now.strftime("%Y-%m-%d")
+
+            if now.hour == 7 and now.minute < 10:
+                if get_last_morning_date() != today_str:
+                    print(f"🌅 Утренняя рассылка ({today_str})", flush=True)
+                    run_morning_broadcast()
+        except Exception as e:
+            print(f"❌ Ошибка рассылки: {e}", flush=True)
+
+        time.sleep(60)
 # ─── КОНЕЦ MORNING_BROADCAST ───────────────────────────────
 
 
