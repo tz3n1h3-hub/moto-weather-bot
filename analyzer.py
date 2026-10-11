@@ -273,27 +273,27 @@ def analyze_risks(weather, is_forecast=False):
     # ─── КОНЕЦ RISK_FORECAST_CODE ──────────────────────────
 
     # ─── RISK_TEMP ─────────────────────────────────────────
-if is_forecast:
-    feels_like = weather.get("feels_like") or weather.get("temp_avg") or temp
-else:
-    feels_like = weather.get("feels_like", temp)
+    if is_forecast:
+        feels_like = weather.get("feels_like") or weather.get("temp_avg") or temp
+    else:
+        feels_like = weather.get("feels_like", temp)
 
-if feels_like < 0:
-    risks.append(f"❄️ Мороз (ощущается как {int(feels_like)} °C)")
-    score += 4
-    recommendations.append("🧊 Риск обледенения!")
-elif feels_like < 5:
-    risks.append(f"🥶 Очень холодно ({int(feels_like)} °C)")
-    score += 3
-    recommendations.append("🧥 Тёплая экипировка, подогрев")
-elif feels_like < 8:
-    risks.append(f"❄️ Холодно ({int(feels_like)} °C)")
-    score += 1
-    recommendations.append("🧥 Ветрозащита обязательна")
-elif feels_like > 35:
-    risks.append(f"🔥 Очень жарко ({int(feels_like)} °C)")
-    score += 2
-    recommendations.append("💧 Пейте воду")
+    if feels_like < 0:
+        risks.append(f"❄️ Мороз (ощущается как {int(feels_like)} °C)")
+        score += 4
+        recommendations.append("🧊 Риск обледенения!")
+    elif feels_like < 5:
+        risks.append(f"🥶 Очень холодно ({int(feels_like)} °C)")
+        score += 3
+        recommendations.append("🧥 Тёплая экипировка, подогрев")
+    elif feels_like < 8:
+        risks.append(f"❄️ Холодно ({int(feels_like)} °C)")
+        score += 1
+        recommendations.append("🧥 Ветрозащита обязательна")
+    elif feels_like > 35:
+        risks.append(f"🔥 Очень жарко ({int(feels_like)} °C)")
+        score += 2
+        recommendations.append("💧 Пейте воду")
     # ─── КОНЕЦ RISK_TEMP ───────────────────────────────────
 
     # ─── RISK_SOIL ─────────────────────────────────────────
