@@ -986,9 +986,17 @@ def run_morning_broadcast(force=False):
 
         # Согласование видимости: если есть данные по районам — берём минимум
         districts_vis = w.get("precipitation_by_districts", [])
-        vis_from_districts = [d.get("visibility") for d in districts_vis if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000]
+        vis_from_districts = [
+            d.get("visibility") for d in districts_vis
+            if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000
+        ]
         if vis_from_districts:
-            avg_w["visibility"] = min(vis_from_districts)
+            min_v = min(vis_from_districts)
+            max_v = max(vis_from_districts)
+            avg_w["visibility"] = min_v
+            avg_w["visibility_min"] = min_v
+            avg_w["visibility_max"] = max_v
+            avg_w["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
@@ -1025,23 +1033,6 @@ def run_morning_broadcast(force=False):
     except Exception as e:
         print(f"❌ run_morning_broadcast: {type(e).__name__}: {e}", flush=True)
         return {"error": str(e), "date": today_str}
-
-
-def morning_broadcast_loop():
-    print("⏰ Поток утренней рассылки запущен", flush=True)
-    while True:
-        try:
-            now = datetime.now(MINSK_TZ)
-            today_str = now.strftime("%Y-%m-%d")
-
-            if now.hour == 7 and now.minute < 10:
-                if get_last_morning_date() != today_str:
-                    print(f"🌅 Утренняя рассылка ({today_str})", flush=True)
-                    run_morning_broadcast()
-        except Exception as e:
-            print(f"❌ Ошибка рассылки: {e}", flush=True)
-
-        time.sleep(60)
 # ─── КОНЕЦ MORNING_BROADCAST ───────────────────────────────
 
 
@@ -1133,10 +1124,19 @@ def send_weather(chat_id):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
+        # Согласование видимости: если есть данные по районам — берём минимум
         districts_vis = w.get("precipitation_by_districts", [])
-        vis_from_districts = [d.get("visibility") for d in districts_vis if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000]
+        vis_from_districts = [
+            d.get("visibility") for d in districts_vis
+            if d.get("visibility") is not None and 0 < d.get("visibility") <= 20000
+        ]
         if vis_from_districts:
-            avg_w["visibility"] = min(vis_from_districts)
+            min_v = min(vis_from_districts)
+            max_v = max(vis_from_districts)
+            avg_w["visibility"] = min_v
+            avg_w["visibility_min"] = min_v
+            avg_w["visibility_max"] = max_v
+            avg_w["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
