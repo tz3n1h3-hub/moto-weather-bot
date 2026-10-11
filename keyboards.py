@@ -28,6 +28,9 @@ def get_after_weather_keyboard(is_subscribed=False):
         InlineKeyboardButton("📚 База для райдера", callback_data="base_equip")
     )
     markup.row(
+        InlineKeyboardButton("🔗 Полезные ссылки", callback_data="links")
+    )
+    markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
     )
     return markup
@@ -43,6 +46,9 @@ def get_morning_keyboard():
     )
     markup.row(
         InlineKeyboardButton("📚 База для райдера", callback_data="base_equip")
+    )
+    markup.row(
+        InlineKeyboardButton("🔗 Полезные ссылки", callback_data="links")
     )
     markup.row(
         InlineKeyboardButton("ℹ️ О проекте", callback_data="about")
@@ -116,6 +122,19 @@ def get_base_back_keyboard():
     )
     return markup
 # ─── КОНЕЦ KB_BASE_EQUIP ───────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО KB_LINKS ───────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+def get_links_back_keyboard():
+    """Кнопка возврата к прогнозу из окна Полезные ссылки."""
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("◀️ К прогнозу", callback_data="weather")
+    )
+    return markup
+# ─── КОНЕЦ KB_LINKS ────────────────────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
