@@ -179,7 +179,12 @@ def analyze_risks(weather, is_forecast=False):
         recommendations.append("💡 Включите противотуманки")
         visibility_alerted = True
     elif visibility < 5000 and humidity >= 90:
-        risks.append(f"🌫️ Дымка/туман возможен (видимость {int(visibility)} м)")
+        # Дымка — переформулировано (было "Дымка/туман возможен")
+        km = math_round(visibility / 1000, 1) if visibility >= 1000 else 0
+        if visibility >= 1000:
+            risks.append(f"🌫️ Дымка (видимость {km:.1f} км)".replace(".", ","))
+        else:
+            risks.append(f"🌫️ Дымка (видимость {int(visibility)} м)")
         score += 2
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
@@ -253,10 +258,12 @@ def analyze_risks(weather, is_forecast=False):
                 score += 3
                 recommendations.append("🌫️ Противотуманки, снизьте скорость")
         elif weather_code in (51, 53, 55, 56, 57):
-            if not any("морос" in r.lower() for r in risks):
-                risks.append("🌦️ Морось")
-                score += 1
-                recommendations.append("🐢 Скользко — увеличивайте дистанцию")
+            # Морось только если осадков мало (не дубль к "СИЛЬНЫЙ ДОЖДЬ")
+            if rain_total <= 1:
+                if not any("морос" in r.lower() for r in risks):
+                    risks.append("🌦️ Морось")
+                    score += 1
+                    recommendations.append("🐢 Скользко — увеличивайте дистанцию")
     # ─── КОНЕЦ RISK_FORECAST_CODE ──────────────────────────
 
     # ─── RISK_TEMP ─────────────────────────────────────────
