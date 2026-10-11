@@ -157,39 +157,45 @@ def analyze_risks(weather, is_forecast=False):
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
 
+    def _vis_str(v):
+        """Формат видимости — единый с 【F】: км при >= 1000, иначе метры."""
+        if v is None:
+            return "—"
+        if v >= 1000:
+            return f"{math_round(v / 1000, 0)} км"
+        return f"{int(v)} м"
+
     if big_spread and vis_min < 1000 and vis_max > 5000:
-        km_max = int(vis_max / 1000) if vis_max >= 1000 else 0
+        km_max = math_round(vis_max / 1000, 0) if vis_max >= 1000 else 0
         risks.append(f"🌫️ Туман в аэропорту ({int(vis_min)} м), в городе — {km_max} км")
         score += 2
         recommendations.append("💡 Возможна дымка — включите противотуманки")
         visibility_alerted = True
-    elif visibility < 500:
-        risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({int(visibility)} м)!")
+    elif vis_min < 500:
+        risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({int(vis_min)} м)!")
         score += 5
         recommendations.append("🚫 Остановитесь в безопасном месте")
         visibility_alerted = True
-    elif visibility < 1000:
-        risks.append(f"🌫️ ТУМАН ({int(visibility)} м)")
+    elif vis_min < 1000:
+        risks.append(f"🌫️ ТУМАН ({int(vis_min)} м)")
         score += 3
         recommendations.append("🌫️ Противотуманки, минимальная скорость")
         visibility_alerted = True
-    elif visibility < 2000:
-        risks.append(f"🌫️ Плохая видимость ({int(visibility)} м)")
+    elif vis_min < 2000:
+        risks.append(f"🌫️ Плохая видимость ({_vis_str(vis_min)})")
         score += 2
         recommendations.append("💡 Включите противотуманки")
         visibility_alerted = True
-    elif visibility < 5000 and humidity >= 90:
-        # Дымка — переформулировано (было "Дымка/туман возможен")
-        km = math_round(visibility / 1000, 1) if visibility >= 1000 else 0
-        if visibility >= 1000:
-            risks.append(f"🌫️ Дымка (видимость {km:.1f} км)".replace(".", ","))
+    elif vis_min < 5000 and humidity >= 90:
+        if vis_min >= 1000:
+            risks.append(f"🌫️ Дымка (видимость {_vis_str(vis_min)})")
         else:
-            risks.append(f"🌫️ Дымка (видимость {int(visibility)} м)")
+            risks.append(f"🌫️ Дымка (видимость {int(vis_min)} м)")
         score += 2
         recommendations.append("💡 Включите противотуманки, снизьте скорость")
         visibility_alerted = True
-    elif visibility < 7000 and humidity >= 90:
-        km = math_round(visibility / 1000, 0) if visibility >= 1000 else 1
+    elif vis_min < 7000 and humidity >= 90:
+        km = math_round(vis_min / 1000, 0) if vis_min >= 1000 else 1
         risks.append(f"🌫️ Дымка (видимость {int(km)} км)")
         score += 2
         recommendations.append("🌫️ Противотуманки, дистанцию ×2, визор протирай")
