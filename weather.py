@@ -519,6 +519,29 @@ def hpa_to_mmhg(hpa):
     if hpa is None:
         return None
     return math_round(hpa * 0.750062, 0)
+
+
+def calculate_qff(qfe_hpa, temp_c, station_height_m=204.0):
+    """
+    Пересчёт давления со станции (QFE) на уровень моря по методике QFF.
+    qfe_hpa: давление на станции (гПа), из METAR Q-кода
+    temp_c: температура воздуха (°C)
+    station_height_m: высота станции над уровнем моря (м), по умолчанию 204 м (UMMS)
+    """
+    if qfe_hpa is None or temp_c is None:
+        return None
+    try:
+        g = 9.80665
+        R = 287.05
+        a = 0.0065
+        T_k = temp_c + 273.15
+        Tm = T_k + (a * station_height_m / 2.0)
+        exponent = -(g * station_height_m) / (R * Tm)
+        qff = qfe_hpa / math.exp(exponent)
+        return math_round(qff, 0)
+    except Exception as e:
+        print(f"⚠️ QFF: {e}", flush=True)
+        return None
 # ─── КОНЕЦ CALCULATIONS ────────────────────────────────────
 
 
@@ -532,31 +555,20 @@ def parse_clouds(metar_text):
     has_few = "FEW" in metar_text
     has_cavok = any(x in metar_text for x in ["CAVOK", "NSC", "SKC", "CLR"])
 
-    # Ясно — если CAVOK/NSC/SKC/CLR
     if has_cavok and not has_ovc and not has_bkn and not has_sct and not has_few:
         return "🌤️", "Ясно"
-
-    # BKN + SCT вместе → Облачно с прояснениями (SCT = разрывы)
     if has_bkn and has_sct:
         return "⛅", "Облачно с прояснениями"
-
-    # Пасмурно — если OVC
     if has_ovc:
         return "☁️", "Пасмурно"
-
-    # Значительная облачность — если BKN (без SCT)
     if has_bkn:
         return "☁️", "Значительная облачность"
-
-    # Облачно с прояснениями — если SCT (без BKN)
     if has_sct:
         return "⛅", "Облачно с прояснениями"
-
-    # Малооблачно — если FEW
     if has_few:
         return "🌤️", "Малооблачно"
-
     return "⛅", "Облачно"
+
 
 def parse_visibility(metar_text):
     if "CAVOK" in metar_text or "9999" in metar_text:
@@ -566,10 +578,6 @@ def parse_visibility(metar_text):
 
 
 def parse_weather_phenomena(metar_text):
-    """
-    Возвращает: (emoji, text, is_rain, is_thunder, is_drizzle)
-    is_drizzle=True — если морось (DZ), НЕ считается полноценным дождём.
-    """
     if "TS" in metar_text:
         if "TSRA" in metar_text:
             return "⛈️", "Гроза с дождём", True, True, False
@@ -751,8 +759,14 @@ def get_metar_data():
 
         pressure = parse_pressure_hpa(metar_text)
         if pressure:
-            result["pressure_hpa"] = pressure
-            result["pressure_mmhg"] = hpa_to_mmhg(pressure)
+            result["pressure_qfe"] = pressure
+            qff = calculate_qff(pressure, result.get("temp"))
+            if qff:
+                result["pressure_hpa"] = qff
+                result["pressure_mmhg"] = hpa_to_mmhg(qff)
+            else:
+                result["pressure_hpa"] = pressure
+                result["pressure_mmhg"] = hpa_to_mmhg(pressure)
 
         trend = parse_trend(metar_text)
         if trend:
@@ -882,14 +896,6 @@ def get_open_meteo_data():
 # ─── НАЧАЛО MULTIPOINT ─────────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_precipitation_by_districts():
-    """
-    Запрашивает OM для 5 точек Минска.
-    Возвращает список: [{"name": "Центр", "short": "Ц", "precip_mm": 0,
-                         "rain_prob": 30, "weather_code": 0, "visibility": None,
-                         "cloud_cover": None, "wind_speed": None,
-                         "wind_direction": None, "temp": None}, ...]
-    Кэш в Redis 10 минут.
-    """
     global _om_multi_cache
     if not MINSK_POINTS_ENABLED:
         return []
@@ -1158,7 +1164,6 @@ def get_weather():
         except Exception as e:
             print(f"⚠️ rain_prob: {e}", flush=True)
 
-    # Взвешенное голосование по дождю
     weighted_votes = 0.0
     rain_sources = []
     is_drizzle_anywhere = False
@@ -1296,7 +1301,6 @@ def merge_weather_data(w):
         filtered = filter_outliers(vals)
         result[key] = math_round(avg(filtered), 0) if key != "precip_mm" else round(avg(filtered), 1)
 
-    # Видимость: минимум, но с проверкой разброса
     vis_vals = [v for v in gather("visibility") if v is not None and 0 < v <= 20000]
     if vis_vals:
         min_v = min(vis_vals)
@@ -1403,7 +1407,6 @@ def get_short_forecast():
         max_prob = max((probs[i] for i in target_indices if i < len(probs) and probs[i] is not None), default=None)
         sum_precip = sum(precs[i] for i in target_indices if i < len(precs) and precs[i] is not None)
 
-        # Средняя облачность по периоду
         cloud_vals = [clouds[i] for i in target_indices if i < len(clouds) and clouds[i] is not None]
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0) if cloud_vals else None
 
@@ -1421,7 +1424,6 @@ def get_short_forecast():
         title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
-        # Определяем cond с учётом облачности
         cond = "ясно"
         if max_prob and max_prob >= 50:
             cond = "дождь"
