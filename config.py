@@ -2,11 +2,12 @@ import os
 from datetime import timedelta, timezone
 
 # ─── НАЧАЛО CONFIG_VERSION ─────────────────────────────────
-BOT_VERSION = "1.9.53"
-BOT_VERSION_DATE = "2026-10-11"
-BOT_VERSION_NOTIFY = True
+BOT_VERSION = "1.9.54"
+BOT_VERSION_DATE = "2026-10-13"
+BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("1.9.54", "13.10.2026", "Давление QFF · METAR вне формулы видимости · средняя видимость по 5 районам · OWM-проверка · цитаты JAF/TAAS/IIHS · убран Tokyo Bay · фиксы дублей", False),
     ("1.9.53", "11.10.2026", "METAR как сигнал видимости · порог дождя 0.5 мм · синергия дождь+видимость · окно «Полезные ссылки»", True),
     ("1.9.52", "11.10.2026", "Кнопка «Полезные ссылки» (заглушка) · порог «Холодно» < 8 °C", False),
     ("1.9.51", "11.10.2026", "Фикс видимости: analyze_risks на visibility_min (из районов) · формат 【B】= 【F】", False),
