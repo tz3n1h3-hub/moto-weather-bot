@@ -163,7 +163,6 @@ def analyze_risks(weather, is_forecast=False):
     big_spread = weather.get("visibility_big_spread", False)
     vis_min = weather.get("visibility_min") or visibility
     vis_max = weather.get("visibility_max") or visibility
-    vis_source = weather.get("visibility_source_worst", "")
 
     def _vis_str(v):
         if v is None:
@@ -172,16 +171,7 @@ def analyze_risks(weather, is_forecast=False):
             return f"{math_round(v / 1000, 0)} км"
         return f"{int(v)} м"
 
-    if big_spread and vis_min < 2000 and vis_max > 5000:
-        km_max = math_round(vis_max / 1000, 0) if vis_max >= 1000 else 0
-        if vis_source == "METAR":
-            risks.append(f"⚠️ В аэропорту туман ({int(vis_min)} м), в городе до {km_max} км")
-        else:
-            risks.append(f"⚠️ Туман в одном районе ({_vis_str(vis_min)}), в других до {km_max} км")
-        score += 1
-        recommendations.append("💡 Возможна дымка — включите противотуманки")
-        visibility_alerted = True
-    elif vis_min < 500:
+    if vis_min < 500:
         risks.append(f"🌫️ КРИТИЧЕСКАЯ ВИДИМОСТЬ ({int(vis_min)} м)!")
         score += 5
         recommendations.append("🚫 Остановитесь в безопасном месте")
@@ -215,7 +205,7 @@ def analyze_risks(weather, is_forecast=False):
     # ─── RISK_HUMIDITY ─────────────────────────────────────
     rain_or_drizzle = is_rain or is_drizzle
 
-    if dew_point is not None and not rain_or_drizzle:
+    if dew_point is not None and not rain_or_drizzle and not visibility_alerted:
         diff = temp - dew_point
 
         if diff <= 1:
@@ -274,9 +264,9 @@ def analyze_risks(weather, is_forecast=False):
                 score += 3
                 recommendations.append("🌫️ Противотуманки, снизьте скорость")
         elif weather_code in (51, 53, 55, 56, 57):
-            # Морось только если осадков мало (не дубль к "СИЛЬНЫЙ ДОЖДЬ")
             if rain_total <= 1:
-                if not any("морос" in r.lower() for r in risks):
+                rain_keywords = ("дождь", "морос", "осадк", "ливн")
+                if not any(kw in r.lower() for r in risks for kw in rain_keywords):
                     risks.append("🌦️ Морось")
                     score += 1
                     recommendations.append("🐢 Скользко — увеличивайте дистанцию")
