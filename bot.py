@@ -372,16 +372,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         header_icon = "🌅"
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_A — Шапка ────────────────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_A — Шапка ─────────────────────────────
     block_a = f"""{header_icon} <b>MOTOWEATHER · МИНСК</b>
 {INDENT}{weekday} · {date_str} · {time_str}"""
-    # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_A ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_B — Вердикт + Что на дороге + Цитаты ─────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_B — Вердикт + Что на дороге + Цитаты ──
     score = a_city["score"]
 
     asphalt_temp_early = None
@@ -432,29 +428,28 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     is_wet = is_rain_now or (dew_now_r is not None and temp_now - dew_now_r <= 1 and humidity_now_r >= 90)
 
     if is_wet:
-        research_lines.append("📚 JAF: на мокром асфальте тормозной путь ×2")
+        research_lines.append("📚 JAF: на мокром асфальте тормозной путь +30% (60 км/ч, 250 см³)")
 
-    if vis_now < 1000:
-        research_lines.append("📚 Корейское иссл.: в туман смертность мотоциклистов ×8")
-
-    if gust_now >= 12:
-        research_lines.append("📚 Tokyo Bay Aqua-Line: 15 м/с — ограничение, 20 м/с — закрытие")
+    if vis_now < 2000:
+        research_lines.append("📚 TAAS (Корея): в туман смертность мотоциклистов ×8 от дождя")
 
     if asphalt_now_r and asphalt_now_r < 15:
         research_lines.append("📚 MOTOSAN: летние шины теряют сцепление ниже +15 °C")
 
     if night_now_r:
-        research_lines.append("📚 IIHS: ночью риск мотоаварий ×3")
+        research_lines.append("📚 IIHS: 49% погибших ночью мотоциклистов — пьяные")
 
     block_b = "\n".join(b_lines)
 
+    metar_warn = avg_w.get("visibility_metar_warning")
+    if metar_warn:
+        block_b += f"\n\n{INDENT}{metar_warn}"
+
     if research_lines:
         block_b += "\n\n" + indent_multiline("\n".join(research_lines))
-    # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_B ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_D_E — Предполётная ───────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_D_E — Предполётная ────────────────────
     gear_line = get_gear_dynamic(
         a_city.get("feels_like", m.get("feels_like") or 0),
         avg_w.get("is_rain", False) or m.get("is_rain", False) or ww.get("is_rain", False),
@@ -485,11 +480,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     block_de = f"""✈️ <b>ПРЕДПОЛЁТНАЯ</b>
 {indent_multiline(chr(10).join(de_items))}"""
-    # ─── КОНЕЦ BLOCK_D_E ────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_D_E ────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_F — Текущая погода ───────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_F — Текущая погода ────────────────────
     def gather(key, sources_keys):
         return [src.get(key) for code, src in sources_keys if src]
 
@@ -600,14 +593,22 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if shown_vis < 500:
             vis_str = "⚠️" + vis_str
 
-        weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}{haze_suffix}")
+        vis_avg_suffix = ""
+        vis_avg_city = avg_w.get("visibility_avg_city")
+        if vis_avg_city and vis_avg_city > 0:
+            if vis_avg_city >= 1000:
+                avg_km = math_round(vis_avg_city / 1000, 0)
+                vis_avg_suffix = f" · средняя по Минску ~{avg_km}{NBSP}км"
+            else:
+                vis_avg_suffix = f" · средняя по Минску ~{int(vis_avg_city)}{NBSP}м"
+
+        weather_lines.append(f"👁️ Видимость: {vis_str}{suffix}{haze_suffix}{vis_avg_suffix}")
     else:
         weather_lines.append("👁️ Видимость: —")
 
     weather_lines.append(f"💧 Влажность: {fmt_avg(gather('humidity', src_map), '%')}")
     weather_lines.append(f"💦 Точка росы: {fmt_avg(gather('dew_point', src_map), '°C')}")
 
-    # --- Облачность (спутники приоритет, METAR в скобках) ---
     cloud_vals = [v for v in gather("clouds_pct", src_map) if v is not None]
     metar_cloud = m.get("cloud_text") if m.get("cloud_text") else None
 
@@ -625,7 +626,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     else:
         weather_lines.append("🌥️ Облачность: —")
 
-    # --- Осадки ---
     precip_vals = [v for v in gather("precip_mm", src_map) if v is not None and v > 0]
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
@@ -669,11 +669,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     weather_block = "\n".join(weather_lines)
     block_f = f"""🟢 <b>ТЕКУЩАЯ ПОГОДА:</b>
 {indent_multiline(weather_block)}"""
-    # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_F ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_F2 — Осадки + видимость + облачность + ветер
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_F2 ────────────────────────────────────
     districts = w.get("precipitation_by_districts", [])
     districts_block = ""
     if districts:
@@ -779,11 +777,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
         if f2_parts:
             districts_block = "\n".join(f2_parts)
-    # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_F2 ─────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_G — Ближайший период ─────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_G — Ближайший период ──────────────────
     next_period = short.get("next_period", "нет данных")
     next_period_title = short.get("next_period_title", "—")
     next_period_range = short.get("next_period_range", "")
@@ -852,11 +848,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             p_inner.append(period_risks_text)
 
         forecast_block = f"{title_line}\n" + indent_multiline("\n".join(p_inner))
-    # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_G ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_H — Завтра ───────────────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_H — Завтра ────────────────────────────
     tomorrow_block = ""
     if f:
         f["night_score"] = 0
@@ -881,11 +875,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             t_inner.append(tomorrow_risks_text)
 
         tomorrow_block = f"📅 {title_t}\n" + indent_multiline("\n".join(t_inner))
-    # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_H ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_I — Источники ────────────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_I — Источники ─────────────────────────
     agreement = a_city.get("agreement") if isinstance(a_city, dict) else None
     agree_values = a_city.get("agree_values") if isinstance(a_city, dict) else None
 
@@ -898,11 +890,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 spread_clean = vs.replace("📊 Разброс: ", "")
                 parts.append(f"Разброс: {spread_clean}")
         block_i = " · ".join(parts)
-    # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_I ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_J — Подпись ──────────────────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_J — Подпись ───────────────────────────
     j_lines = [
         f"Версия бота — {BOT_VERSION}",
         f"«Газ до отсечки — только если мозг в черепе», — @Aleksandr_K8V.",
@@ -911,11 +901,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         j_lines.append(get_alcohol_warning())
         j_lines.append(f"💬 <i>{get_random_quote()}</i>")
     block_j = "\n".join(j_lines)
-    # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────────
+    # ─── КОНЕЦ BLOCK_J ──────────────────────────────────────
 
-    # ═══════════════════════════════════════════════════════════
-    # ─── НАЧАЛО BLOCK_BUILD — Финальная сборка ─────────────────
-    # ═══════════════════════════════════════════════════════════
+    # ─── НАЧАЛО BLOCK_BUILD — Финальная сборка ──────────────
     msg = f"""{block_a}
 
 {block_b}
@@ -951,8 +939,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 {block_j}"""
 
     return msg
-    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────────
-    # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
+    # ─── КОНЕЦ BLOCK_BUILD ──────────────────────────────────
+# ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
 # ═══════════════════════════════════════════════════════════
@@ -982,7 +970,7 @@ def run_morning_broadcast(force=False):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
-# Согласование видимости: если есть данные по районам — берём минимум
+        # Видимость: минимум по 5 районам OM. METAR — только предупреждение.
         districts_vis = w.get("precipitation_by_districts", [])
         vis_from_districts = [
             d.get("visibility") for d in districts_vis
@@ -997,25 +985,34 @@ def run_morning_broadcast(force=False):
         if vis_from_districts:
             min_city = min(vis_from_districts)
             max_city = max(vis_from_districts)
+            avg_city = sum(vis_from_districts) / len(vis_from_districts)
+
+            avg_w["visibility"] = min_city
+            avg_w["visibility_min"] = min_city
+            avg_w["visibility_max"] = max_city
+            avg_w["visibility_avg_city"] = avg_city
+            avg_w["visibility_big_spread"] = (max_city / min_city >= 3.0) if min_city > 0 else False
+
             if metar_vis is not None and metar_vis < min_city:
                 ratio = min_city / metar_vis if metar_vis > 0 else 999
-                if ratio <= 2.0:
-                    avg_w["visibility"] = metar_vis
-                    avg_w["visibility_min"] = metar_vis
-                    avg_w["visibility_max"] = max_city
-                    avg_w["visibility_source_worst"] = "METAR"
-                else:
-                    avg_w["visibility"] = min_city
-                    avg_w["visibility_min"] = metar_vis
-                    avg_w["visibility_max"] = max_city
-                    avg_w["visibility_source_worst"] = "METAR"
-                avg_w["visibility_big_spread"] = (max_city / metar_vis >= 2.0) if metar_vis > 0 else False
-            else:
-                avg_w["visibility"] = min_city
-                avg_w["visibility_min"] = min_city
-                avg_w["visibility_max"] = max_city
-                avg_w["visibility_source_worst"] = "районы"
-                avg_w["visibility_big_spread"] = (max_city / min_city >= 2.0) if min_city > 0 else False
+                if ratio > 3.0 and metar_vis < 1000:
+                    if metar_vis >= 1000:
+                        mt_str = f"{int(metar_vis / 1000)} км"
+                    else:
+                        mt_str = f"{int(metar_vis)} м"
+                    avg_w["visibility_metar_warning"] = (
+                        f"⚠️ В аэропорту туман ({mt_str}) — если едешь на восток, будь готов"
+                    )
+
+            ow = w.get("ow") or {}
+            ow_vis = ow.get("visibility")
+            if ow_vis is not None and 0 < ow_vis <= 20000:
+                if ow_vis < 1000 and min_city > 5000:
+                    ow_str = f"{int(ow_vis)} м"
+                    if "visibility_metar_warning" not in avg_w:
+                        avg_w["visibility_metar_warning"] = (
+                            f"⚠️ OWM показывает туман ({ow_str}), в городе до {math_round(min_city / 1000, 0)} км"
+                        )
 
         a_city = analyze_risks(avg_w)
         a_city["agreement"] = avg_w.get("agreement")
@@ -1160,7 +1157,7 @@ def send_weather(chat_id):
 
         avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
 
-# Согласование видимости: Минск — приоритет, METAR — сигнал
+        # Видимость: минимум по 5 районам OM. METAR — только предупреждение, не в формуле.
         districts_vis = w.get("precipitation_by_districts", [])
         vis_from_districts = [
             d.get("visibility") for d in districts_vis
@@ -1175,25 +1172,34 @@ def send_weather(chat_id):
         if vis_from_districts:
             min_city = min(vis_from_districts)
             max_city = max(vis_from_districts)
+            avg_city = sum(vis_from_districts) / len(vis_from_districts)
+
+            avg_w["visibility"] = min_city
+            avg_w["visibility_min"] = min_city
+            avg_w["visibility_max"] = max_city
+            avg_w["visibility_avg_city"] = avg_city
+            avg_w["visibility_big_spread"] = (max_city / min_city >= 3.0) if min_city > 0 else False
+
             if metar_vis is not None and metar_vis < min_city:
                 ratio = min_city / metar_vis if metar_vis > 0 else 999
-                if ratio <= 2.0:
-                    avg_w["visibility"] = metar_vis
-                    avg_w["visibility_min"] = metar_vis
-                    avg_w["visibility_max"] = max_city
-                    avg_w["visibility_source_worst"] = "METAR"
-                else:
-                    avg_w["visibility"] = min_city
-                    avg_w["visibility_min"] = metar_vis
-                    avg_w["visibility_max"] = max_city
-                    avg_w["visibility_source_worst"] = "METAR"
-                avg_w["visibility_big_spread"] = (max_city / metar_vis >= 2.0) if metar_vis > 0 else False
-            else:
-                avg_w["visibility"] = min_city
-                avg_w["visibility_min"] = min_city
-                avg_w["visibility_max"] = max_city
-                avg_w["visibility_source_worst"] = "районы"
-                avg_w["visibility_big_spread"] = (max_city / min_city >= 2.0) if min_city > 0 else False
+                if ratio > 3.0 and metar_vis < 1000:
+                    if metar_vis >= 1000:
+                        mt_str = f"{int(metar_vis / 1000)} км"
+                    else:
+                        mt_str = f"{int(metar_vis)} м"
+                    avg_w["visibility_metar_warning"] = (
+                        f"⚠️ В аэропорту туман ({mt_str}) — если едешь на восток, будь готов"
+                    )
+
+            ow = w.get("ow") or {}
+            ow_vis = ow.get("visibility")
+            if ow_vis is not None and 0 < ow_vis <= 20000:
+                if ow_vis < 1000 and min_city > 5000:
+                    ow_str = f"{int(ow_vis)} м"
+                    if "visibility_metar_warning" not in avg_w:
+                        avg_w["visibility_metar_warning"] = (
+                            f"⚠️ OWM показывает туман ({ow_str}), в городе до {math_round(min_city / 1000, 0)} км"
+                        )
 
         a_city = analyze_risks(avg_w)
 
@@ -1309,9 +1315,6 @@ def updates_cmd(m):
         print(f"❌ /updates: {e}", flush=True)
 
 
-# ═══════════════════════════════════════════════════════════
-# ─── НАЧАЛО STATS_CMD ──────────────────────────────────────
-# ═══════════════════════════════════════════════════════════
 @bot.message_handler(commands=['stats'])
 def stats_cmd(m):
     if not ADMIN_ID or m.chat.id != ADMIN_ID:
@@ -1339,7 +1342,6 @@ def stats_cmd(m):
         f"<b>История версий:</b>\n{changelog_text}",
         parse_mode="HTML"
     )
-# ─── КОНЕЦ STATS_CMD ───────────────────────────────────────
 
 
 @bot.message_handler(commands=['feedback'])
@@ -1469,6 +1471,7 @@ def callback(call):
                 BASE_EQUIPMENT_TEXT,
                 get_base_back_keyboard()
             )
+
         elif call.data == "links":
             bot.answer_callback_query(call.id, "🔗 Ссылки", cache_time=3)
             send_or_edit(
@@ -1476,6 +1479,7 @@ def callback(call):
                 LINKS_TEXT,
                 get_links_keyboard(LINKS_DATA)
             )
+
         elif call.data == "feedback_start":
             can, remaining = fb.check_antispam(chat_id)
             if not can:
