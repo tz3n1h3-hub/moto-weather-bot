@@ -1551,18 +1551,17 @@ def get_forecast_tomorrow():
         if len(daily.get("time", [])) < 2:
             return None
 
+        sunrise_tomorrow, sunset_tomorrow = _calc_sun_times_tomorrow()
+        if not sunrise_tomorrow or not sunset_tomorrow:
+            sunrise_tomorrow = "07:00"
+            sunset_tomorrow = "19:00"
+
         try:
-            sr_iso = daily["sunrise"][1]
-            ss_iso = daily["sunset"][1]
-            sunrise_h = int(sr_iso.split("T")[1][:2])
-            sunset_h = int(ss_iso.split("T")[1][:2])
-            sunrise_tomorrow = sr_iso.split("T")[1][:5]
-            sunset_tomorrow = ss_iso.split("T")[1][:5]
+            sunrise_h = int(sunrise_tomorrow.split(":")[0])
+            sunset_h = int(sunset_tomorrow.split(":")[0])
         except Exception:
             sunrise_h = 7
             sunset_h = 19
-            sunrise_tomorrow = "07:00"
-            sunset_tomorrow = "19:00"
 
         tomorrow_str = daily["time"][1]
 
@@ -1670,7 +1669,10 @@ def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
 
+    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
+
     periods_def = [
+        ("РАССВЕТ", "🌄", twilight_start, sr),
         ("УТРО", "🌅", sr, noon),
         ("ДЕНЬ", "☀️", noon, evening_start),
         ("ВЕЧЕР", "🌆", evening_start, dark_start),
@@ -1786,7 +1788,10 @@ def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
 
+    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
+
     periods_def = [
+        ("РАССВЕТ", "🌄", twilight_start, sr),
         ("УТРО", "🌅", sr, noon),
         ("ДЕНЬ", "☀️", noon, evening_start),
         ("ВЕЧЕР", "🌆", evening_start, dark_start),
