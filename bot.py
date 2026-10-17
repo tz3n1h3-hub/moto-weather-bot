@@ -599,7 +599,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     twilight = get_twilight_state(sunrise, sunset)
     if twilight == "темно":
-        f_lines.append("🌙 Темно")
+        f_lines.append("Темно")
     elif twilight in ("смеркается", "темнеет"):
         f_lines.append("🌆 Смеркается")
     elif twilight in ("светает", "рассветает"):
