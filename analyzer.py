@@ -24,7 +24,6 @@ def math_round(x, digits=0):
 # ─── НАЧАЛО LABELS ─────────────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def temp_label(t):
-    """Качественная оценка температуры."""
     if t is None:
         return "—"
     if t < 0:
@@ -43,7 +42,6 @@ def temp_label(t):
 
 
 def wind_label(w):
-    """Качественная оценка ветра."""
     if w is None:
         return "—"
     if w < 2:
@@ -60,7 +58,6 @@ def wind_label(w):
 
 
 def rain_label(mm):
-    """Качественная оценка осадков."""
     if mm is None or mm <= 0:
         return "сухо"
     if mm < 0.5:
@@ -95,6 +92,16 @@ def get_season(month=None):
 def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
     score = 0
+
+    # ─── ОТЛАДКА ВХОДА ─────────────────────────────────────
+    print(f"🔍 analyze_risks: temp={weather.get('temp')}, feels={weather.get('feels_like')}, "
+          f"is_rain={weather.get('is_rain')}, rain_total={weather.get('rain_total') or weather.get('precip_mm')}, "
+          f"visibility={weather.get('visibility')}, vis_min={weather.get('visibility_min')}, "
+          f"humidity={weather.get('humidity')}, dew={weather.get('dew_point')}, "
+          f"wind={weather.get('wind_speed')}, gust={weather.get('wind_gust')}, "
+          f"twilight={weather.get('twilight')}, night_score={weather.get('night_score')}, "
+          f"is_forecast={is_forecast}", flush=True)
+    # ─── КОНЕЦ ОТЛАДКИ ─────────────────────────────────────
 
     wind_gust = weather.get("wind_gust") or 0
     wind_speed = weather.get("wind_speed") or 0
@@ -292,7 +299,6 @@ def analyze_risks(weather, is_forecast=False):
 
     # ─── RISK_ICE ──────────────────────────────────────────
     if temp >= -3 and temp <= 3 and humidity >= 95:
-        # Не дублировать, если уже есть «Мороз» или «Очень холодно»
         if not any(("мороз" in r.lower() or "холодно" in r.lower()) for r in risks):
             risks.append(f"ИЗМОРОЗЬ возможна — лёд на дороге (темп {int(temp)}°C)")
             score += 4
@@ -390,8 +396,14 @@ def analyze_risks(weather, is_forecast=False):
         color = "🟢"
     # ─── КОНЕЦ RISK_SCALE ──────────────────────────────────
 
+    final_score = min(score, 10)
+
+    # ─── ОТЛАДКА ВЫХОДА ────────────────────────────────────
+    print(f"🔍 analyze_risks RESULT: score={final_score}, risks={risks}", flush=True)
+    # ─── КОНЕЦ ОТЛАДКИ ─────────────────────────────────────
+
     return {
-        "score": min(score, 10),
+        "score": final_score,
         "color": color,
         "risks": risks,
         "recommendations": recommendations,
@@ -416,7 +428,6 @@ def get_short_verdict(score):
 
 
 def get_rider_verdict(score, month=None, is_tomorrow=False):
-    """Короткие вердикты для делового стиля."""
     if score <= 4:
         return "ЕХАТЬ МОЖНО"
     if score <= 6:
@@ -431,10 +442,6 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 # ─── НАЧАЛО GEAR_DYNAMIC ───────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
-    """
-    Динамическая экипировка: 📚 БАЗА + добавки по условиям.
-    Свет — не тут, а в 【E】ПЕРЕД ВЫЕЗДОМ.
-    """
     parts = []
 
     if is_rain or (rain_prob and rain_prob >= 40):
@@ -457,9 +464,6 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
 # ═══════════════════════════════════════════════════════════
 def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
                             is_rain, is_night, is_drizzle=False):
-    """
-    Динамический чек-лист: 📚 БАЗА + критичное по условиям.
-    """
     parts = []
 
     if visibility and visibility < 1000:
