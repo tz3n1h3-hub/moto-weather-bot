@@ -140,3 +140,38 @@ MOTORCYCLE_QUOTES = [
     "«Главное — не точка на карте, а эмоции, которые станут легендами» — философия мотоциклиста.",
 ]
 # ─── КОНЕЦ MOTORCYCLE_QUOTES ───────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО LINKS_TEXT ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+def build_links_text(links_data):
+    """
+    Собирает текст окна «Полезные ссылки» из LINKS_DATA.
+    Группирует по категориям.
+    """
+    lines = [
+        "🔗 <b>ПОЛЕЗНЫЕ ССЫЛКИ</b>",
+        "",
+        "Здесь — ресурсы, полезные райдеру Минска.",
+        "Знаешь что-то стоящее — напиши @Aleksandr_K8V.",
+    ]
+
+    categories = {}
+    for key, item in links_data.items():
+        cat = item.get("category", "🔗 РАЗНОЕ")
+        categories.setdefault(cat, []).append(item)
+
+    for cat, items in categories.items():
+        lines.append("")
+        lines.append(f"<b>{cat}</b>")
+        lines.append("")
+        for item in items:
+            lines.append(item["description"])
+            lines.append("")
+
+    lines.append("👉 Жми кнопки ниже")
+    return "\n".join(lines).rstrip()
+# ─── КОНЕЦ LINKS_TEXT ──────────────────────────────────────
+
+# ─── КОНЕЦ KNOWLEDGE ───────────────────────────────────────
