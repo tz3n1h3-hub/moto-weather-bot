@@ -462,18 +462,19 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 # ─── НАЧАЛО GEAR_DYNAMIC ───────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
+    """Без эмодзи, деловой стиль."""
     parts = []
 
     if is_rain or (rain_prob and rain_prob >= 40):
-        parts.append("☔ Дождевик / мембрана")
+        parts.append("Дождевик / мембрана")
 
     if feels_like < 5:
-        parts.append("🧥 Термобельё")
+        parts.append("Термобельё")
     elif feels_like < 10:
-        parts.append("🧥 Ветрозащита")
+        parts.append("Ветрозащита")
 
     if temp and temp > 30:
-        parts.append("💧 Вода")
+        parts.append("Вода")
 
     return parts
 # ─── КОНЕЦ GEAR_DYNAMIC ────────────────────────────────────
@@ -484,19 +485,20 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
 # ═══════════════════════════════════════════════════════════
 def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
                             is_rain, is_night, is_drizzle=False):
+    """Без эмодзи, полные формулировки."""
     parts = []
 
     if visibility and visibility < 1000:
-        parts.append("✅ Противотуманки")
+        parts.append("Включи противотуманки")
 
     if is_rain or is_drizzle:
-        parts.append("✅ Визор — антизапотеватель")
+        parts.append("Визор — обработай антизапотевателем")
 
     if is_night:
-        parts.append("✅ Доп. свет — включи")
+        parts.append("Включи дополнительный свет")
 
     if wind_gust and wind_gust >= 9:
-        parts.append("✅ Руль крепче — порывы")
+        parts.append("Руль крепче — порывы ветра")
 
     return parts
 # ─── КОНЕЦ TECH_CHECK_DYNAMIC ──────────────────────────────
