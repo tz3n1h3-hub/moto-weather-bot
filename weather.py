@@ -1220,16 +1220,7 @@ def get_weather():
     print(f"🌧️ rain votes: {weighted_votes:.2f} (порог {RAIN_VOTE_THRESHOLD}) → {is_rain_anywhere} [{', '.join(rain_sources)}]",
           flush=True)
 
-    sunrise, sunset = None, None
-    if om_raw and om_raw.get("daily"):
-        try:
-            sunrise = om_raw["daily"]["sunrise"][0].split("T")[1][:5]
-            sunset = om_raw["daily"]["sunset"][0].split("T")[1][:5]
-        except Exception:
-            pass
-
-    if not sunrise or not sunset:
-        sunrise, sunset = _calc_sun_times()
+    sunrise, sunset = _calc_sun_times()
 
     result = {
         "m": m,
