@@ -360,6 +360,15 @@ def _format_vis(v):
     return f"{int(v)} м"
 
 
+PERIOD_NIGHT_MAP = {
+    "РАССВЕТ": 1,
+    "УТРО": 0,
+    "ДЕНЬ": 0,
+    "ВЕЧЕР": 1,
+    "НОЧЬ": 2,
+}
+
+
 def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None):
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range})"
@@ -438,7 +447,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         for r in risk_factors:
             b_lines.append(f"• {r}")
 
-    # Цитаты
+    # Цитаты — полные, топ-2
     research_lines = []
 
     vis_now = avg_w.get("visibility") or 10000
@@ -516,7 +525,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         f_lines.append(w_str)
 
     # Видимость
+    vis_avg_city = avg_w.get("visibility_avg_city")
+    vis_min = avg_w.get("visibility_min")
     districts_vis = w.get("precipitation_by_districts", [])
+
     vis_pairs = []
     for d in districts_vis:
         v = d.get("visibility")
@@ -580,7 +592,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_rain_anywhere or (rain_prob_now and rain_prob_now >= 40):
         f_lines.append("📡 Точный прогноз — кнопка «Радар осадков» внизу")
 
-    # twilight — фикс
+    # Светло/темно — 4 состояния
     twilight = get_twilight_state(sunrise, sunset)
     if twilight == "темно":
         f_lines.append("🌙 Темно")
@@ -628,6 +640,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         p_title, p_emoji, p_start, p_end = next_p
         p_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
+        period_night_score = PERIOD_NIGHT_MAP.get(p_title, 0)
+
         period_data = {
             "temp": short.get("avg_temp") or 0,
             "feels_like": short.get("avg_temp") or 0,
@@ -641,16 +655,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "precip_mm": short.get("precip_mm") or 0,
             "is_thunder": False,
             "is_hail": False,
-            "visibility": 10000,
-            "visibility_min": None,
-            "visibility_max": None,
+            "visibility": vis_avg_city or 10000,
+            "visibility_min": vis_min,
+            "visibility_max": avg_w.get("visibility_max"),
             "visibility_big_spread": False,
             "dew_point": avg_w.get("dew_point"),
             "humidity": humidity_now,
             "clouds_pct": avg_w.get("clouds_pct"),
             "soil_temp": avg_w.get("soil_temp"),
-            "night_score": get_astro_night_score(now_dt.hour, now_dt.minute, sunrise, sunset),
-            "twilight": twilight,
+            "night_score": period_night_score,
+            "twilight": "",
         }
         period_risk = analyze_risks(period_data, is_forecast=True)
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
@@ -672,6 +686,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         tomorrow_lines = [f"<u>ЗАВТРА ({tomorrow_str})</u>", ""]
 
         for p in f["periods"]:
+            p_night_score = PERIOD_NIGHT_MAP.get(p["title"], 0)
+
             p_data = {
                 "temp": p["temp"],
                 "feels_like": p["temp"],
@@ -690,8 +706,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 "humidity": 70,
                 "clouds_pct": 50,
                 "soil_temp": None,
-                "night_score": 0,
-                "twilight": "светло",
+                "night_score": p_night_score,
+                "twilight": "",
                 "weather_code": p.get("weather_code"),
             }
             p_risk = analyze_risks(p_data, is_forecast=True)
@@ -724,16 +740,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     parts.extend(["", block_j])
 
-    result = "\n".join(parts)
-
-    # ─── ОТЛАДКА ИТОГА ─────────────────────────────────────
-    print(f"🔍 build_weather_message: score={score}, verdict={verdict}, "
-          f"risks_count={len(a_city.get('risks', []))}, "
-          f"twilight={twilight}, "
-          f"periods_tomorrow={len(f.get('periods', [])) if f else 0}", flush=True)
-    # ─── КОНЕЦ ОТЛАДКИ ─────────────────────────────────────
-
-    return result
+    return "\n".join(parts)
 # ─── КОНЕЦ BUILD_WEATHER_MESSAGE ───────────────────────────
 
 
@@ -741,11 +748,8 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 # ─── НАЧАЛО MORNING_BROADCAST ──────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def _prepare_avg_w(w):
-    print("🔍 _prepare_avg_w: START", flush=True)
-
     avg_w = merge_weather_data(w)
     if not avg_w:
-        print("🔍 _prepare_avg_w: merge_weather_data вернул None", flush=True)
         return None
 
     avg_w["twilight"] = get_twilight_state(w.get("sunrise"), w.get("sunset"))
@@ -756,8 +760,6 @@ def _prepare_avg_w(w):
         v = d.get("visibility")
         if v is not None and 0 < v <= 20000:
             vis_pairs.append((d.get("name", "?"), v))
-
-    print(f"🔍 _prepare_avg_w: vis_pairs={vis_pairs}", flush=True)
 
     if vis_pairs:
         vis_values = [v for _, v in vis_pairs]
@@ -795,6 +797,7 @@ def _prepare_avg_w(w):
                         f"⚠️ OWM: туман {ow_str}, в городе до {math_round(min_v / 1000, 0)} км"
                     )
 
+    # Температура: без METAR
     om_src = w.get("om") or {}
     owm_src = w.get("ow") or {}
     wttr_src = w.get("w") or {}
@@ -814,12 +817,6 @@ def _prepare_avg_w(w):
 
     if feels_vals:
         avg_w["feels_like"] = math_round(sum(feels_vals) / len(feels_vals), 0)
-
-    print(f"🔍 _prepare_avg_w: END temp={avg_w.get('temp')}, "
-          f"feels={avg_w.get('feels_like')}, "
-          f"vis={avg_w.get('visibility')}, "
-          f"twilight={avg_w.get('twilight')}, "
-          f"metar_warn={avg_w.get('visibility_metar_warning')}", flush=True)
 
     return avg_w
 
@@ -1003,17 +1000,13 @@ def send_weather(chat_id):
         except Exception:
             pass
 
-        print(f"🔍 send_weather({chat_id}): START", flush=True)
-
         w = get_weather()
         if not w or not w.get("m"):
-            print(f"🔍 send_weather: weather_unavailable", flush=True)
             send_or_edit(chat_id, "❌ Небо молчит.", None)
             return "error"
 
         avg_w = _prepare_avg_w(w)
         if not avg_w:
-            print(f"🔍 send_weather: merge_failed", flush=True)
             send_or_edit(chat_id, "❌ Небо молчит.", None)
             return "error"
 
@@ -1026,15 +1019,10 @@ def send_weather(chat_id):
         a_city["asphalt_temp"] = _calc_asphalt_temp(avg_w, w)
 
         short = get_short_forecast()
-        print(f"🔍 send_weather: short={short}", flush=True)
-
         f = get_forecast_tomorrow()
-        print(f"🔍 send_weather: f_periods={len(f.get('periods', [])) if f else 0}", flush=True)
 
         msg = build_weather_message(w, a_city, short, f, is_morning=False)
         send_or_edit(chat_id, msg, get_after_weather_keyboard(is_subscribed(chat_id)))
-
-        print(f"🔍 send_weather: END OK", flush=True)
 
         _feedback_state[chat_id] = {
             "weather_snapshot": fb.build_weather_snapshot(w, a_city),
