@@ -417,15 +417,13 @@ def get_short_verdict(score):
 
 def get_rider_verdict(score, month=None, is_tomorrow=False):
     """Короткие вердикты для делового стиля."""
-    if score <= 0:
-        return "МОЖНО"
     if score <= 4:
-        return "МОЖНО"
+        return "ЕХАТЬ МОЖНО"
     if score <= 6:
-        return "ОСТОРОЖНО"
+        return "ЕХАТЬ ОСТОРОЖНО"
     if score <= 8:
-        return "ОПАСНО"
-    return "НЕ ВЫЕЗЖАЙ"
+        return "ЕХАТЬ ОПАСНО"
+    return "ЕХАТЬ НЕЛЬЗЯ"
 # ─── КОНЕЦ VERDICTS ────────────────────────────────────────
 
 
