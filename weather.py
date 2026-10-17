@@ -261,7 +261,6 @@ def get_evening_start(sunset):
 
 
 def _get_periods_list(sunrise, sunset):
-    """Список периодов на сутки: (start_min, end_min, title, emoji)."""
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
@@ -282,7 +281,6 @@ def _get_periods_list(sunrise, sunset):
 
 
 def get_next_period(hour, minute=0, sunrise=None, sunset=None):
-    """Возвращает (title, emoji, start_min, end_min) СЛЕДУЮЩЕГО периода."""
     if not sunrise or not sunset:
         return None
 
@@ -301,7 +299,6 @@ def get_next_period(hour, minute=0, sunrise=None, sunset=None):
 
 
 def get_period_title(hour, minute=0, sunrise=None, sunset=None):
-    """Заголовок СЛЕДУЮЩЕГО периода."""
     p = get_next_period(hour, minute, sunrise, sunset)
     if p:
         return f"{p[1]} {p[0]}"
@@ -309,7 +306,6 @@ def get_period_title(hour, minute=0, sunrise=None, sunset=None):
 
 
 def get_period_range(hour, minute=0, sunrise=None, sunset=None):
-    """Диапазон времени СЛЕДУЮЩЕГО периода."""
     p = get_next_period(hour, minute, sunrise, sunset)
     if not p:
         return ""
@@ -317,7 +313,6 @@ def get_period_range(hour, minute=0, sunrise=None, sunset=None):
 
 
 def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None):
-    """Список часов (0-23) следующего периода для выборки из hourly."""
     p = get_next_period(hour, minute, sunrise, sunset)
     if not p:
         return []
@@ -1359,7 +1354,6 @@ def merge_weather_data(w):
 # ─── НАЧАЛО SHORT_FORECAST ─────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_short_forecast():
-    """Прогноз на СЛЕДУЮЩИЙ период (не текущий)."""
     om_raw = get_open_meteo_data()
 
     if not om_raw or not om_raw.get("hourly"):
@@ -1385,6 +1379,9 @@ def get_short_forecast():
                 sunset_today = om_raw["daily"]["sunset"][0].split("T")[1][:5]
             except Exception:
                 pass
+
+        if not sunrise_today or not sunset_today:
+            sunrise_today, sunset_today = _calc_sun_times()
 
         next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         if not next_p:
@@ -1460,7 +1457,6 @@ def get_short_forecast():
 
 
 def get_short_forecast_wttr():
-    """Fallback: прогноз на следующий период через wttr."""
     w_raw = get_wttr_data()
     if not w_raw or not w_raw.get("weather"):
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
@@ -1638,7 +1634,6 @@ def get_forecast_tomorrow():
         tmin_safe = tmin if tmin is not None else 0
         tmax_safe = tmax if tmax is not None else 0
 
-        # Разбивка по периодам завтра
         periods_tomorrow = _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
                                                   tomorrow_str, sunrise_tomorrow, sunset_tomorrow)
 
@@ -1666,7 +1661,6 @@ def get_forecast_tomorrow():
 
 def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
                             tomorrow_str, sunrise, sunset):
-    """Разбивка завтра по периодам: УТРО/ДЕНЬ/ВЕЧЕР."""
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
@@ -1680,6 +1674,7 @@ def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
         ("УТРО", "🌅", sr, noon),
         ("ДЕНЬ", "☀️", noon, evening_start),
         ("ВЕЧЕР", "🌆", evening_start, dark_start),
+        ("НОЧЬ", "🌙", dark_start, 1440),
     ]
 
     result = []
@@ -1757,7 +1752,6 @@ def get_forecast_tomorrow_wttr():
 
         hourly = tomorrow.get("hourly", [])
 
-        # Упрощённая разбивка по периодам для fallback
         periods = _get_tomorrow_periods_wttr(hourly, sunrise_tomorrow, sunset_tomorrow)
 
         return {
@@ -1783,7 +1777,6 @@ def get_forecast_tomorrow_wttr():
 
 
 def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
-    """Упрощённая разбивка завтра по периодам для wttr fallback."""
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
@@ -1797,6 +1790,7 @@ def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
         ("УТРО", "🌅", sr, noon),
         ("ДЕНЬ", "☀️", noon, evening_start),
         ("ВЕЧЕР", "🌆", evening_start, dark_start),
+        ("НОЧЬ", "🌙", dark_start, 1440),
     ]
 
     result = []
