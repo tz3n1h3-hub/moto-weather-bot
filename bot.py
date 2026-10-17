@@ -636,11 +636,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     block_de = "\n".join(de_lines)
 
-    # ─── G: Следующий период ───────────────────────────────
+    # ─── G: Следующий период (только сегодня) ──────────────
     forecast_block = ""
     next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise, sunset)
 
-    if next_p and short.get("next_period") != "нет данных":
+    if next_p and next_p[2] < 1440 and short.get("next_period") != "нет данных":
         p_title, p_emoji, p_start, p_end = next_p
         p_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
@@ -695,6 +695,51 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         tomorrow_date = (now_dt + timedelta(days=1))
         tomorrow_str = f"{tomorrow_date.day} {MONTHS_RU[tomorrow_date.month - 1]}"
         tomorrow_lines = [f"<u>ЗАВТРА ({tomorrow_str})</u>", ""]
+
+        # РАССВЕТ, если следующий период уже завтрашний
+        if next_p and next_p[2] >= 1440 and short.get("next_period") != "нет данных":
+            rp_title, rp_emoji, rp_start, rp_end = next_p
+            rp_range = f"{min_to_time(rp_start)}–{min_to_time(rp_end)}"
+
+            rp_night_score = PERIOD_NIGHT_MAP.get(rp_title, 0)
+            rp_data = {
+                "temp": short.get("avg_temp") or 0,
+                "feels_like": short.get("avg_temp") or 0,
+                "wind_speed": short.get("avg_wind") or 0,
+                "wind_gust": short.get("max_gust") or 0,
+                "is_rain": (short.get("rain_total") or 0) > 0.5,
+                "is_drizzle": False,
+                "rain_prob_now": short.get("rain_prob"),
+                "rain_prob_day": short.get("rain_prob"),
+                "rain_total": short.get("rain_total") or 0,
+                "precip_mm": short.get("precip_mm") or 0,
+                "is_thunder": False,
+                "is_hail": False,
+                "visibility": vis_avg_city or 10000,
+                "visibility_min": vis_min,
+                "visibility_max": avg_w.get("visibility_max"),
+                "visibility_big_spread": False,
+                "dew_point": avg_w.get("dew_point"),
+                "humidity": humidity_now,
+                "clouds_pct": avg_w.get("clouds_pct"),
+                "soil_temp": avg_w.get("soil_temp"),
+                "night_score": rp_night_score,
+                "twilight": "",
+            }
+            rp_risk = analyze_risks(rp_data, is_forecast=True)
+            rp_verdict = get_rider_verdict(rp_risk["score"], now_dt.month)
+
+            rp_block = _period_block(
+                rp_title, rp_emoji, rp_range,
+                rp_verdict, rp_risk["score"],
+                short.get("avg_temp") or 0,
+                short.get("rain_total") or 0,
+                short.get("avg_wind") or 0,
+                short.get("max_gust"),
+                rp_risk.get("risks", []),
+            )
+            tomorrow_lines.append(rp_block)
+            tomorrow_lines.append("")
 
         for p in f["periods"]:
             p_night_score = PERIOD_NIGHT_MAP.get(p["title"], 0)
