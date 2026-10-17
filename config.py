@@ -2,11 +2,12 @@ import os
 from datetime import timedelta, timezone
 
 # ─── НАЧАЛО CONFIG_VERSION ─────────────────────────────────
-BOT_VERSION = "2.0.4"
+BOT_VERSION = "2.0.5"
 BOT_VERSION_DATE = "2026-10-17"
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("2.0.5", "17.10.2026", "Фикс: night_score в периодах по названию · twilight (смеркается ≠ темно) · отладка analyze_risks", False),
     ("2.0.4", "17.10.2026", "Отладка: print в analyze_risks и send_weather · фикс twilight (смеркается ≠ темно)", False),
     ("2.0.3", "17.10.2026", "Вердикт «СЕЙЧАС ЕХАТЬ МОЖНО» подчёркнут · ЗАВТРА подчёркнуто · ветер в периодах без оценки", False),
     ("2.0.2", "17.10.2026", "Вердикт «СЕЙЧАС ЕХАТЬ МОЖНО» подчёркнут · ЗАВТРА подчёркнуто", False),
