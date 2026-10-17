@@ -369,33 +369,21 @@ PERIOD_NIGHT_MAP = {
 }
 
 
-def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust, risks_list):
+def _period_block_h(title, emoji, p_range, verdict, score, risks_list):
+    """Формат для 【H】 ЗАВТРА: заголовок · вердикт · 💀 × N → список рисков."""
     skulls = _risk_skulls(score)
-    header = f"{emoji} {title} ({p_range})"
+    header = f"{emoji} {title} ({p_range}) · {verdict}"
     if skulls:
-        header += f" · {verdict} · {skulls}"
-    else:
-        header += f" · {verdict}"
+        header += f" · {skulls}"
 
-    parts = [f"Температура {int(temp)}°"]
+    if not risks_list:
+        return header
 
-    if wind_gust and wind_gust > (wind or 0):
-        parts.append(f"ветер {int(wind)} м/с (порывы до {int(wind_gust)} м/с)")
-    elif wind:
-        parts.append(f"ветер {int(wind)} м/с")
+    lines = [header]
+    for r in risks_list[:3]:
+        lines.append(f"• {r.lower()}")
 
-    if rain_mm and rain_mm > 0:
-        r_lbl = rain_label(rain_mm)
-        parts.append(f"осадки: {r_lbl}, {rain_mm} мм")
-
-    details = " · ".join(parts)
-    result = f"{header}\n{details}"
-
-    if risks_list:
-        top_risks = risks_list[:2]
-        result += f"\nРиск: {' · '.join(top_risks)}"
-
-    return result
+    return "\n".join(lines)
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
 
 
@@ -420,19 +408,15 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if not avg_w:
         avg_w = {}
 
-    weekday = WEEKDAYS_RU[now_dt.weekday()]
-    date_str = f"{now_dt.day} {MONTHS_RU[now_dt.month - 1]}"
+    weekday = WEEKDAYS_RU[now_dt.weekday()].lower()
+    date_str = now_dt.strftime("%d.%m.%Y")
     time_str = now_dt.strftime("%H:%M")
 
-    header_icon = m.get("weather_emoji") or "🌤"
-    if w.get("is_night") and header_icon in ("☀️", "🌤️", ""):
-        header_icon = "🌙"
-    if is_morning:
-        header_icon = "🌅"
+    # ─── A: Шапка (без лого и названия) ────────────────────
+    block_a = f"Минск · {weekday} · {date_str} · {time_str}"
 
-    # ─── A: Шапка + цитата ────────────────────────────────
+    # ─── Цитата ────────────────────────────────────────────
     daily_quote = random.choice(MOTORCYCLE_QUOTES)
-    block_a = f"{header_icon} MOTOWeather · Минск\n{weekday} · {date_str} · {time_str}\n\n{daily_quote}"
 
     # ─── B: Вердикт ────────────────────────────────────────
     score = a_city["score"]
@@ -441,20 +425,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     b_lines = []
     if skulls:
-        b_lines.append(f"<u>СЕЙЧАС {verdict}</u> · {skulls}")
+        b_lines.append(f"<b>СЕЙЧАС {verdict}</b> · {skulls}")
     else:
-        b_lines.append(f"<u>СЕЙЧАС {verdict}</u>")
+        b_lines.append(f"<b>СЕЙЧАС {verdict}</b>")
 
     risks = a_city.get("risks", [])
-    risk_weights = a_city.get("risk_weights", [])
 
-    for i, risk in enumerate(risks[:4]):
-        weight = risk_weights[i] if i < len(risk_weights) else 0
-        if weight > 0:
-            b_lines.append(f"• {risk} (+{weight})")
-        else:
-            b_lines.append(f"• {risk}")
+    for risk in risks[:4]:
+        b_lines.append(f"• {risk}")
 
+    # Цитаты — полные, топ-2
     research_lines = []
 
     vis_now = avg_w.get("visibility") or 10000
@@ -510,25 +490,35 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     t_avg = avg_w.get("temp")
     feels = a_city.get("feels_like")
     if t_avg is not None:
-        t_str = f"Температура {int(t_avg)}°"
+        t_str = f"Температура: {int(t_avg)}°"
         if feels is not None and feels != t_avg:
-            t_str += f", ощущается как {int(feels)}°"
+            t_str += f" (ощущается {int(feels)}°)"
         f_lines.append(t_str)
 
     asphalt_temp = a_city.get("asphalt_temp")
     if asphalt_temp is not None:
-        f_lines.append(f"Асфальт {int(asphalt_temp)}°")
+        f_lines.append(f"Асфальт: ≈{int(asphalt_temp)}° (расчетное)")
 
     wind_avg = avg_w.get("wind_speed")
     gust_avg = avg_w.get("wind_gust")
     wind_dir = m.get("wind_direction") or om.get("wind_direction")
+
+    WIND_DIR_FULL = {
+        "С": "северный", "СВ": "северо-восточный",
+        "В": "восточный", "ЮВ": "юго-восточный",
+        "Ю": "южный", "ЮЗ": "юго-западный",
+        "З": "западный", "СЗ": "северо-западный",
+        "переменный": "переменный", "штиль": "штиль",
+    }
     short_dir = wind_dir_short(wind_dir) if isinstance(wind_dir, str) else None
+    full_dir = WIND_DIR_FULL.get(short_dir) if short_dir else None
+
     if wind_avg is not None:
-        w_str = f"Ветер {int(wind_avg)} м/с"
+        w_str = f"Ветер: {int(wind_avg)} м/с"
         if gust_avg and gust_avg > wind_avg:
             w_str += f" (порывы до {int(gust_avg)} м/с)"
-        if short_dir:
-            w_str += f", {short_dir}"
+        if full_dir:
+            w_str += f", {full_dir}"
         f_lines.append(w_str)
 
     vis_avg_city = avg_w.get("visibility_avg_city")
@@ -564,6 +554,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         else:
             f_lines.append("Видимость: 10+ км")
 
+    # Осадки в 【F】
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
 
@@ -597,17 +588,16 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_rain_anywhere or (rain_prob_now and rain_prob_now >= 40):
         f_lines.append("📡 Точный прогноз — кнопка «Радар осадков» внизу")
 
+    # Сейчас — только если НЕ светло
     twilight = get_twilight_state(sunrise, sunset)
     if twilight == "темно":
-        f_lines.append("Темно")
+        f_lines.append("Сейчас: темно")
     elif twilight in ("смеркается", "темнеет"):
-        f_lines.append("🌆 Смеркается")
+        f_lines.append("Сейчас: смеркается")
     elif twilight in ("светает", "рассветает"):
-        f_lines.append("🌅 Рассветает")
-    else:
-        f_lines.append("☀️ Светло")
+        f_lines.append("Сейчас: рассветает")
 
-    block_f = "ПОГОДА\n" + "\n".join(f_lines)
+    block_f = "ПОГОДА НА ДАННЫЙ МОМЕНТ\n" + "\n".join(f_lines)
 
     # ─── D/E: Перед выездом ────────────────────────────────
     gear_items = get_gear_dynamic(
@@ -636,7 +626,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     block_de = "\n".join(de_lines)
 
-    # ─── G: Следующий период (только сегодня) ──────────────
+    # ─── G: Следующий период ───────────────────────────────
     forecast_block = ""
     next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise, sunset)
 
@@ -669,6 +659,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             "soil_temp": avg_w.get("soil_temp"),
             "night_score": period_night_score,
             "twilight": "",
+            "period_title": p_title,
         }
         period_risk = analyze_risks(period_data, is_forecast=True)
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
@@ -679,22 +670,12 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         if set(period_risks) == set(current_risks) and period_risks:
             forecast_block = f"{p_emoji} {p_title} ({p_range}) · {period_verdict} · {_risk_skulls(period_risk['score'])}\nРиск: как сейчас"
         else:
-            forecast_block = _period_block(
-                p_title, p_emoji, p_range,
-                period_verdict, period_risk["score"],
-                short.get("avg_temp") or 0,
-                short.get("rain_total") or 0,
-                short.get("avg_wind") or 0,
-                short.get("max_gust"),
-                period_risks,
-            )
+            forecast_block = f"{p_emoji} {p_title} ({p_range}) · {period_verdict} · {_risk_skulls(period_risk['score'])}\nРиск: {' · '.join(r.lower() for r in period_risks[:2]) if period_risks else '—'}"
 
-    # ─── H: Завтра по периодам ─────────────────────────────
+    # ─── H: СЛЕДУЮЩИЙ СВЕТОВОЙ ПЕРИОД ─────────────────────
     tomorrow_block = ""
     if f and f.get("periods"):
-        tomorrow_date = (now_dt + timedelta(days=1))
-        tomorrow_str = f"{tomorrow_date.day} {MONTHS_RU[tomorrow_date.month - 1]}"
-        tomorrow_lines = [f"<u>ЗАВТРА ({tomorrow_str})</u>", ""]
+        tomorrow_lines = ["СЛЕДУЮЩИЙ СВЕТОВОЙ ПЕРИОД", ""]
 
         # РАССВЕТ, если следующий период уже завтрашний
         if next_p and next_p[2] >= 1440 and short.get("next_period") != "нет данных":
@@ -725,17 +706,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 "soil_temp": avg_w.get("soil_temp"),
                 "night_score": rp_night_score,
                 "twilight": "",
+                "period_title": rp_title,
             }
             rp_risk = analyze_risks(rp_data, is_forecast=True)
             rp_verdict = get_rider_verdict(rp_risk["score"], now_dt.month)
 
-            rp_block = _period_block(
+            rp_block = _period_block_h(
                 rp_title, rp_emoji, rp_range,
                 rp_verdict, rp_risk["score"],
-                short.get("avg_temp") or 0,
-                short.get("rain_total") or 0,
-                short.get("avg_wind") or 0,
-                short.get("max_gust"),
                 rp_risk.get("risks", []),
             )
             tomorrow_lines.append(rp_block)
@@ -765,17 +743,14 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 "night_score": p_night_score,
                 "twilight": "",
                 "weather_code": p.get("weather_code"),
+                "period_title": p["title"],
             }
             p_risk = analyze_risks(p_data, is_forecast=True)
             p_verdict = get_rider_verdict(p_risk["score"], now_dt.month)
 
-            p_block = _period_block(
+            p_block = _period_block_h(
                 p["title"], p["emoji"], p["range"],
                 p_verdict, p_risk["score"],
-                p["temp"],
-                p.get("rain_total") or 0,
-                p.get("wind_speed") or 0,
-                p.get("wind_gust"),
                 p_risk.get("risks", []),
             )
             tomorrow_lines.append(p_block)
@@ -787,7 +762,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     block_j = f"v{BOT_VERSION}\n«Газ до отсечки — только если мозг в черепе», @Aleksandr_K8V"
 
     # ─── Сборка ────────────────────────────────────────────
-    parts = [block_a, "", block_b, "", block_f, "", block_de]
+    parts = [block_a, "", daily_quote, "", block_b, "", block_f, "", block_de]
 
     if forecast_block:
         parts.extend(["", forecast_block])
@@ -1067,7 +1042,7 @@ def send_weather(chat_id):
             return "error"
 
         a_city = analyze_risks(avg_w)
-        print(f"🔍 send_weather: score={a_city['score']}, risks={list(zip(a_city.get('risks', []), a_city.get('risk_weights', [])))}", flush=True)
+        print(f"🔍 send_weather: score={a_city['score']}, risks={a_city['risks']}", flush=True)
 
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
