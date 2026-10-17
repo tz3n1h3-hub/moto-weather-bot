@@ -99,7 +99,7 @@ def analyze_risks(weather, is_forecast=False):
           f"hum={weather.get('humidity')}, dew={weather.get('dew_point')}, "
           f"wind={weather.get('wind_speed')}, gust={weather.get('wind_gust')}, "
           f"twilight={weather.get('twilight')}, night_score={weather.get('night_score')}, "
-          f"is_forecast={is_forecast}", flush=True)
+          f"period_title={weather.get('period_title')}, is_forecast={is_forecast}", flush=True)
 
     wind_gust = weather.get("wind_gust") or 0
     wind_speed = weather.get("wind_speed") or 0
@@ -117,6 +117,7 @@ def analyze_risks(weather, is_forecast=False):
     clouds_pct = weather.get("clouds_pct") or 0
     soil_temp = weather.get("soil_temp")
     twilight = weather.get("twilight") or ""
+    period_title = weather.get("period_title") or ""
 
     humidity_handled = False
     visibility_alerted = False
@@ -152,7 +153,7 @@ def analyze_risks(weather, is_forecast=False):
         wind_score = 3
         recommendations.append("⚠️ Осторожно на мостах и открытых участках, без обгонов фур")
     elif wind_gust >= 9:
-        risks.append(f"Свежие порывы (до {wind_gust:.0f} м/с)")
+        risks.append(f"Кратковременные порывы (до {wind_gust:.0f} м/с)")
         risk_weights.append(2)
         wind_score = 2
         recommendations.append("🌬️ Держи руль крепче, снизь скорость")
@@ -397,11 +398,18 @@ def analyze_risks(weather, is_forecast=False):
             score += 2
             recommendations.append("💡 Включите свет")
     elif night_score == 1:
-        if not any("темн" in r.lower() or "сумерк" in r.lower() for r in risks):
-            risks.append("Сумерки — видимость ухудшается")
-            risk_weights.append(1)
-            score += 1
-            recommendations.append("💡 Включите свет заранее")
+        if period_title == "РАССВЕТ":
+            if not any("рассвет" in r.lower() or "контраст" in r.lower() for r in risks):
+                risks.append("Рассвет — низкая контрастность")
+                risk_weights.append(1)
+                score += 1
+                recommendations.append("💡 Включите свет, будь внимателен")
+        else:
+            if not any("темн" in r.lower() or "сумерк" in r.lower() for r in risks):
+                risks.append("Сумерки — видимость ухудшается")
+                risk_weights.append(1)
+                score += 1
+                recommendations.append("💡 Включите свет заранее")
     # ─── КОНЕЦ RISK_NIGHT ──────────────────────────────────
 
     # ─── RISK_SCALE ────────────────────────────────────────
@@ -462,7 +470,6 @@ def get_rider_verdict(score, month=None, is_tomorrow=False):
 # ─── НАЧАЛО GEAR_DYNAMIC ───────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
-    """Без эмодзи, деловой стиль."""
     parts = []
 
     if is_rain or (rain_prob and rain_prob >= 40):
@@ -485,7 +492,6 @@ def get_gear_dynamic(feels_like, is_rain, is_night, temp, rain_prob=0):
 # ═══════════════════════════════════════════════════════════
 def get_tech_check_dynamic(visibility, humidity, temp, wind_gust,
                             is_rain, is_night, is_drizzle=False):
-    """Без эмодзи, полные формулировки."""
     parts = []
 
     if visibility and visibility < 1000:
