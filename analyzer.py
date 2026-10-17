@@ -393,7 +393,7 @@ def analyze_risks(weather, is_forecast=False):
 
     if night_score == 2:
         if not any("темно" in r.lower() for r in risks):
-            risks.append("Плохая видимость (темнота)")
+            risks.append("Темно — видимость хуже")
             risk_weights.append(2)
             score += 2
             recommendations.append("💡 Включите свет")
