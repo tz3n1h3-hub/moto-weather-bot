@@ -61,7 +61,7 @@ def rain_label(mm):
     if mm is None or mm <= 0:
         return "сухо"
     if mm < 0.5:
-        return "морось"
+        return "следы"
     if mm < 2:
         return "слабый дождь"
     if mm < 5:
@@ -147,10 +147,6 @@ def analyze_risks(weather, is_forecast=False):
         risks.append(f"Опасные порывы (до {wind_gust:.0f} м/с)")
         wind_score = 3
         recommendations.append("⚠️ Осторожно на мостах и открытых участках, без обгонов фур")
-    elif wind_gust >= 9:
-        risks.append(f"Сильные порывы (до {wind_gust:.0f} м/с)")
-        wind_score = 2
-        recommendations.append("🌬️ Держи руль крепче, снизь скорость")
 
     speed_score = 0
     if wind_speed >= 13:
@@ -321,7 +317,8 @@ def analyze_risks(weather, is_forecast=False):
                 score += 3
                 recommendations.append("🌫️ Противотуманки, снизьте скорость")
         elif weather_code in (51, 53, 55, 56, 57):
-            if rain_total <= 1:
+            # Морось — только если осадков реально много
+            if rain_total >= 0.5:
                 rain_keywords = ("дождь", "морос", "осадк", "ливн")
                 if not any(kw in r.lower() for r in risks for kw in rain_keywords):
                     risks.append("Морось")
@@ -576,7 +573,4 @@ def get_best_time(sunrise=None, sunset=None):
             hours = total_min // 60
             mins = total_min % 60
             return f"🕐 Ночь — до рассвета ещё {hours} ч {mins} мин 🌙"
-        return "🕐 Ночь — только с хорошим светом 🌙"
-
-    return "🕐 Раннее утро — будьте внимательны 🌄"
-# ─── КОНЕЦ BEST_TIME ───────────────────────────────────────
+        return "🕐 Ночь — только с хорошим светом
