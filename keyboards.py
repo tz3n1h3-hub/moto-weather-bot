@@ -128,17 +128,20 @@ def get_base_back_keyboard():
 # ─── НАЧАЛО KB_LINKS ───────────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_links_keyboard(links_data):
-    """Клавиатура для окна Полезные ссылки.
-
+    """
+    Клавиатура для окна Полезные ссылки.
     links_data — словарь из config.LINKS_DATA.
-    Каждая ссылка → URL-кнопка в столбик.
-    Внизу — «◀️ К прогнозу».
+    Каждая запись может иметь список кнопок (buttons) или одну (label + url).
     """
     markup = InlineKeyboardMarkup()
     for key, item in links_data.items():
-        markup.row(
-            InlineKeyboardButton(item["label"], url=item["url"])
-        )
+        buttons = item.get("buttons", [])
+        if not buttons and item.get("url"):
+            buttons = [{"label": item["label"], "url": item["url"]}]
+        for btn in buttons:
+            markup.row(
+                InlineKeyboardButton(btn["label"], url=btn["url"])
+            )
     markup.row(
         InlineKeyboardButton("◀️ К прогнозу", callback_data="weather")
     )
