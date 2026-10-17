@@ -573,4 +573,7 @@ def get_best_time(sunrise=None, sunset=None):
             hours = total_min // 60
             mins = total_min % 60
             return f"🕐 Ночь — до рассвета ещё {hours} ч {mins} мин 🌙"
-        return "🕐 Ночь — только с хорошим светом
+        return "🕐 Ночь — только с хорошим светом 🌙"
+
+    return "🕐 Раннее утро — будьте внимательны 🌄"
+# ─── КОНЕЦ BEST_TIME ───────────────────────────────────────
