@@ -226,7 +226,7 @@ def _time_to_minutes(hhmm):
         return None
 
 
-def _min_to_time(m):
+def min_to_time(m):
     m = m % 1440
     return f"{m // 60:02d}:{m % 60:02d}"
 
@@ -296,7 +296,6 @@ def get_next_period(hour, minute=0, sunrise=None, sunset=None):
         if start > now_min:
             return (title, emoji, start, end)
 
-    # Если сейчас ночь после dark_start — следующий РАССВЕТ (завтра)
     first = periods[0]
     return (first[2], first[3], first[0] + 1440, first[1] + 1440)
 
@@ -314,7 +313,7 @@ def get_period_range(hour, minute=0, sunrise=None, sunset=None):
     p = get_next_period(hour, minute, sunrise, sunset)
     if not p:
         return ""
-    return f"{_min_to_time(p[2])}–{_min_to_time(p[3])}"
+    return f"{min_to_time(p[2])}–{min_to_time(p[3])}"
 
 
 def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None):
@@ -326,7 +325,6 @@ def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None):
     hours = []
     for h in range(24):
         h_min = h * 60
-        # Проверяем, попадает ли час в период (учитывая переход через полночь)
         if start <= h_min < end:
             hours.append(h)
         elif start >= 1440 and (h_min + 1440) >= start and (h_min + 1440) < end:
@@ -1397,16 +1395,14 @@ def get_short_forecast():
             except Exception:
                 pass
 
-        # Определяем СЛЕДУЮЩИЙ период
         next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         if not next_p:
             return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
         p_title, p_emoji, p_start, p_end = next_p
         title = f"{p_emoji} {p_title}"
-        period_range = f"{_min_to_time(p_start)}–{_min_to_time(p_end)}"
+        period_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
-        # Выбираем часы следующего периода
         period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
         if not period_hours:
             return {"next_period": "нет данных", "next_period_title": title, "next_period_range": period_range, "rain_prob": None}
@@ -1417,10 +1413,8 @@ def get_short_forecast():
                 t_dt = datetime.fromisoformat(t).replace(tzinfo=MINSK_TZ)
             except Exception:
                 continue
-            # Проверяем, что это сегодня и час в периоде
             if t_dt.date() == now_dt.date() and t_dt.hour in period_hours:
                 target_indices.append(i)
-            # Или завтра, если период переходит через полночь (НОЧЬ)
             elif p_start >= 1440 and t_dt.date() == (now_dt.date() + timedelta(days=1)) and t_dt.hour in period_hours:
                 target_indices.append(i)
 
@@ -1490,7 +1484,7 @@ def get_short_forecast_wttr():
 
         p_title, p_emoji, p_start, p_end = next_p
         title = f"{p_emoji} {p_title}"
-        period_range = f"{_min_to_time(p_start)}–{_min_to_time(p_end)}"
+        period_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
         period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
         today = w_raw["weather"][0]
@@ -1741,7 +1735,7 @@ def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
         result.append({
             "title": title,
             "emoji": emoji,
-            "range": f"{_min_to_time(p_start)}–{_min_to_time(p_end)}",
+            "range": f"{min_to_time(p_start)}–{min_to_time(p_end)}",
             "temp": avg_t,
             "wind_speed": max_w,
             "wind_gust": max_g,
@@ -1846,7 +1840,7 @@ def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
         result.append({
             "title": title,
             "emoji": emoji,
-            "range": f"{_min_to_time(p_start)}–{_min_to_time(p_end)}",
+            "range": f"{min_to_time(p_start)}–{min_to_time(p_end)}",
             "temp": avg_t,
             "wind_speed": max_w,
             "wind_gust": max_g,
