@@ -143,11 +143,11 @@ def analyze_risks(weather, is_forecast=False):
         wind_score = 4
         recommendations.append("🛑 Рассмотри отказ от поездки")
     elif wind_gust >= 12:
-        risks.append(f"Опасные порывы (до {wind_gust:.0f} м/с)")
+        risks.append(f"Очень сильные порывы (до {wind_gust:.0f} м/с)")
         wind_score = 3
         recommendations.append("⚠️ Осторожно на мостах и открытых участках, без обгонов фур")
     elif wind_gust >= 9:
-        risks.append(f"Сильные порывы (до {wind_gust:.0f} м/с)")
+        risks.append(f"Свежие порывы (до {wind_gust:.0f} м/с)")
         wind_score = 2
         recommendations.append("🌬️ Держи руль крепче, снизь скорость")
 
@@ -299,10 +299,6 @@ def analyze_risks(weather, is_forecast=False):
             score += 4
             recommendations.append("🧊 Осторожно на мостах и эстакадах, не тормози резко")
     # ─── КОНЕЦ RISK_ICE ────────────────────────────────────
-
-    # ─── RISK_TWILIGHT ─────────────────────────────────────
-    # Убран: дубль с 【F】 «Смеркается»
-    # ─── КОНЕЦ RISK_TWILIGHT ───────────────────────────────
 
     # ─── RISK_FORECAST_CODE ────────────────────────────────
     if is_forecast:
@@ -507,7 +503,7 @@ def get_tip(temp, humidity, is_rain, is_night, wind_speed, is_thunder, visibilit
         return "💡 Ночь — видимость хуже. Паузы каждые два часа"
 
     if wind_gust and wind_gust >= 12:
-        return "💡 Опасные порывы — без обгонов фур, на мостах руль крепче"
+        return "💡 Очень сильные порывы — без обгонов фур, на мостах руль крепче"
 
     if wind_gust and wind_gust >= 8:
         return "💡 Порывы — дистанцию от фур, руль крепче, расслабь хват"
