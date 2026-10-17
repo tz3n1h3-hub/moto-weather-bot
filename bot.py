@@ -369,7 +369,8 @@ PERIOD_NIGHT_MAP = {
 }
 
 
-def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None):
+def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust, risks_list):
+    """Форматирует период: заголовок + вердикт + детали + риски."""
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range})"
     if skulls:
@@ -389,7 +390,13 @@ def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wi
         parts.append(f"осадки: {r_lbl}, {rain_mm} мм")
 
     details = " · ".join(parts)
-    return f"{header}\n{details}"
+    result = f"{header}\n{details}"
+
+    if risks_list:
+        top_risks = risks_list[:2]
+        result += f"\nРиск: {' · '.join(top_risks)}"
+
+    return result
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
 
 
@@ -669,6 +676,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             short.get("rain_total") or 0,
             short.get("avg_wind") or 0,
             short.get("max_gust"),
+            period_risk["risks"],
         )
 
     # ─── H: Завтра по периодам ─────────────────────────────
@@ -713,6 +721,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 p.get("rain_total") or 0,
                 p.get("wind_speed") or 0,
                 p.get("wind_gust"),
+                p_risk["risks"],
             )
             tomorrow_lines.append(p_block)
             tomorrow_lines.append("")
