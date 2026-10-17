@@ -838,9 +838,19 @@ def run_morning_broadcast(force=False):
 
         avg_w = _prepare_avg_w(w)
         if not avg_w:
-            return {"error": "merge_failed", "date": today_str}
+            send_or_edit(chat_id, "❌ Небо молчит.", None)
+            return "error"
 
         a_city = analyze_risks(avg_w)
+
+        # ─── DEBUG (временно) ─────────────────────────────
+        print(f"🔍 DEBUG: score={a_city['score']}", flush=True)
+        print(f"🔍 DEBUG: risks={a_city['risks']}", flush=True)
+        print(f"🔍 DEBUG: twilight={avg_w.get('twilight')}", flush=True)
+        print(f"🔍 DEBUG: is_night={w.get('is_night')}", flush=True)
+        print(f"🔍 DEBUG: night_score={avg_w.get('night_score')}", flush=True)
+        # ─── END DEBUG ────────────────────────────────────
+
         a_city["agreement"] = avg_w.get("agreement")
         a_city["agree_values"] = avg_w.get("agree_values")
         a_city["avg_w"] = avg_w
