@@ -379,14 +379,13 @@ def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wi
         r_lbl = rain_label(rain_mm)
         parts.append(f"{r_lbl} {rain_mm} мм")
 
-    # Порывы важнее среднего ветра для риска
+    # Ветер — только цифры, без оценки (для новичка понятнее)
     gust_val = wind_gust if wind_gust and wind_gust > (wind or 0) else wind
     if gust_val and gust_val >= 5:
-        w_lbl = wind_label(gust_val)
         if wind_gust and wind_gust > (wind or 0):
-            parts.append(f"{w_lbl} порывы {int(wind_gust)} м/с")
+            parts.append(f"порывы {int(wind_gust)} м/с")
         else:
-            parts.append(f"{w_lbl} ветер {int(wind)} м/с")
+            parts.append(f"ветер {int(wind)} м/с")
 
     details = " · ".join(parts)
     return f"{header}\n{details}"
@@ -434,14 +433,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     b_lines = []
     if skulls:
-        b_lines.append(f"СЕЙЧАС {verdict} · {skulls}")
+        b_lines.append(f"<u>СЕЙЧАС {verdict}</u> · {skulls}")
     else:
-        b_lines.append(f"СЕЙЧАС {verdict}")
-
-    risk_factors = a_city["risks"][:4]
-    if risk_factors:
-        for r in risk_factors:
-            b_lines.append(f"• {r}")
+        b_lines.append(f"<u>СЕЙЧАС {verdict}</u>")
 
     # Цитаты — полные, абзацем, топ-2
     research_lines = []
@@ -685,7 +679,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if f and f.get("periods"):
         tomorrow_date = (now_dt + timedelta(days=1))
         tomorrow_str = f"{tomorrow_date.day} {MONTHS_RU[tomorrow_date.month - 1]}"
-        tomorrow_lines = [f"ЗАВТРА ({tomorrow_str})", ""]
+        tomorrow_lines = [f"<u>ЗАВТРА ({tomorrow_str})</u>", ""]
 
         for p in f["periods"]:
             p_data = {
