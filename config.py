@@ -2,11 +2,12 @@ import os
 from datetime import timedelta, timezone
 
 # ─── НАЧАЛО CONFIG_VERSION ─────────────────────────────────
-BOT_VERSION = "2.0.3"
+BOT_VERSION = "2.0.4"
 BOT_VERSION_DATE = "2026-10-17"
 BOT_VERSION_NOTIFY = False
 
 BOT_CHANGELOG = [
+    ("2.0.4", "17.10.2026", "Отладка: print в analyze_risks и send_weather · фикс twilight (смеркается ≠ темно)", False),
     ("2.0.3", "17.10.2026", "Вердикт «СЕЙЧАС ЕХАТЬ МОЖНО» подчёркнут · ЗАВТРА подчёркнуто · ветер в периодах без оценки", False),
     ("2.0.2", "17.10.2026", "Вердикт «СЕЙЧАС ЕХАТЬ МОЖНО» подчёркнут · ЗАВТРА подчёркнуто", False),
     ("2.0.1", "17.10.2026", "Фикс: видимость fallback (OM > 20000 м) · порывы в периодах · убран «Дорога чистая»", False),
@@ -92,10 +93,10 @@ MINSK_POINTS_ENABLED = True
 
 MINSK_POINTS = [
     {"name": "Центр",   "short": "Ц",  "lat": 53.9045, "lon": 27.5615},
-    {"name": "Север",   "short": "С",  "lat": 53.9500, "lon": 27.7000},   # Уручье
-    {"name": "Юг",      "short": "Ю",  "lat": 53.8500, "lon": 27.5000},   # Малиновка
-    {"name": "Запад",   "short": "З",  "lat": 53.9200, "lon": 27.4000},   # Каменная Горка
-    {"name": "Восток",  "short": "В",  "lat": 53.9000, "lon": 27.7500},   # Шабаны
+    {"name": "Север",   "short": "С",  "lat": 53.9500, "lon": 27.7000},
+    {"name": "Юг",      "short": "Ю",  "lat": 53.8500, "lon": 27.5000},
+    {"name": "Запад",   "short": "З",  "lat": 53.9200, "lon": 27.4000},
+    {"name": "Восток",  "short": "В",  "lat": 53.9000, "lon": 27.7500},
 ]
 
 # Кэш многоточечного прогноза
@@ -124,13 +125,6 @@ FEEDBACK_TTL_DAYS = 30
 FEEDBACK_ANTISPAM_SEC = 3600
 FEEDBACK_PREFIX = "feedback:"
 
-# ============ ЛОГ ПРИ СТАРТЕ ============
-print(f"ℹ️ OM режим: {_OM_MODE}", flush=True)
-if OPEN_METEO_PROXY_URL:
-    print(f"ℹ️ OM URL: {OPEN_METEO_URL}", flush=True)
-if MINSK_POINTS_ENABLED:
-    print(f"ℹ️ Многоточечный OM: {len(MINSK_POINTS)} точек Минска", flush=True)
-
 # ============ РЕЕСТР ПОЛЕЗНЫХ ССЫЛОК ============
 LINKS_DATA = {
     "minsk_scr250": {
@@ -150,3 +144,10 @@ LINKS_DATA = {
         ],
     },
 }
+
+# ============ ЛОГ ПРИ СТАРТЕ ============
+print(f"ℹ️ OM режим: {_OM_MODE}", flush=True)
+if OPEN_METEO_PROXY_URL:
+    print(f"ℹ️ OM URL: {OPEN_METEO_URL}", flush=True)
+if MINSK_POINTS_ENABLED:
+    print(f"ℹ️ Многоточечный OM: {len(MINSK_POINTS)} точек Минска", flush=True)
