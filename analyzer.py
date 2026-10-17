@@ -93,15 +93,13 @@ def analyze_risks(weather, is_forecast=False):
     risks, recommendations = [], []
     score = 0
 
-    # ─── ОТЛАДКА ВХОДА ─────────────────────────────────────
-    print(f"🔍 analyze_risks: temp={weather.get('temp')}, feels={weather.get('feels_like')}, "
+    print(f"🔍 analyze_risks IN: temp={weather.get('temp')}, feels={weather.get('feels_like')}, "
           f"is_rain={weather.get('is_rain')}, rain_total={weather.get('rain_total') or weather.get('precip_mm')}, "
-          f"visibility={weather.get('visibility')}, vis_min={weather.get('visibility_min')}, "
-          f"humidity={weather.get('humidity')}, dew={weather.get('dew_point')}, "
+          f"vis={weather.get('visibility')}, vis_min={weather.get('visibility_min')}, "
+          f"hum={weather.get('humidity')}, dew={weather.get('dew_point')}, "
           f"wind={weather.get('wind_speed')}, gust={weather.get('wind_gust')}, "
           f"twilight={weather.get('twilight')}, night_score={weather.get('night_score')}, "
           f"is_forecast={is_forecast}", flush=True)
-    # ─── КОНЕЦ ОТЛАДКИ ─────────────────────────────────────
 
     wind_gust = weather.get("wind_gust") or 0
     wind_speed = weather.get("wind_speed") or 0
@@ -398,9 +396,7 @@ def analyze_risks(weather, is_forecast=False):
 
     final_score = min(score, 10)
 
-    # ─── ОТЛАДКА ВЫХОДА ────────────────────────────────────
-    print(f"🔍 analyze_risks RESULT: score={final_score}, risks={risks}", flush=True)
-    # ─── КОНЕЦ ОТЛАДКИ ─────────────────────────────────────
+    print(f"🔍 analyze_risks OUT: score={final_score}, risks={risks}", flush=True)
 
     return {
         "score": final_score,
