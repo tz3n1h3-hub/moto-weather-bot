@@ -39,7 +39,7 @@ from keyboards import (
     get_feedback_direction_keyboard, get_feedback_skip_keyboard,
     get_feedback_cancel_keyboard,
 )
-from knowledge import BASE_EQUIPMENT_TEXT, build_links_text
+from knowledge import BASE_EQUIPMENT_TEXT, build_links_text, MOTORCYCLE_QUOTES
 from texts import (
     START_TEXT, SUBSCRIBE_TEXT, SUBSCRIBE_CONFIRMED, SUBSCRIBE_CANCELED,
     UNSUBSCRIBE_PROMPT, UNSUBSCRIBED, UNSUBSCRIBE_CANCELED, ALREADY_SUBSCRIBED,
@@ -364,12 +364,12 @@ PERIOD_NIGHT_MAP = {
     "РАССВЕТ": 1,
     "УТРО": 0,
     "ДЕНЬ": 0,
-    "ВЕЧЕР": 1,
+    "ВЕЧЕР": 0,
     "НОЧЬ": 2,
 }
 
 
-def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None, risks=None):
+def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None):
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range})"
     if skulls:
@@ -377,30 +377,19 @@ def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wi
     else:
         header += f" · {verdict}"
 
-    parts = []
-    t_lbl = temp_label(temp)
-    parts.append(f"{t_lbl} {int(temp)}°")
+    parts = [f"Температура {int(temp)}°"]
+
+    if wind_gust and wind_gust > (wind or 0):
+        parts.append(f"ветер {int(wind)} м/с (порывы до {int(wind_gust)} м/с)")
+    elif wind:
+        parts.append(f"ветер {int(wind)} м/с")
 
     if rain_mm and rain_mm > 0:
         r_lbl = rain_label(rain_mm)
-        parts.append(f"{r_lbl} {rain_mm} мм")
-
-    gust_val = wind_gust if wind_gust and wind_gust > (wind or 0) else wind
-    if gust_val and gust_val >= 5:
-        if wind_gust and wind_gust > (wind or 0):
-            parts.append(f"порывы {int(wind_gust)} м/с")
-        else:
-            parts.append(f"ветер {int(wind)} м/с")
+        parts.append(f"осадки: {r_lbl}, {rain_mm} мм")
 
     details = " · ".join(parts)
-    block = f"{header}\n{details}"
-
-    # Риски в периодах — топ-2
-    if risks:
-        risk_str = " · ".join(risks[:2])
-        block += f"\nРиск: {risk_str}"
-
-    return block
+    return f"{header}\n{details}"
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
 
 
@@ -435,8 +424,9 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_morning:
         header_icon = "🌅"
 
-    # ─── A: Шапка ──────────────────────────────────────────
-    block_a = f"{header_icon} MOTOWeather · Минск\n{weekday} · {date_str} · {time_str}"
+    # ─── A: Шапка + цитата ────────────────────────────────
+    daily_quote = random.choice(MOTORCYCLE_QUOTES)
+    block_a = f"{header_icon} MOTOWeather · Минск\n{weekday} · {date_str} · {time_str}\n\n{daily_quote}"
 
     # ─── B: Вердикт ────────────────────────────────────────
     score = a_city["score"]
@@ -454,7 +444,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         for r in risk_factors:
             b_lines.append(f"• {r}")
 
-    # Цитаты — полные, топ-2
     research_lines = []
 
     vis_now = avg_w.get("visibility") or 10000
@@ -510,10 +499,10 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     t_avg = avg_w.get("temp")
     feels = a_city.get("feels_like")
     if t_avg is not None:
-        t_str = f"{int(t_avg)}°"
+        t_str = f"Температура {int(t_avg)}°"
         if feels is not None and feels != t_avg:
-            t_str += f" (ощущ. {int(feels)}°)"
-        f_lines.append(f"t° {t_str}")
+            t_str += f", ощущается как {int(feels)}°"
+        f_lines.append(t_str)
 
     asphalt_temp = a_city.get("asphalt_temp")
     if asphalt_temp is not None:
@@ -526,7 +515,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if wind_avg is not None:
         w_str = f"Ветер {int(wind_avg)} м/с"
         if gust_avg and gust_avg > wind_avg:
-            w_str += f" (до {int(gust_avg)})"
+            w_str += f" (порывы до {int(gust_avg)} м/с)"
         if short_dir:
             w_str += f", {short_dir}"
         f_lines.append(w_str)
@@ -680,7 +669,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             short.get("rain_total") or 0,
             short.get("avg_wind") or 0,
             short.get("max_gust"),
-            period_risk.get("risks"),
         )
 
     # ─── H: Завтра по периодам ─────────────────────────────
@@ -725,7 +713,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 p.get("rain_total") or 0,
                 p.get("wind_speed") or 0,
                 p.get("wind_gust"),
-                p_risk.get("risks"),
             )
             tomorrow_lines.append(p_block)
             tomorrow_lines.append("")
