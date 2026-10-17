@@ -24,7 +24,7 @@ from weather import (
     get_short_forecast, get_daylight_info, hpa_to_mmhg,
     merge_weather_data, get_twilight_state,
     get_astro_night_score, get_next_period, get_next_period_hours,
-    get_period_title, get_period_range,
+    get_period_title, get_period_range, min_to_time,
 )
 from analyzer import (
     analyze_risks, get_short_verdict, get_rider_verdict,
@@ -631,7 +631,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     if next_p and short.get("next_period") != "нет данных":
         p_title, p_emoji, p_start, p_end = next_p
-        p_range = f"{_min_to_time(p_start)}–{_min_to_time(p_end)}"
+        p_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
         # Риск для периода
         period_data = {
