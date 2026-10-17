@@ -369,7 +369,7 @@ PERIOD_NIGHT_MAP = {
 }
 
 
-def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None):
+def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None, risks=None):
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range})"
     if skulls:
@@ -393,7 +393,14 @@ def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wi
             parts.append(f"ветер {int(wind)} м/с")
 
     details = " · ".join(parts)
-    return f"{header}\n{details}"
+    block = f"{header}\n{details}"
+
+    # Риски в периодах — топ-2
+    if risks:
+        risk_str = " · ".join(risks[:2])
+        block += f"\nРиск: {risk_str}"
+
+    return block
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
 
 
@@ -524,7 +531,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             w_str += f", {short_dir}"
         f_lines.append(w_str)
 
-    # Видимость
     vis_avg_city = avg_w.get("visibility_avg_city")
     vis_min = avg_w.get("visibility_min")
     districts_vis = w.get("precipitation_by_districts", [])
@@ -558,7 +564,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         else:
             f_lines.append("Видимость: 10+ км")
 
-    # Осадки
     rain_prob_now = w.get("rain_prob_now")
     is_rain_anywhere = w.get("is_rain_anywhere", False)
 
@@ -592,7 +597,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if is_rain_anywhere or (rain_prob_now and rain_prob_now >= 40):
         f_lines.append("📡 Точный прогноз — кнопка «Радар осадков» внизу")
 
-    # Светло/темно — 4 состояния
     twilight = get_twilight_state(sunrise, sunset)
     if twilight == "темно":
         f_lines.append("🌙 Темно")
@@ -676,6 +680,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             short.get("rain_total") or 0,
             short.get("avg_wind") or 0,
             short.get("max_gust"),
+            period_risk.get("risks"),
         )
 
     # ─── H: Завтра по периодам ─────────────────────────────
@@ -720,6 +725,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 p.get("rain_total") or 0,
                 p.get("wind_speed") or 0,
                 p.get("wind_gust"),
+                p_risk.get("risks"),
             )
             tomorrow_lines.append(p_block)
             tomorrow_lines.append("")
@@ -797,7 +803,6 @@ def _prepare_avg_w(w):
                         f"⚠️ OWM: туман {ow_str}, в городе до {math_round(min_v / 1000, 0)} км"
                     )
 
-    # Температура: без METAR
     om_src = w.get("om") or {}
     owm_src = w.get("ow") or {}
     wttr_src = w.get("w") or {}
