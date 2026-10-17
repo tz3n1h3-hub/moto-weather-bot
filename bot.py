@@ -362,7 +362,7 @@ def _format_vis(v):
     return f"{int(v)} м"
 
 
-def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind):
+def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind, wind_gust=None):
     """Форматирует один период: заголовок + вердикт + детали."""
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range})"
@@ -379,9 +379,14 @@ def _period_block(title, emoji, p_range, verdict, score, temp, rain_mm, wind):
         r_lbl = rain_label(rain_mm)
         parts.append(f"{r_lbl} {rain_mm} мм")
 
-    if wind and wind >= 5:
-        w_lbl = wind_label(wind)
-        parts.append(f"{w_lbl} ветер {wind} м/с")
+    # Порывы важнее среднего ветра для риска
+    gust_val = wind_gust if wind_gust and wind_gust > (wind or 0) else wind
+    if gust_val and gust_val >= 5:
+        w_lbl = wind_label(gust_val)
+        if wind_gust and wind_gust > (wind or 0):
+            parts.append(f"{w_lbl} порывы {int(wind_gust)} м/с")
+        else:
+            parts.append(f"{w_lbl} ветер {int(wind)} м/с")
 
     details = " · ".join(parts)
     return f"{header}\n{details}"
@@ -437,8 +442,6 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     if risk_factors:
         for r in risk_factors:
             b_lines.append(f"• {r}")
-    else:
-        b_lines.append("• Дорога чистая")
 
     # Цитаты — полные, абзацем, топ-2
     research_lines = []
@@ -548,6 +551,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             vis_str += f" · худший — {worst_name} {_format_vis(worst_v)}"
 
         f_lines.append(vis_str)
+    else:
+        # Fallback: берём из merge_weather_data
+        fb_vis = avg_w.get("visibility")
+        if fb_vis is not None and fb_vis > 0:
+            f_lines.append(f"Видимость: {_format_vis(fb_vis)}")
+        else:
+            f_lines.append("Видимость: 10+ км")
 
     # Осадки
     rain_prob_now = w.get("rain_prob_now")
@@ -667,6 +677,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
             short.get("avg_temp") or 0,
             short.get("rain_total") or 0,
             short.get("avg_wind") or 0,
+            short.get("max_gust"),
         )
 
     # ─── H: Завтра по периодам ─────────────────────────────
@@ -708,6 +719,7 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
                 p["temp"],
                 p.get("rain_total") or 0,
                 p.get("wind_speed") or 0,
+                p.get("wind_gust"),
             )
             tomorrow_lines.append(p_block)
             tomorrow_lines.append("")
