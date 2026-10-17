@@ -260,68 +260,78 @@ def get_evening_start(sunset):
     return max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
 
-def get_period_title(hour, minute=0, sunrise=None, sunset=None):
-    if not sunrise or not sunset:
-        if 6 <= hour < 12:
-            return "🌅 УТРОМ"
-        elif 12 <= hour < 18:
-            return "☀️ ДНЁМ"
-        elif 18 <= hour < 22:
-            return "🌆 ВЕЧЕРОМ"
-        else:
-            return "🌙 НОЧЬЮ"
-
-    now_min = hour * 60 + minute
+def _get_periods_list(sunrise, sunset):
+    """Список периодов на сутки: (start_min, end_min, title, emoji)."""
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
-        return "🌙 НОЧЬЮ"
+        return []
 
     noon = (sr + ss) // 2
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
-    if now_min >= dark_start or now_min < twilight_start:
-        return "🌙 НОЧЬЮ"
-    if twilight_start <= now_min < sr:
-        return "🌄 РАССВЕТ"
-    if sr <= now_min < noon:
-        return "🌅 УТРОМ"
-    if noon <= now_min < evening_start:
-        return "☀️ ДНЁМ"
-    if evening_start <= now_min < dark_start:
-        return "🌆 ВЕЧЕРОМ"
+    return [
+        (twilight_start, sr, "РАССВЕТ", "🌄"),
+        (sr, noon, "УТРО", "🌅"),
+        (noon, evening_start, "ДЕНЬ", "☀️"),
+        (evening_start, dark_start, "ВЕЧЕР", "🌆"),
+        (dark_start, sr + 1440, "НОЧЬ", "🌙"),
+    ]
 
-    return "🌙 НОЧЬЮ"
+
+def get_next_period(hour, minute=0, sunrise=None, sunset=None):
+    """Возвращает (title, emoji, start_min, end_min) СЛЕДУЮЩЕГО периода."""
+    if not sunrise or not sunset:
+        return None
+
+    periods = _get_periods_list(sunrise, sunset)
+    if not periods:
+        return None
+
+    now_min = hour * 60 + minute
+
+    for start, end, title, emoji in periods:
+        if start > now_min:
+            return (title, emoji, start, end)
+
+    # Если сейчас ночь после dark_start — следующий РАССВЕТ (завтра)
+    first = periods[0]
+    return (first[2], first[3], first[0] + 1440, first[1] + 1440)
+
+
+def get_period_title(hour, minute=0, sunrise=None, sunset=None):
+    """Заголовок СЛЕДУЮЩЕГО периода."""
+    p = get_next_period(hour, minute, sunrise, sunset)
+    if p:
+        return f"{p[1]} {p[0]}"
+    return "—"
 
 
 def get_period_range(hour, minute=0, sunrise=None, sunset=None):
-    if not sunrise or not sunset:
+    """Диапазон времени СЛЕДУЮЩЕГО периода."""
+    p = get_next_period(hour, minute, sunrise, sunset)
+    if not p:
         return ""
+    return f"{_min_to_time(p[2])}–{_min_to_time(p[3])}"
 
-    sr = _time_to_minutes(sunrise)
-    ss = _time_to_minutes(sunset)
-    if sr is None or ss is None:
-        return ""
 
-    noon = (sr + ss) // 2
-    dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
-    twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
-    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
-
-    title = get_period_title(hour, minute, sunrise, sunset)
-
-    if title == "🌄 РАССВЕТ":
-        return f"{_min_to_time(twilight_start)}–{_min_to_time(sr)}"
-    elif title == "🌅 УТРОМ":
-        return f"{_min_to_time(sr)}–{_min_to_time(noon)}"
-    elif title == "☀️ ДНЁМ":
-        return f"{_min_to_time(noon)}–{_min_to_time(evening_start)}"
-    elif title == "🌆 ВЕЧЕРОМ":
-        return f"{_min_to_time(evening_start)}–{_min_to_time(dark_start)}"
-    else:
-        return f"{_min_to_time(dark_start)}–{_min_to_time(sr)}"
+def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None):
+    """Список часов (0-23) следующего периода для выборки из hourly."""
+    p = get_next_period(hour, minute, sunrise, sunset)
+    if not p:
+        return []
+    start, end = p[2], p[3]
+    hours = []
+    for h in range(24):
+        h_min = h * 60
+        # Проверяем, попадает ли час в период (учитывая переход через полночь)
+        if start <= h_min < end:
+            hours.append(h)
+        elif start >= 1440 and (h_min + 1440) >= start and (h_min + 1440) < end:
+            hours.append(h)
+    return hours
 
 
 def get_astro_night_score(hour, minute=0, sunrise=None, sunset=None):
@@ -522,12 +532,6 @@ def hpa_to_mmhg(hpa):
 
 
 def calculate_qff(qfe_hpa, temp_c, station_height_m=204.0):
-    """
-    Пересчёт давления со станции (QFE) на уровень моря по методике QFF.
-    qfe_hpa: давление на станции (гПа), из METAR Q-кода
-    temp_c: температура воздуха (°C)
-    station_height_m: высота станции над уровнем моря (м), по умолчанию 204 м (UMMS)
-    """
     if qfe_hpa is None or temp_c is None:
         return None
     try:
@@ -1309,14 +1313,8 @@ def merge_weather_data(w):
         result["visibility_values"] = list(vis_vals)
         result["visibility_min"] = min_v
         result["visibility_max"] = max_v
-
-        if max_v > 0 and min_v > 0 and (max_v / min_v) >= 5.0:
-            result["visibility"] = math_round(avg(vis_vals), 0)
-            result["visibility_big_spread"] = True
-            print(f"👁️ visibility: разброс {min_v}–{max_v} → среднее {result['visibility']}", flush=True)
-        else:
-            result["visibility"] = min_v
-            result["visibility_big_spread"] = False
+        result["visibility"] = min_v
+        result["visibility_big_spread"] = (max_v / min_v >= 5.0) if min_v > 0 else False
     else:
         result["visibility"] = None
         result["visibility_min"] = None
@@ -1372,6 +1370,7 @@ def merge_weather_data(w):
 # ─── НАЧАЛО SHORT_FORECAST ─────────────────────────────────
 # ═══════════════════════════════════════════════════════════
 def get_short_forecast():
+    """Прогноз на СЛЕДУЮЩИЙ период (не текущий)."""
     om_raw = get_open_meteo_data()
 
     if not om_raw or not om_raw.get("hourly"):
@@ -1389,17 +1388,44 @@ def get_short_forecast():
         codes = om_raw["hourly"].get("weather_code", [])
         clouds = om_raw["hourly"].get("cloud_cover", [])
 
+        sunrise_today = None
+        sunset_today = None
+        if om_raw and om_raw.get("daily"):
+            try:
+                sunrise_today = om_raw["daily"]["sunrise"][0].split("T")[1][:5]
+                sunset_today = om_raw["daily"]["sunset"][0].split("T")[1][:5]
+            except Exception:
+                pass
+
+        # Определяем СЛЕДУЮЩИЙ период
+        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        if not next_p:
+            return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+
+        p_title, p_emoji, p_start, p_end = next_p
+        title = f"{p_emoji} {p_title}"
+        period_range = f"{_min_to_time(p_start)}–{_min_to_time(p_end)}"
+
+        # Выбираем часы следующего периода
+        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        if not period_hours:
+            return {"next_period": "нет данных", "next_period_title": title, "next_period_range": period_range, "rain_prob": None}
+
         target_indices = []
         for i, t in enumerate(times):
             try:
                 t_dt = datetime.fromisoformat(t).replace(tzinfo=MINSK_TZ)
             except Exception:
                 continue
-            if now_dt < t_dt <= now_dt + timedelta(hours=6):
+            # Проверяем, что это сегодня и час в периоде
+            if t_dt.date() == now_dt.date() and t_dt.hour in period_hours:
+                target_indices.append(i)
+            # Или завтра, если период переходит через полночь (НОЧЬ)
+            elif p_start >= 1440 and t_dt.date() == (now_dt.date() + timedelta(days=1)) and t_dt.hour in period_hours:
                 target_indices.append(i)
 
         if not target_indices:
-            return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+            return {"next_period": "нет данных", "next_period_title": title, "next_period_range": period_range, "rain_prob": None}
 
         avg_temp = math_round(sum(temps[i] for i in target_indices if i < len(temps)) / len(target_indices), 0)
         avg_wind = math_round(sum(winds[i] for i in target_indices if i < len(winds)) / len(target_indices), 0)
@@ -1411,18 +1437,6 @@ def get_short_forecast():
         avg_cloud = math_round(sum(cloud_vals) / len(cloud_vals), 0) if cloud_vals else None
 
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
-
-        sunrise_today = None
-        sunset_today = None
-        if om_raw and om_raw.get("daily"):
-            try:
-                sunrise_today = om_raw["daily"]["sunrise"][0].split("T")[1][:5]
-                sunset_today = om_raw["daily"]["sunset"][0].split("T")[1][:5]
-            except Exception:
-                pass
-
-        title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
-        period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
         cond = "ясно"
         if max_prob and max_prob >= 50:
@@ -1451,6 +1465,9 @@ def get_short_forecast():
             "rain_total": sum_precip_rounded,
             "precip_mm": sum_precip_rounded,
             "avg_cloud": avg_cloud,
+            "avg_temp": avg_temp,
+            "avg_wind": avg_wind,
+            "max_gust": max_gust,
         }
     except Exception as e:
         print(f"⚠️ short_forecast: {e}", flush=True)
@@ -1458,22 +1475,32 @@ def get_short_forecast():
 
 
 def get_short_forecast_wttr():
+    """Fallback: прогноз на следующий период через wttr."""
     w_raw = get_wttr_data()
     if not w_raw or not w_raw.get("weather"):
         return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
     try:
         now_dt = datetime.now(MINSK_TZ)
+        sunrise_today, sunset_today = _calc_sun_times()
+
+        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        if not next_p:
+            return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+
+        p_title, p_emoji, p_start, p_end = next_p
+        title = f"{p_emoji} {p_title}"
+        period_range = f"{_min_to_time(p_start)}–{_min_to_time(p_end)}"
+        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+
         today = w_raw["weather"][0]
         tomorrow = w_raw["weather"][1] if len(w_raw["weather"]) > 1 else None
 
-        hourly = today.get("hourly", [])
         target_hours = []
-        for h in hourly:
+        for h in today.get("hourly", []):
             try:
                 h_time = int(h["time"]) // 100
-                h_dt = now_dt.replace(hour=h_time, minute=0, second=0, microsecond=0)
-                if now_dt < h_dt <= now_dt + timedelta(hours=6):
+                if h_time in period_hours:
                     target_hours.append(h)
             except Exception:
                 continue
@@ -1482,12 +1509,13 @@ def get_short_forecast_wttr():
             for h in tomorrow.get("hourly", []):
                 try:
                     h_time = int(h["time"]) // 100
-                    target_hours.append(h)
+                    if h_time in period_hours:
+                        target_hours.append(h)
                 except Exception:
                     continue
 
         if not target_hours:
-            return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
+            return {"next_period": "нет данных", "next_period_title": title, "next_period_range": period_range, "rain_prob": None}
 
         avg_temp = math_round(sum(float(h.get("tempC", 0)) for h in target_hours) / len(target_hours), 0)
         avg_wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in target_hours) / len(target_hours), 0)
@@ -1495,10 +1523,6 @@ def get_short_forecast_wttr():
         max_prob = max((int(h.get("chanceofrain", 0)) for h in target_hours if h.get("chanceofrain") is not None), default=None)
         sum_precip = sum(float(h.get("precipMM", 0)) for h in target_hours)
         sum_precip_rounded = round(sum_precip, 1) if sum_precip else 0
-
-        sunrise_today, sunset_today = _calc_sun_times()
-        title = get_period_title(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
-        period_range = get_period_range(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
 
         cond = "ясно"
         if max_prob and max_prob >= 50:
@@ -1512,7 +1536,6 @@ def get_short_forecast_wttr():
 
         next_period = f"{avg_temp} °C · {wind_str} · {cond}"
 
-        print(f"✅ short_forecast: fallback wttr OK ({title} {period_range})", flush=True)
         return {
             "next_period": next_period,
             "next_period_title": title,
@@ -1520,6 +1543,9 @@ def get_short_forecast_wttr():
             "rain_prob": max_prob,
             "rain_total": sum_precip_rounded,
             "precip_mm": sum_precip_rounded,
+            "avg_temp": avg_temp,
+            "avg_wind": avg_wind,
+            "max_gust": max_gust,
         }
     except Exception as e:
         print(f"⚠️ short_forecast_wttr: {e}", flush=True)
@@ -1627,6 +1653,10 @@ def get_forecast_tomorrow():
         tmin_safe = tmin if tmin is not None else 0
         tmax_safe = tmax if tmax is not None else 0
 
+        # Разбивка по периодам завтра
+        periods_tomorrow = _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
+                                                  tomorrow_str, sunrise_tomorrow, sunset_tomorrow)
+
         return {
             "temp_min": tmin_safe,
             "temp_max": tmax_safe,
@@ -1642,10 +1672,85 @@ def get_forecast_tomorrow():
             "weather_code": weather_code,
             "uv_index": math_round(uv_max, 0) if uv_max is not None else None,
             "day_range": f"{sunrise_tomorrow}–{sunset_tomorrow}",
+            "periods": periods_tomorrow,
         }
     except Exception as e:
         print(f"⚠️ forecast_tomorrow: {e}", flush=True)
         return None
+
+
+def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
+                            tomorrow_str, sunrise, sunset):
+    """Разбивка завтра по периодам: УТРО/ДЕНЬ/ВЕЧЕР."""
+    sr = _time_to_minutes(sunrise)
+    ss = _time_to_minutes(sunset)
+    if sr is None or ss is None:
+        return []
+
+    noon = (sr + ss) // 2
+    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
+    dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
+
+    periods_def = [
+        ("УТРО", "🌅", sr, noon),
+        ("ДЕНЬ", "☀️", noon, evening_start),
+        ("ВЕЧЕР", "🌆", evening_start, dark_start),
+    ]
+
+    result = []
+    for title, emoji, p_start, p_end in periods_def:
+        start_h = p_start // 60
+        end_h = p_end // 60
+
+        indices = []
+        for i, t in enumerate(times):
+            if not t.startswith(tomorrow_str):
+                continue
+            try:
+                hour = int(t.split("T")[1][:2])
+            except Exception:
+                continue
+            if start_h <= hour < end_h:
+                indices.append(i)
+
+        if not indices:
+            continue
+
+        def collect_p(vals):
+            return [vals[i] for i in indices if i < len(vals) and vals[i] is not None]
+
+        p_temps = collect_p(temps)
+        p_winds = collect_p(winds)
+        p_gusts = collect_p(gusts)
+        p_probs = collect_p(probs)
+        p_precs = collect_p(precs)
+        p_codes = collect_p(codes)
+
+        avg_t = math_round(sum(p_temps) / len(p_temps), 0) if p_temps else 0
+        max_w = math_round(max(p_winds), 0) if p_winds else 0
+        max_g = math_round(max(p_gusts), 0) if p_gusts else None
+        max_prob = max(p_probs) if p_probs else None
+        sum_precip = round(sum(p_precs), 1) if p_precs else 0
+
+        wc = 0
+        if p_codes:
+            priority = {95: 5, 96: 5, 99: 5, 75: 4, 73: 4, 71: 4, 65: 3, 63: 3, 61: 3,
+                        80: 3, 55: 3, 53: 3, 51: 3, 48: 2, 45: 2, 3: 2, 2: 1, 1: 1, 0: 0}
+            wc = max(p_codes, key=lambda c: priority.get(c, 0))
+
+        result.append({
+            "title": title,
+            "emoji": emoji,
+            "range": f"{_min_to_time(p_start)}–{_min_to_time(p_end)}",
+            "temp": avg_t,
+            "wind_speed": max_w,
+            "wind_gust": max_g,
+            "rain_prob": max_prob,
+            "rain_total": sum_precip,
+            "weather_code": wc,
+        })
+
+    return result
 
 
 def get_forecast_tomorrow_wttr():
@@ -1661,75 +1766,94 @@ def get_forecast_tomorrow_wttr():
 
         sunrise_tomorrow, sunset_tomorrow = _calc_sun_times_tomorrow()
         if sunrise_tomorrow and sunset_tomorrow:
-            sr_h = int(sunrise_tomorrow.split(":")[0])
-            ss_h = int(sunset_tomorrow.split(":")[0])
             day_range_str = f"{sunrise_tomorrow}–{sunset_tomorrow}"
         else:
-            sr_h = 8
-            ss_h = 20
             day_range_str = "08:00–20:00"
 
         hourly = tomorrow.get("hourly", [])
-        day_hours = []
-        for h in hourly:
-            try:
-                h_time = int(h["time"]) // 100
-                if sr_h <= h_time <= ss_h:
-                    day_hours.append(h)
-            except Exception:
-                continue
 
-        if day_hours:
-            wind = math_round(sum(float(h.get("windspeedKmph", 0)) / 3.6 for h in day_hours) / len(day_hours), 0)
-            max_gust = max((float(h.get("WindGustKmph", 0)) / 3.6 for h in day_hours if h.get("WindGustKmph")), default=None)
-            rain_prob = max((int(h.get("chanceofrain", 0)) for h in day_hours if h.get("chanceofrain") is not None), default=None)
-            rain_sum = sum(float(h.get("precipMM", 0)) for h in day_hours)
-        else:
-            wind = 0
-            max_gust = None
-            rain_prob = None
-            rain_sum = 0
+        # Упрощённая разбивка по периодам для fallback
+        periods = _get_tomorrow_periods_wttr(hourly, sunrise_tomorrow, sunset_tomorrow)
 
-        rain_sum_rounded = round(rain_sum, 1) if rain_sum else 0
-
-        desc = "—"
-        emoji = ""
-        for h in day_hours:
-            try:
-                if int(h["time"]) == 1200:
-                    desc = h.get("weatherDesc", [{}])[0].get("value", "—")
-                    break
-            except Exception:
-                continue
-
-        desc_lower = desc.lower()
-        if "rain" in desc_lower or "drizzle" in desc_lower:
-            emoji = "🌧️"
-        elif "cloud" in desc_lower or "overcast" in desc_lower:
-            emoji = "☁️"
-        elif "sun" in desc_lower or "clear" in desc_lower:
-            emoji = "☀️"
-        else:
-            emoji = "⛅"
-
-        print(f"✅ forecast_tomorrow: fallback wttr OK ({day_range_str})", flush=True)
         return {
             "temp_min": tmin,
             "temp_max": tmax,
             "temp_avg": math_round((tmin + tmax) / 2, 0),
-            "wind_speed": wind,
-            "wind_gust": math_round(max_gust, 0) if max_gust else None,
-            "rain_prob": rain_prob,
-            "rain_sum": rain_sum_rounded,
-            "rain_total": rain_sum_rounded,
-            "precip_mm": rain_sum_rounded,
-            "condition_text": desc,
-            "condition_emoji": emoji,
+            "wind_speed": 0,
+            "wind_gust": None,
+            "rain_prob": None,
+            "rain_sum": 0,
+            "rain_total": 0,
+            "precip_mm": 0,
+            "condition_text": "—",
+            "condition_emoji": "",
             "weather_code": 0,
             "uv_index": None,
             "day_range": day_range_str,
+            "periods": periods,
         }
     except Exception as e:
         print(f"⚠️ forecast_tomorrow_wttr: {e}", flush=True)
         return None
+
+
+def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
+    """Упрощённая разбивка завтра по периодам для wttr fallback."""
+    sr = _time_to_minutes(sunrise)
+    ss = _time_to_minutes(sunset)
+    if sr is None or ss is None:
+        return []
+
+    noon = (sr + ss) // 2
+    evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
+    dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
+
+    periods_def = [
+        ("УТРО", "🌅", sr, noon),
+        ("ДЕНЬ", "☀️", noon, evening_start),
+        ("ВЕЧЕР", "🌆", evening_start, dark_start),
+    ]
+
+    result = []
+    for title, emoji, p_start, p_end in periods_def:
+        start_h = p_start // 60
+        end_h = p_end // 60
+
+        matching = []
+        for h in hourly:
+            try:
+                h_time = int(h["time"]) // 100
+                if start_h <= h_time < end_h:
+                    matching.append(h)
+            except Exception:
+                continue
+
+        if not matching:
+            continue
+
+        temps = [float(h.get("tempC", 0)) for h in matching]
+        winds = [float(h.get("windspeedKmph", 0)) / 3.6 for h in matching]
+        gusts = [float(h.get("WindGustKmph", 0)) / 3.6 for h in matching if h.get("WindGustKmph")]
+        probs = [int(h.get("chanceofrain", 0)) for h in matching if h.get("chanceofrain") is not None]
+        precs = [float(h.get("precipMM", 0)) for h in matching]
+
+        avg_t = math_round(sum(temps) / len(temps), 0) if temps else 0
+        max_w = math_round(max(winds), 0) if winds else 0
+        max_g = math_round(max(gusts), 0) if gusts else None
+        max_prob = max(probs) if probs else None
+        sum_precip = round(sum(precs), 1) if precs else 0
+
+        result.append({
+            "title": title,
+            "emoji": emoji,
+            "range": f"{_min_to_time(p_start)}–{_min_to_time(p_end)}",
+            "temp": avg_t,
+            "wind_speed": max_w,
+            "wind_gust": max_g,
+            "rain_prob": max_prob,
+            "rain_total": sum_precip,
+            "weather_code": 0,
+        })
+
+    return result
 # ─── КОНЕЦ FORECAST_TOMORROW ───────────────────────────────
