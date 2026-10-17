@@ -131,8 +131,19 @@ if MINSK_POINTS_ENABLED:
 # ============ РЕЕСТР ПОЛЕЗНЫХ ССЫЛОК ============
 LINKS_DATA = {
     "minsk_scr250": {
-        "url": "https://t.me/minsk_scr250",
+        "category": "🏍️ МОТОСООБЩЕСТВО",
         "label": "🏍️ Minsk Scrambler",
         "description": "Крупный канал владельцев Minsk SCR и родственных моделей (Avantis City, Fuego Scrambler, Geon Scrambler, Regulmoto Fargo). Ремонт, запчасти, FAQ и другое!",
+        "buttons": [
+            {"label": "🏍️ Minsk Scrambler", "url": "https://t.me/minsk_scr250"},
+        ],
+    },
+    "iride": {
+        "category": "🎓 МОТОШКОЛЫ",
+        "label": "🎓 I.Ride — мотошкола",
+        "description": "I.Ride — команда людей, любящих мотоциклы. Обучение на категорию А, контраварийное вождение, мотоджимхана и городское вождение. Открытые тренировки на закрытой площадке. Минск. <a href=\"https://motoschool.by\">Сайт</a> · <a href=\"https://www.instagram.com/motoschoolby\">Instagram</a>",
+        "buttons": [
+            {"label": "💬 I.Ride — Telegram", "url": "https://t.me/Motoschool_IRide"},
+        ],
     },
 }
