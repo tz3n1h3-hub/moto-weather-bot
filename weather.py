@@ -333,6 +333,47 @@ def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None, sunrise_tom
     return hours
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО NEXT_PERIODS_CHAIN ─────────────────────────────
+# ═══════════════════════════════════════════════════════════
+def get_next_periods_chain(hour, minute=0, sunrise=None, sunset=None,
+                            sunrise_tomorrow=None, count=5):
+    """Возвращает список следующих периодов по кругу, начиная со следующего.
+    Каждый элемент: (title, emoji, start_min, end_min, day_offset).
+    day_offset: 0 — сегодня, 1 — завтра, 2 — послезавтра."""
+    if not sunrise or not sunset:
+        return []
+
+    periods = _get_periods_list(sunrise, sunset, sunrise_tomorrow)
+    if not periods:
+        return []
+
+    now_min = hour * 60 + minute
+    result = []
+
+    # Сегодняшние периоды (которые ещё не начались)
+    for start, end, title, emoji in periods:
+        if start > now_min:
+            result.append((title, emoji, start, end, 0))
+
+    # Завтрашние периоды
+    if len(result) < count:
+        for start, end, title, emoji in periods:
+            if len(result) >= count:
+                break
+            result.append((title, emoji, start + 1440, end + 1440, 1))
+
+    # Послезавтрашние (если нужно больше)
+    if len(result) < count:
+        for start, end, title, emoji in periods:
+            if len(result) >= count:
+                break
+            result.append((title, emoji, start + 2880, end + 2880, 2))
+
+    return result[:count]
+# ─── КОНЕЦ NEXT_PERIODS_CHAIN ──────────────────────────────
+
+
 def get_astro_night_score(hour, minute=0, sunrise=None, sunset=None):
     if not sunrise or not sunset:
         return 2 if hour >= 22 or hour < 6 else 0
