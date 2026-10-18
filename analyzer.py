@@ -456,13 +456,14 @@ def get_short_verdict(score):
 
 
 def get_rider_verdict(score, month=None, is_tomorrow=False):
+    """Короткие вердикты для периодов. Для 【B】 — префикс «СЕЙЧАС» в bot.py."""
     if score <= 4:
-        return "ЕХАТЬ МОЖНО"
+        return "МОЖНО"
     if score <= 6:
-        return "ЕХАТЬ ОСТОРОЖНО"
+        return "ОСТОРОЖНО"
     if score <= 8:
-        return "ЕХАТЬ ОПАСНО"
-    return "ЕХАТЬ НЕЛЬЗЯ"
+        return "ОПАСНО"
+    return "НЕЛЬЗЯ"
 # ─── КОНЕЦ VERDICTS ────────────────────────────────────────
 
 
