@@ -291,7 +291,7 @@ def get_next_period(hour, minute=0, sunrise=None, sunset=None):
     now_min = hour * 60 + minute
 
     for start, end, title, emoji in periods:
-        if end > now_min:
+        if start > now_min:
             return (title, emoji, start, end)
 
     first = periods[0]
@@ -1668,10 +1668,8 @@ def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
     noon = (sr + ss) // 2
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
-
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
 
-    # НОЧЬ — до рассвета следующего дня (не обрывается в 00:00)
     periods_def = [
         ("РАССВЕТ", "🌄", twilight_start, sr),
         ("УТРО", "🌅", sr, noon),
@@ -1679,7 +1677,7 @@ def _get_tomorrow_periods(times, temps, winds, gusts, probs, precs, codes,
         ("ВЕЧЕР", "🌆", evening_start, dark_start),
         ("НОЧЬ", "🌙", dark_start, twilight_start + 1440),
     ]
-                                
+
     result = []
     for title, emoji, p_start, p_end in periods_def:
         start_h = p_start // 60
@@ -1788,10 +1786,8 @@ def _get_tomorrow_periods_wttr(hourly, sunrise, sunset):
     noon = (sr + ss) // 2
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
     dark_start = min(1439, ss + TWILIGHT_OFFSET_MIN)
-
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
 
-    # НОЧЬ — до рассвета следующего дня (не обрывается в 00:00)
     periods_def = [
         ("РАССВЕТ", "🌄", twilight_start, sr),
         ("УТРО", "🌅", sr, noon),
