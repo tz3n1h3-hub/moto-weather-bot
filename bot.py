@@ -369,8 +369,12 @@ PERIOD_NIGHT_MAP = {
 }
 
 
+# ═══════════════════════════════════════════════════════════
+# ─── НАЧАЛО PERIOD_BLOCK_H ─────────────────────────────────
+# ═══════════════════════════════════════════════════════════
 def _period_block_h(title, emoji, p_range, verdict, score, risks_list):
-    """Формат для периодов: заголовок · короткий вердикт · 💀 × N → список рисков."""
+    """Формат для периодов: заголовок+диапазон → вердикт · 💀 × N → риски.
+    Разбито на короткие строки для iPhone SE (без автопереносов)."""
     VERDICT_SHORT = {
         "ЕХАТЬ МОЖНО": "МОЖНО",
         "ЕХАТЬ ОСТОРОЖНО": "ОСТОРОЖНО",
@@ -380,19 +384,21 @@ def _period_block_h(title, emoji, p_range, verdict, score, risks_list):
     short_verdict = VERDICT_SHORT.get(verdict, verdict)
 
     skulls = _risk_skulls(score)
-    header = f"{emoji} {title} ({p_range}) · {short_verdict}"
+
+    lines = [f"{emoji} {title} ({p_range})"]
+
+    verdict_line = short_verdict
     if skulls:
-        header += f" · {skulls}"
+        verdict_line += f" · {skulls}"
+    lines.append(verdict_line)
 
-    if not risks_list:
-        return header
-
-    lines = [header]
     for r in risks_list[:3]:
         r_str = r[:1].lower() + r[1:] if r else r
+        r_str = r_str.replace("кратковременные порывы", "порывы")
         lines.append(f"• {r_str}")
 
     return "\n".join(lines)
+# ─── КОНЕЦ PERIOD_BLOCK_H ──────────────────────────────────
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
 
 
