@@ -260,7 +260,7 @@ def get_evening_start(sunset):
     return max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
 
-def _get_periods_list(sunrise, sunset):
+def _get_periods_list(sunrise, sunset, sunrise_tomorrow=None):
     sr = _time_to_minutes(sunrise)
     ss = _time_to_minutes(sunset)
     if sr is None or ss is None:
@@ -271,20 +271,26 @@ def _get_periods_list(sunrise, sunset):
     twilight_start = max(0, sr - TWILIGHT_OFFSET_MIN)
     evening_start = max(0, ss - EVENING_BEFORE_SUNSET_MIN)
 
+    if sunrise_tomorrow:
+        sr_t = _time_to_minutes(sunrise_tomorrow)
+        twilight_start_tomorrow = max(0, sr_t - TWILIGHT_OFFSET_MIN) if sr_t else sr + 1440
+    else:
+        twilight_start_tomorrow = sr + 1440
+
     return [
         (twilight_start, sr, "РАССВЕТ", "🌄"),
         (sr, noon, "УТРО", "🌅"),
         (noon, evening_start, "ДЕНЬ", "☀️"),
         (evening_start, dark_start, "ВЕЧЕР", "🌆"),
-        (dark_start, sr + 1440, "НОЧЬ", "🌙"),
+        (dark_start, twilight_start_tomorrow, "НОЧЬ", "🌙"),
     ]
 
 
-def get_next_period(hour, minute=0, sunrise=None, sunset=None):
+def get_next_period(hour, minute=0, sunrise=None, sunset=None, sunrise_tomorrow=None):
     if not sunrise or not sunset:
         return None
 
-    periods = _get_periods_list(sunrise, sunset)
+    periods = _get_periods_list(sunrise, sunset, sunrise_tomorrow)
     if not periods:
         return None
 
@@ -298,22 +304,22 @@ def get_next_period(hour, minute=0, sunrise=None, sunset=None):
     return (first[2], first[3], first[0] + 1440, first[1] + 1440)
 
 
-def get_period_title(hour, minute=0, sunrise=None, sunset=None):
-    p = get_next_period(hour, minute, sunrise, sunset)
+def get_period_title(hour, minute=0, sunrise=None, sunset=None, sunrise_tomorrow=None):
+    p = get_next_period(hour, minute, sunrise, sunset, sunrise_tomorrow)
     if p:
         return f"{p[1]} {p[0]}"
     return "—"
 
 
-def get_period_range(hour, minute=0, sunrise=None, sunset=None):
-    p = get_next_period(hour, minute, sunrise, sunset)
+def get_period_range(hour, minute=0, sunrise=None, sunset=None, sunrise_tomorrow=None):
+    p = get_next_period(hour, minute, sunrise, sunset, sunrise_tomorrow)
     if not p:
         return ""
     return f"{min_to_time(p[2])}–{min_to_time(p[3])}"
 
 
-def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None):
-    p = get_next_period(hour, minute, sunrise, sunset)
+def get_next_period_hours(hour, minute=0, sunrise=None, sunset=None, sunrise_tomorrow=None):
+    p = get_next_period(hour, minute, sunrise, sunset, sunrise_tomorrow)
     if not p:
         return []
     start, end = p[2], p[3]
@@ -1216,6 +1222,7 @@ def get_weather():
           flush=True)
 
     sunrise, sunset = _calc_sun_times()
+    sunrise_tomorrow, sunset_tomorrow = _calc_sun_times_tomorrow()
 
     result = {
         "m": m,
@@ -1224,6 +1231,8 @@ def get_weather():
         "ow": ow,
         "sunrise": sunrise,
         "sunset": sunset,
+        "sunrise_tomorrow": sunrise_tomorrow,
+        "sunset_tomorrow": sunset_tomorrow,
         "is_night": is_night_now(sunrise, sunset),
         "rain_prob_now": rain_prob_now,
         "rain_prob_day": rain_prob_day,
@@ -1327,6 +1336,8 @@ def merge_weather_data(w):
     result["formula"] = w.get("formula", "")
     result["sunrise"] = w.get("sunrise")
     result["sunset"] = w.get("sunset")
+    result["sunrise_tomorrow"] = w.get("sunrise_tomorrow")
+    result["sunset_tomorrow"] = w.get("sunset_tomorrow")
     result["is_night"] = w.get("is_night", False)
 
     agree_values = []
@@ -1383,7 +1394,9 @@ def get_short_forecast():
         if not sunrise_today or not sunset_today:
             sunrise_today, sunset_today = _calc_sun_times()
 
-        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        sunrise_tomorrow, _ = _calc_sun_times_tomorrow()
+
+        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today, sunrise_tomorrow)
         if not next_p:
             return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
@@ -1391,7 +1404,7 @@ def get_short_forecast():
         title = f"{p_emoji} {p_title}"
         period_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
-        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today, sunrise_tomorrow)
         if not period_hours:
             return {"next_period": "нет данных", "next_period_title": title, "next_period_range": period_range, "rain_prob": None}
 
@@ -1464,15 +1477,16 @@ def get_short_forecast_wttr():
     try:
         now_dt = datetime.now(MINSK_TZ)
         sunrise_today, sunset_today = _calc_sun_times()
+        sunrise_tomorrow, _ = _calc_sun_times_tomorrow()
 
-        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise_today, sunset_today, sunrise_tomorrow)
         if not next_p:
             return {"next_period": "нет данных", "next_period_title": "—", "rain_prob": None}
 
         p_title, p_emoji, p_start, p_end = next_p
         title = f"{p_emoji} {p_title}"
         period_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
-        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today)
+        period_hours = get_next_period_hours(now_dt.hour, now_dt.minute, sunrise_today, sunset_today, sunrise_tomorrow)
 
         today = w_raw["weather"][0]
         tomorrow = w_raw["weather"][1] if len(w_raw["weather"]) > 1 else None
