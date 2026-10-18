@@ -370,7 +370,7 @@ PERIOD_NIGHT_MAP = {
 
 
 def _period_block_h(title, emoji, p_range, verdict, score, risks_list):
-    """Формат для 【H】 ЗАВТРА: заголовок · вердикт · 💀 × N → список рисков."""
+    """Формат для периода: заголовок · МОЖНО · 💀 × N → список рисков."""
     skulls = _risk_skulls(score)
     header = f"{emoji} {title} ({p_range}) · {verdict}"
     if skulls:
@@ -381,7 +381,7 @@ def _period_block_h(title, emoji, p_range, verdict, score, risks_list):
 
     lines = [header]
     for r in risks_list[:3]:
-        lines.append(f"• {r.lower()}")
+        lines.append(f"• {r[0].lower() + r[1:]}")
 
     return "\n".join(lines)
 # ─── КОНЕЦ HELPERS ─────────────────────────────────────────
@@ -423,11 +423,13 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
     verdict = get_rider_verdict(score, now_dt.month)
     skulls = _risk_skulls(score)
 
+    verdict_full = "ЕХАТЬ " + verdict
+
     b_lines = []
     if skulls:
-        b_lines.append(f"<b>СЕЙЧАС {verdict}</b> · {skulls}")
+        b_lines.append(f"<b>СЕЙЧАС {verdict_full}</b> · {skulls}")
     else:
-        b_lines.append(f"<b>СЕЙЧАС {verdict}</b>")
+        b_lines.append(f"<b>СЕЙЧАС {verdict_full}</b>")
 
     risks = a_city.get("risks", [])
 
@@ -626,11 +628,11 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
 
     block_de = "\n".join(de_lines)
 
-    # ─── G: Следующий период ───────────────────────────────
+    # ─── G: Следующий световой период (цепочка) ────────────
     forecast_block = ""
     next_p = get_next_period(now_dt.hour, now_dt.minute, sunrise, sunset)
 
-    if next_p and next_p[2] < 1440 and short.get("next_period") != "нет данных":
+    if next_p and short.get("next_period") != "нет данных":
         p_title, p_emoji, p_start, p_end = next_p
         p_range = f"{min_to_time(p_start)}–{min_to_time(p_end)}"
 
@@ -665,18 +667,57 @@ def build_weather_message(w, a_city, short, f, is_morning=False):
         period_verdict = get_rider_verdict(period_risk["score"], now_dt.month)
 
         period_risks = period_risk.get("risks", [])
-        current_risks = a_city.get("risks", [])
 
-        if set(period_risks) == set(current_risks) and period_risks:
-            forecast_block = f"{p_emoji} {p_title} ({p_range}) · {period_verdict} · {_risk_skulls(period_risk['score'])}\nРиск: как сейчас"
-        else:
-            forecast_block = f"{p_emoji} {p_title} ({p_range}) · {period_verdict} · {_risk_skulls(period_risk['score'])}\nРиск: {' · '.join(r.lower() for r in period_risks[:2]) if period_risks else '—'}"
+        period_block = f"{p_emoji} {p_title} ({p_range}) · {period_verdict} · {_risk_skulls(period_risk['score'])}"
+        if period_risks:
+            for r in period_risks[:2]:
+                period_block += f"\n• {r[0].lower() + r[1:]}"
 
-    # ─── H: СЛЕДУЮЩИЙ СВЕТОВОЙ ПЕРИОД ─────────────────────
+        forecast_block = "СЛЕДУЮЩИЙ СВЕТОВОЙ ПЕРИОД\n\n" + period_block
+
+    # ─── H: Цепочка периодов (продолжение) ────────────────
     tomorrow_block = ""
     if f and f.get("periods"):
-        tomorrow_lines = ["СЛЕДУЮЩИЙ СВЕТОВОЙ ПЕРИОД", ""]
-        
+        tomorrow_lines = []
+
+        if next_p and next_p[2] >= 1440:
+            rp_title, rp_emoji, rp_start, rp_end = next_p
+            rp_range = f"{min_to_time(rp_start)}–{min_to_time(rp_end)}"
+
+            rp_night_score = PERIOD_NIGHT_MAP.get(rp_title, 0)
+            rp_data = {
+                "temp": short.get("avg_temp") or 0,
+                "feels_like": short.get("avg_temp") or 0,
+                "wind_speed": short.get("avg_wind") or 0,
+                "wind_gust": short.get("max_gust") or 0,
+                "is_rain": (short.get("rain_total") or 0) > 0.5,
+                "is_drizzle": False,
+                "rain_prob_now": short.get("rain_prob"),
+                "rain_prob_day": short.get("rain_prob"),
+                "rain_total": short.get("rain_total") or 0,
+                "precip_mm": short.get("precip_mm") or 0,
+                "is_thunder": False,
+                "is_hail": False,
+                "visibility": 10000,
+                "dew_point": avg_w.get("dew_point"),
+                "humidity": humidity_now,
+                "clouds_pct": avg_w.get("clouds_pct"),
+                "soil_temp": avg_w.get("soil_temp"),
+                "night_score": rp_night_score,
+                "twilight": "",
+                "period_title": rp_title,
+            }
+            rp_risk = analyze_risks(rp_data, is_forecast=True)
+            rp_verdict = get_rider_verdict(rp_risk["score"], now_dt.month)
+
+            rp_block = _period_block_h(
+                rp_title, rp_emoji, rp_range,
+                rp_verdict, rp_risk["score"],
+                rp_risk.get("risks", []),
+            )
+            tomorrow_lines.append(rp_block)
+            tomorrow_lines.append("")
+
         for p in f["periods"]:
             p_night_score = PERIOD_NIGHT_MAP.get(p["title"], 0)
 
