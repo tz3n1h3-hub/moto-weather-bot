@@ -291,7 +291,7 @@ def get_next_period(hour, minute=0, sunrise=None, sunset=None):
     now_min = hour * 60 + minute
 
     for start, end, title, emoji in periods:
-        if start > now_min:
+        if end > now_min:
             return (title, emoji, start, end)
 
     first = periods[0]
